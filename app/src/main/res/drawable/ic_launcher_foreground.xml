@@ -1,0 +1,16 @@
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp" android:height="108dp" android:viewportWidth="108" android:viewportHeight="108">
+    <!-- Gauge arc -->
+    <path android:strokeColor="@color/launcher_fg" android:strokeWidth="5" android:strokeLineCap="round"
+        android:pathData="M33,68 A24,24 0 1,1 75,68" />
+    <!-- Ticks -->
+    <path android:strokeColor="#FFFFFFFF" android:strokeWidth="3" android:strokeLineCap="round"
+        android:pathData="M54,36 L54,41 M37.5,43 L41,46.5 M70.5,43 L67,46.5 M31,58 L36,58 M77,58 L72,58" />
+    <!-- Needle -->
+    <path android:strokeColor="#FFF97316" android:strokeWidth="4" android:strokeLineCap="round"
+        android:pathData="M54,60 L66,46" />
+    <path android:fillColor="#FFFFFFFF" android:pathData="M54,60 m-4,0 a4,4 0 1,0 8,0 a4,4 0 1,0 -8,0" />
+    <!-- OBD connector -->
+    <path android:fillColor="@color/launcher_fg"
+        android:pathData="M40,72 L68,72 L64,80 L44,80 Z" />
+</vector>

@@ -1,0 +1,118 @@
+package com.openobd.ui.components
+
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.tween
+import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.aspectRatio
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.padding
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Text
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import com.openobd.ui.theme.Bad
+import com.openobd.ui.theme.Warn
+import kotlin.math.cos
+import kotlin.math.sin
+
+/**
+ * Analog gauge with a 240° sweep. [redFrom] marks the start of the red zone as a fraction (0..1).
+ */
+@Composable
+fun AnalogGauge(
+    label: String,
+    valueText: String,
+    unit: String,
+    fraction: Float?,
+    modifier: Modifier = Modifier,
+    redFrom: Float? = null,
+    minText: String? = null,
+    maxText: String? = null,
+    highlight: Boolean = false,
+) {
+    val animated by animateFloatAsState((fraction ?: 0f).coerceIn(0f, 1f), tween(250), label = "needle")
+    val track = MaterialTheme.colorScheme.surfaceVariant
+    val primary = if (highlight) Bad else MaterialTheme.colorScheme.primary
+    val tick = MaterialTheme.colorScheme.onSurfaceVariant
+    val needle = MaterialTheme.colorScheme.secondary
+    Box(modifier.aspectRatio(1f), contentAlignment = Alignment.Center) {
+        Canvas(Modifier.fillMaxSize().padding(6.dp)) {
+            val stroke = size.minDimension * 0.07f
+            val inset = stroke / 2 + 2f
+            val arcSize = Size(size.width - inset * 2, size.height - inset * 2)
+            val topLeft = Offset(inset, inset)
+            val start = 150f
+            val sweep = 240f
+            drawArc(track, start, sweep, false, topLeft, arcSize, style = Stroke(stroke, cap = StrokeCap.Round))
+            redFrom?.let { rf ->
+                drawArc(Bad.copy(alpha = 0.45f), start + sweep * rf, sweep * (1 - rf), false, topLeft, arcSize, style = Stroke(stroke, cap = StrokeCap.Butt))
+            }
+            if (fraction != null) {
+                drawArc(primary, start, sweep * animated, false, topLeft, arcSize, style = Stroke(stroke, cap = StrokeCap.Round))
+            }
+            val c = Offset(size.width / 2, size.height / 2)
+            val r = arcSize.width / 2
+            for (i in 0..10) {
+                val a = Math.toRadians((start + sweep * i / 10f).toDouble())
+                val r1 = r - stroke * 0.9f
+                val r2 = r - stroke * (if (i % 5 == 0) 1.9f else 1.4f)
+                drawLine(tick.copy(alpha = 0.7f), Offset(c.x + r1 * cos(a).toFloat(), c.y + r1 * sin(a).toFloat()),
+                    Offset(c.x + r2 * cos(a).toFloat(), c.y + r2 * sin(a).toFloat()), strokeWidth = 2.5f)
+            }
+            if (fraction != null) {
+                val a = Math.toRadians((start + sweep * animated).toDouble())
+                val len = r - stroke * 2.2f
+                drawLine(needle, c, Offset(c.x + len * cos(a).toFloat(), c.y + len * sin(a).toFloat()), strokeWidth = stroke * 0.32f, cap = StrokeCap.Round)
+                drawCircle(needle, stroke * 0.45f, c)
+            }
+        }
+        Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.padding(top = 36.dp)) {
+            Text(valueText, fontSize = 26.sp, fontWeight = FontWeight.Bold, fontFamily = FontFamily.Monospace, maxLines = 1,
+                color = if (highlight) Bad else MaterialTheme.colorScheme.onSurface)
+            Text(unit, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
+        Column(Modifier.align(Alignment.BottomCenter).fillMaxWidth().padding(bottom = 4.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+            Text(label, style = MaterialTheme.typography.labelLarge, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            if (minText != null && maxText != null) {
+                Text("$minText – $maxText", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+        }
+    }
+}
+
+/** Horizontal bar meter, used for compact displays. */
+@Composable
+fun BarMeter(fraction: Float?, modifier: Modifier = Modifier, warnFrom: Float? = null) {
+    val track = MaterialTheme.colorScheme.surfaceVariant
+    val f = (fraction ?: 0f).coerceIn(0f, 1f)
+    val color = when {
+        warnFrom != null && f >= warnFrom -> Warn
+        else -> MaterialTheme.colorScheme.primary
+    }
+    Canvas(modifier) {
+        val h = size.height
+        drawRoundRect(track, cornerRadius = androidx.compose.ui.geometry.CornerRadius(h / 2))
+        if (fraction != null) drawRoundRect(color, size = Size(size.width * f, h), cornerRadius = androidx.compose.ui.geometry.CornerRadius(h / 2))
+    }
+}
+
+fun gaugeColor(fraction: Float): Color = when {
+    fraction > 0.85f -> Bad
+    fraction > 0.7f -> Warn
+    else -> Color.Unspecified
+}

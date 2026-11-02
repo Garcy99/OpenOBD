@@ -51,6 +51,7 @@ class DecodersTest {
 
     @Test
     fun allPidsHaveConsistentLengths() {
+        assertTrue(Pids.sensors.size >= 200)
         for ((pid, info) in Pids.all) {
             assertTrue("PID %02X length".format(pid), info.bytes in 1..41)
             for (s in info.sensors) {

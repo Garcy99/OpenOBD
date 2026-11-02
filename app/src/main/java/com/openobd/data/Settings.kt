@@ -1,0 +1,155 @@
+package com.openobd.data
+
+import android.content.Context
+import androidx.datastore.preferences.core.Preferences
+import androidx.datastore.preferences.core.booleanPreferencesKey
+import androidx.datastore.preferences.core.edit
+import androidx.datastore.preferences.core.floatPreferencesKey
+import androidx.datastore.preferences.core.intPreferencesKey
+import androidx.datastore.preferences.core.stringPreferencesKey
+import androidx.datastore.preferences.preferencesDataStore
+import com.openobd.core.elm.ObdProtocol
+import com.openobd.core.obd.UnitSystem
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.flow.SharingStarted
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.stateIn
+import kotlinx.serialization.Serializable
+import kotlinx.serialization.encodeToString
+import kotlinx.serialization.json.Json
+
+enum class ConnectionType(val label: String) { BLUETOOTH("Bluetooth"), BLE("Bluetooth LE"), WIFI("Wi-Fi"), DEMO("Demo") }
+
+enum class ThemeMode { SYSTEM, LIGHT, DARK }
+
+enum class FuelKind(val label: String, val afr: Double, val densityGPerL: Double) {
+    AUTO("Auto-detect", 14.7, 745.0),
+    GASOLINE("Gasoline / petrol", 14.7, 745.0),
+    DIESEL("Diesel", 14.5, 832.0),
+    E85("Ethanol E85", 9.8, 785.0),
+    LPG("LPG", 15.5, 540.0),
+    CNG("CNG", 17.2, 180.0),
+}
+
+@Serializable
+data class AlertRule(
+    val id: Long,
+    val sensorKey: String,
+    val above: Boolean,
+    val threshold: Double,
+    val enabled: Boolean = true,
+)
+
+data class AppSettings(
+    val connectionType: ConnectionType = ConnectionType.BLUETOOTH,
+    val deviceAddress: String? = null,
+    val deviceName: String? = null,
+    val wifiHost: String = "192.168.0.10",
+    val wifiPort: Int = 35000,
+    val protocol: ObdProtocol = ObdProtocol.AUTO,
+    val adaptiveTiming: Int = 1,
+    val elmTimeoutMs: Int = 0,
+    val fastMode: Boolean = true,
+    val batching: Boolean = true,
+    val units: UnitSystem = UnitSystem.METRIC,
+    val theme: ThemeMode = ThemeMode.SYSTEM,
+    val keepScreenOn: Boolean = true,
+    val autoConnect: Boolean = false,
+    val fuel: FuelKind = FuelKind.AUTO,
+    val displacementL: Float = 2.0f,
+    val dashboard: List<String> = DEFAULT_DASHBOARD,
+    val alerts: List<AlertRule> = emptyList(),
+    val shiftLightRpm: Int = 0,
+    val fuelPricePerL: Float = 0f,
+) {
+    companion object {
+        val DEFAULT_DASHBOARD = listOf("010C", "010D", "0105", "0104", "0111", "CALC_FUEL", "0142", "CALC_BOOST")
+    }
+}
+
+private val Context.dataStore by preferencesDataStore("settings")
+
+class SettingsRepository(private val context: Context, scope: CoroutineScope) {
+    private object K {
+        val connectionType = stringPreferencesKey("connection_type")
+        val deviceAddress = stringPreferencesKey("device_address")
+        val deviceName = stringPreferencesKey("device_name")
+        val wifiHost = stringPreferencesKey("wifi_host")
+        val wifiPort = intPreferencesKey("wifi_port")
+        val protocol = stringPreferencesKey("protocol")
+        val adaptive = intPreferencesKey("adaptive_timing")
+        val timeout = intPreferencesKey("elm_timeout")
+        val fastMode = booleanPreferencesKey("fast_mode")
+        val batching = booleanPreferencesKey("batching")
+        val units = stringPreferencesKey("units")
+        val theme = stringPreferencesKey("theme")
+        val keepScreenOn = booleanPreferencesKey("keep_screen_on")
+        val autoConnect = booleanPreferencesKey("auto_connect")
+        val fuel = stringPreferencesKey("fuel")
+        val displacement = floatPreferencesKey("displacement")
+        val dashboard = stringPreferencesKey("dashboard")
+        val alerts = stringPreferencesKey("alerts")
+        val shiftLight = intPreferencesKey("shift_light")
+        val fuelPrice = floatPreferencesKey("fuel_price")
+    }
+
+    private val json = Json { ignoreUnknownKeys = true }
+
+    private inline fun <reified T : Enum<T>> enumOf(v: String?, d: T): T = v?.let { s -> enumValues<T>().firstOrNull { it.name == s } } ?: d
+
+    private fun read(p: Preferences): AppSettings {
+        val d = AppSettings()
+        return AppSettings(
+            connectionType = enumOf(p[K.connectionType], d.connectionType),
+            deviceAddress = p[K.deviceAddress],
+            deviceName = p[K.deviceName],
+            wifiHost = p[K.wifiHost] ?: d.wifiHost,
+            wifiPort = p[K.wifiPort] ?: d.wifiPort,
+            protocol = enumOf(p[K.protocol], d.protocol),
+            adaptiveTiming = p[K.adaptive] ?: d.adaptiveTiming,
+            elmTimeoutMs = p[K.timeout] ?: d.elmTimeoutMs,
+            fastMode = p[K.fastMode] ?: d.fastMode,
+            batching = p[K.batching] ?: d.batching,
+            units = enumOf(p[K.units], d.units),
+            theme = enumOf(p[K.theme], d.theme),
+            keepScreenOn = p[K.keepScreenOn] ?: d.keepScreenOn,
+            autoConnect = p[K.autoConnect] ?: d.autoConnect,
+            fuel = enumOf(p[K.fuel], d.fuel),
+            displacementL = p[K.displacement] ?: d.displacementL,
+            dashboard = p[K.dashboard]?.split(',')?.filter { it.isNotBlank() } ?: d.dashboard,
+            alerts = p[K.alerts]?.let { runCatching { json.decodeFromString<List<AlertRule>>(it) }.getOrNull() } ?: d.alerts,
+            shiftLightRpm = p[K.shiftLight] ?: d.shiftLightRpm,
+            fuelPricePerL = p[K.fuelPrice] ?: d.fuelPricePerL,
+        )
+    }
+
+    val settings: StateFlow<AppSettings> = context.dataStore.data.map(::read)
+        .stateIn(scope, SharingStarted.Eagerly, AppSettings())
+
+    suspend fun update(transform: (AppSettings) -> AppSettings) {
+        context.dataStore.edit { p ->
+            val s = transform(read(p))
+            p[K.connectionType] = s.connectionType.name
+            s.deviceAddress?.let { p[K.deviceAddress] = it } ?: p.remove(K.deviceAddress)
+            s.deviceName?.let { p[K.deviceName] = it } ?: p.remove(K.deviceName)
+            p[K.wifiHost] = s.wifiHost
+            p[K.wifiPort] = s.wifiPort
+            p[K.protocol] = s.protocol.name
+            p[K.adaptive] = s.adaptiveTiming
+            p[K.timeout] = s.elmTimeoutMs
+            p[K.fastMode] = s.fastMode
+            p[K.batching] = s.batching
+            p[K.units] = s.units.name
+            p[K.theme] = s.theme.name
+            p[K.keepScreenOn] = s.keepScreenOn
+            p[K.autoConnect] = s.autoConnect
+            p[K.fuel] = s.fuel.name
+            p[K.displacement] = s.displacementL
+            p[K.dashboard] = s.dashboard.joinToString(",")
+            p[K.alerts] = json.encodeToString(s.alerts)
+            p[K.shiftLight] = s.shiftLightRpm
+            p[K.fuelPrice] = s.fuelPricePerL
+        }
+    }
+}
