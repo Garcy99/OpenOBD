@@ -1,0 +1,294 @@
+package com.openobd.core.transport
+
+import com.openobd.core.obd.DtcDecoder
+import kotlinx.coroutines.delay
+import kotlin.math.PI
+import kotlin.math.abs
+import kotlin.math.max
+import kotlin.math.min
+import kotlin.math.roundToInt
+import kotlin.math.sin
+import kotlin.random.Random
+
+/**
+ * A simulated ELM327 adapter connected to a simulated car (ISO 15765-4 CAN 11-bit, 500 kbaud,
+ * engine ECU 7E8 + transmission ECU 7E9). Used for the in-app demo mode and for unit tests.
+ */
+class DemoTransport(
+    private val latencyMs: Long = 35,
+    private val clock: () -> Long = { System.currentTimeMillis() },
+    private val random: Random = Random.Default,
+) : ObdTransport() {
+    override val description: String = "Demo car (simulated)"
+
+    private val buffer = StringBuilder()
+    private val startedAt = clock()
+
+    // Adapter state
+    private var echo = true
+    private var spaces = true
+    private var headers = false
+    private var connectedToCar = false
+
+    // Car state
+    val stored = mutableListOf("P0301", "P0420")
+    val pending = mutableListOf("P0171")
+    val permanent = mutableListOf("P0420")
+    private var monitorsComplete = true
+    var vin = "1HGCM82633A004352"
+
+    private val engineFreezeFrame = mapOf(
+        0x04 to intArrayOf(0x8C), 0x05 to intArrayOf(0x7B), 0x06 to intArrayOf(0x8A), 0x07 to intArrayOf(0x84),
+        0x0B to intArrayOf(0x45), 0x0C to intArrayOf(0x0D, 0x48), 0x0D to intArrayOf(0x38), 0x0E to intArrayOf(0x94),
+        0x0F to intArrayOf(0x41), 0x11 to intArrayOf(0x30),
+    )
+
+    private val enginePids: Set<Int> = setOf(
+        0x01, 0x03, 0x04, 0x05, 0x06, 0x07, 0x0B, 0x0C, 0x0D, 0x0E, 0x0F, 0x10, 0x11, 0x13, 0x14, 0x15, 0x1C, 0x1F,
+        0x21, 0x2F, 0x30, 0x31, 0x33, 0x3C, 0x41, 0x42, 0x43, 0x44, 0x45, 0x46, 0x47, 0x49, 0x4A, 0x4C, 0x4D, 0x4E,
+        0x51, 0x5C, 0x5E, 0xA6,
+    ).let { it + supportMarkers(it) }
+    private val transmissionPids: Set<Int> = setOf(0x01, 0x0D).let { it + supportMarkers(it) }
+
+    private fun supportMarkers(pids: Set<Int>): Set<Int> {
+        val maxPid = pids.max()
+        return (0x20..0xE0 step 0x20).filter { it < maxPid }.toSet()
+    }
+
+    override suspend fun open() { isOpen = true }
+
+    override suspend fun close() { isOpen = false }
+
+    override suspend fun send(data: ByteArray) {
+        if (!isOpen) throw TransportException("Demo link closed")
+        buffer.append(String(data, Charsets.US_ASCII))
+        while (true) {
+            val idx = buffer.indexOf("\r")
+            if (idx < 0) break
+            val cmd = buffer.substring(0, idx)
+            buffer.delete(0, idx + 1)
+            val reply = handle(cmd.trim())
+            if (latencyMs > 0) delay(latencyMs)
+            val echoPart = if (echo) "$cmd\r" else ""
+            incoming.trySend((echoPart + reply.joinToString("\r") + "\r\r>").toByteArray(Charsets.US_ASCII))
+        }
+    }
+
+    // ------------------------------------------------------------------ AT commands
+
+    private fun handle(raw: String): List<String> {
+        val cmd = raw.replace(" ", "").uppercase()
+        if (cmd.isEmpty()) return listOf("")
+        if (cmd.startsWith("AT")) return handleAt(cmd.substring(2))
+        if (cmd.startsWith("ST")) return listOf("?")
+        if (!cmd.all { it.isDigit() || it in 'A'..'F' }) return listOf("?")
+        return handleObd(cmd)
+    }
+
+    private fun handleAt(c: String): List<String> = when {
+        c == "Z" || c == "WS" -> { echo = true; spaces = true; headers = false; connectedToCar = false; listOf("", "ELM327 v1.5") }
+        c == "I" -> listOf("ELM327 v1.5")
+        c == "@1" -> listOf("OpenOBD Demo Adapter")
+        c == "RV" -> listOf("%.1fV".format(if (connectedToCar) 14.1 + random.nextDouble(-0.1, 0.1) else 12.6))
+        c == "DPN" -> listOf(if (connectedToCar) "A6" else "0")
+        c == "DP" -> listOf("AUTO, ISO 15765-4 (CAN 11/500)")
+        c.startsWith("E") -> { echo = c.endsWith("1"); listOf("OK") }
+        c.startsWith("S") && c.length == 2 && (c[1] == '0' || c[1] == '1') -> { spaces = c[1] == '1'; listOf("OK") }
+        c.startsWith("H") && c.length == 2 -> { headers = c[1] == '1'; listOf("OK") }
+        else -> listOf("OK")
+    }
+
+    // ------------------------------------------------------------------ OBD requests
+
+    private fun handleObd(cmd: String): List<String> {
+        // Odd length -> trailing "expected responses" digit
+        val hex = if (cmd.length % 2 == 1) cmd.dropLast(1) else cmd
+        val bytes = hex.chunked(2).map { it.toInt(16) }
+        val firstContact = !connectedToCar
+        connectedToCar = true
+        val replies = mutableListOf<Pair<String, List<Int>>>()
+        val mode = bytes[0]
+        when (mode) {
+            0x01 -> {
+                val pids = bytes.drop(1)
+                if (pids.isEmpty() || pids.size > 6) return listOf("?")
+                for ((ecu, supported) in listOf("7E8" to enginePids, "7E9" to transmissionPids)) {
+                    val payload = mutableListOf(0x41)
+                    for (p in pids) {
+                        val d = if (p % 0x20 == 0) supportBitmap(p, supported) else if (p in supported) pidValue(p, ecu) else null
+                        if (d != null) { payload += p; payload += d.toList() }
+                    }
+                    if (payload.size > 1) replies += ecu to payload
+                }
+            }
+            0x02 -> {
+                if (bytes.size < 2) return listOf("?")
+                val pid = bytes[1]
+                val frame = bytes.getOrElse(2) { 0 }
+                if (frame == 0 && stored.isNotEmpty()) {
+                    val ff = engineFreezeFrame
+                    val d: IntArray? = when {
+                        pid % 0x20 == 0 -> supportBitmap(pid, ff.keys + 0x02 + 0x00)
+                        pid == 0x02 -> DtcDecoder.encode(stored.first()).let { intArrayOf(it.first, it.second) }
+                        else -> ff[pid]
+                    }
+                    if (d != null) replies += "7E8" to listOf(0x42, pid, frame) + d.toList()
+                }
+            }
+            0x03, 0x07, 0x0A -> {
+                val list = when (mode) { 0x03 -> stored; 0x07 -> pending; else -> permanent }
+                val payload = mutableListOf(mode + 0x40, list.size)
+                list.forEach { val (a, b) = DtcDecoder.encode(it); payload += a; payload += b }
+                replies += "7E8" to payload
+                if (mode == 0x03) replies += "7E9" to listOf(0x43, 0)
+            }
+            0x04 -> {
+                stored.clear(); pending.clear(); monitorsComplete = false
+                replies += "7E8" to listOf(0x44)
+                replies += "7E9" to listOf(0x44)
+            }
+            0x06 -> replies += mode06(bytes.getOrElse(1) { 0 }) ?: return listOf("NO DATA")
+            0x09 -> replies += mode09(bytes.getOrElse(1) { 0 }) ?: return listOf("NO DATA")
+            else -> return listOf("NO DATA")
+        }
+        if (replies.isEmpty()) return listOf("NO DATA")
+        val prefix = if (firstContact) listOf("SEARCHING...") else emptyList()
+        return prefix + replies.flatMap { (ecu, payload) -> format(ecu, payload) }
+    }
+
+    private fun supportBitmap(base: Int, supported: Set<Int>): IntArray? {
+        if (base != 0 && base !in supported) return null
+        val bits = IntArray(4)
+        for (i in 0 until 32) if (base + i + 1 in supported) bits[i / 8] = bits[i / 8] or (1 shl (7 - i % 8))
+        return bits
+    }
+
+    private fun mode06(mid: Int): Pair<String, List<Int>>? {
+        val mids = setOf(0x01, 0x21, 0xA1, 0xA2, 0xA3)
+        if (mid % 0x20 == 0) return supportBitmap(mid, mids + 0x20 + 0x40 + 0x60 + 0x80 + 0xA0)?.let { "7E8" to listOf(0x46, mid) + it.toList() }
+        fun test(tid: Int, uas: Int, v: Int, mn: Int, mx: Int) =
+            listOf(mid, tid, uas, v shr 8, v and 0xFF, mn shr 8, mn and 0xFF, mx shr 8, mx and 0xFF)
+        val tests: List<Int> = when (mid) {
+            0x01 -> test(0x01, 0x0A, 0x0E10, 0x0C00, 0x1000) + test(0x05, 0x10, 0x0048, 0x0000, 0x0096)
+            0x21 -> test(0x80, 0x24, 0x0052, 0x0000, if (stored.contains("P0420")) 0x0040 else 0x00C8)
+            0xA1 -> test(0x0B, 0x24, 0x0003, 0x0000, 0xFFFF) + test(0x0C, 0x24, 0x0001, 0x0000, 0xFFFF)
+            0xA2 -> test(0x0B, 0x24, if (stored.contains("P0301")) 0x0021 else 0, 0x0000, 0xFFFF) + test(0x0C, 0x24, if (stored.contains("P0301")) 0x0018 else 0, 0x0000, 0xFFFF)
+            0xA3 -> test(0x0B, 0x24, 0x0000, 0x0000, 0xFFFF) + test(0x0C, 0x24, 0x0000, 0x0000, 0xFFFF)
+            else -> return null
+        }
+        return "7E8" to listOf(0x46) + tests
+    }
+
+    private fun mode09(type: Int): Pair<String, List<Int>>? = when (type) {
+        0x00 -> "7E8" to listOf(0x49, 0x00) + supportBitmap(0, setOf(0x02, 0x04, 0x06, 0x08, 0x0A))!!.toList()
+        0x02 -> "7E8" to listOf(0x49, 0x02, 0x01) + vin.map { it.code }
+        0x04 -> "7E8" to listOf(0x49, 0x04, 0x01) + "OPENOBD-DEMO-1.0".padEnd(16, '\u0000').map { it.code }
+        0x06 -> "7E8" to listOf(0x49, 0x06, 0x01, 0x1B, 0x3C, 0x9A, 0x7F)
+        0x08 -> "7E8" to listOf(0x49, 0x08, 0x10) + listOf(312, 1048, 287, 312, 0, 0, 301, 312, 0, 0, 155, 312, 0, 0, 98, 312)
+            .flatMap { listOf(it shr 8, it and 0xFF) }
+        0x0A -> "7E8" to listOf(0x49, 0x0A, 0x01) + "ECM\u0000-EngineControl".padEnd(20, '\u0000').map { it.code }
+        else -> null
+    }
+
+    // ------------------------------------------------------------------ live values
+
+    private fun t(): Double = (clock() - startedAt) / 1000.0
+
+    private fun noise(amount: Double) = random.nextDouble(-amount, amount)
+
+    private fun speedAt(time: Double) = max(0.0, 52.0 + 62.0 * sin(time * 2 * PI / 50.0) + 8 * sin(time * 2 * PI / 9.0))
+
+    private fun pidValue(pid: Int, ecu: String): IntArray? {
+        val time = t()
+        val speed = speedAt(time)
+        val accel = speedAt(time + 0.5) - speedAt(time - 0.5)
+        val gear = when { speed < 1 -> 0; speed < 18 -> 1; speed < 35 -> 2; speed < 55 -> 3; speed < 75 -> 4; speed < 95 -> 5; else -> 6 }
+        val ratio = doubleArrayOf(0.0, 120.0, 72.0, 50.0, 38.0, 31.0, 26.0)[gear]
+        val rpm = if (gear == 0) 780 + noise(25.0) else min(6500.0, 900 + speed * ratio + noise(30.0))
+        val throttle = (if (accel > 0) 18 + accel * 9 else 11.0).coerceIn(9.0, 95.0) + noise(1.0)
+        val load = (throttle * 0.9 + 14 + noise(2.0)).coerceIn(10.0, 100.0)
+        val coolant = min(91.0, 22 + time * 0.6) + noise(0.4)
+        val maf = rpm * load / 9000.0 + noise(0.2)
+        fun b(v: Double) = v.roundToInt().coerceIn(0, 255)
+        fun w(v: Double) = v.roundToInt().coerceIn(0, 65535).let { intArrayOf(it shr 8, it and 0xFF) }
+        if (ecu == "7E9") return when (pid) {
+            0x01 -> intArrayOf(0x00, 0x00, 0x00, 0x00)
+            0x0D -> intArrayOf(b(speed))
+            else -> null
+        }
+        return when (pid) {
+            0x01 -> {
+                val mil = if (stored.isNotEmpty()) 0x80 or stored.size else 0
+                intArrayOf(mil, 0x07, 0x65, if (monitorsComplete) 0x00 else 0x65)
+            }
+            0x03 -> intArrayOf(if (coolant < 40) 0x01 else 0x02, 0x00)
+            0x04 -> intArrayOf(b(load * 2.55))
+            0x05 -> intArrayOf(b(coolant + 40))
+            0x06 -> intArrayOf(b(128 + (2.5 + noise(2.0)) * 1.28))
+            0x07 -> intArrayOf(b(128 + 4.7 * 1.28))
+            0x0B -> intArrayOf(b(28 + load * 0.7))
+            0x0C -> w(rpm * 4)
+            0x0D -> intArrayOf(b(speed))
+            0x0E -> intArrayOf(b((12 + speed / 8 + noise(1.0) + 64) * 2))
+            0x0F -> intArrayOf(b(31 + noise(0.5) + 40))
+            0x10 -> w(maf * 100)
+            0x11 -> intArrayOf(b(throttle * 2.55))
+            0x13 -> intArrayOf(0x03)
+            0x14 -> intArrayOf(b((0.45 + 0.4 * sin(time * 7)) * 200), b(128 + noise(4.0)))
+            0x15 -> intArrayOf(b((0.68 + noise(0.03)) * 200), 0xFF)
+            0x1C -> intArrayOf(0x01)
+            0x1F -> w(time)
+            0x21 -> w(if (stored.isNotEmpty()) 412.0 else 0.0)
+            0x2F -> intArrayOf(b((63 - time / 120.0) * 2.55))
+            0x30 -> intArrayOf(if (monitorsComplete) 87 else 1)
+            0x31 -> w(if (monitorsComplete) 2387.0 else time / 60.0)
+            0x33 -> intArrayOf(101)
+            0x3C -> w((min(650.0, 150 + time * 4) + noise(3.0) + 40) * 10)
+            0x41 -> intArrayOf(0x00, 0x07, 0x65, 0x24)
+            0x42 -> w((14.1 + noise(0.08)) * 1000)
+            0x43 -> w(load * 2.55 * 0.85)
+            0x44 -> w((if (coolant < 40) 0.92 else 1.0) * 32768)
+            0x45 -> intArrayOf(b(abs(throttle - 8) * 2.55))
+            0x46 -> intArrayOf(b(19.0 + 40))
+            0x47 -> intArrayOf(b((throttle + 16) * 2.55))
+            0x49 -> intArrayOf(b((throttle * 0.8 + 15) * 2.55))
+            0x4A -> intArrayOf(b((throttle * 0.4 + 7.5) * 2.55))
+            0x4C -> intArrayOf(b(throttle * 2.55))
+            0x4D -> w(if (stored.isNotEmpty()) 318.0 else 0.0)
+            0x4E -> w(if (monitorsComplete) 4120.0 else time / 60.0)
+            0x51 -> intArrayOf(0x01)
+            0x5C -> intArrayOf(b(min(98.0, 20 + time * 0.45) + 40))
+            0x5E -> w(maf * 3600 / (14.7 * 745) * 20)
+            0xA6 -> (1_284_512 + (time * speed / 360.0).toInt()).let { intArrayOf(0, it shr 16 and 0xFF, it shr 8 and 0xFF, it and 0xFF) }
+            else -> null
+        }
+    }
+
+    // ------------------------------------------------------------------ framing
+
+    private fun hex(v: Int) = "%02X".format(v)
+
+    private fun join(parts: List<String>) = if (spaces) parts.joinToString(" ") else parts.joinToString("")
+
+    private fun format(ecu: String, payload: List<Int>): List<String> {
+        if (!headers) {
+            if (payload.size <= 7) return listOf(join(payload.map(::hex)))
+            val lines = mutableListOf("%03X".format(payload.size))
+            lines += "0: " + join(payload.take(6).map(::hex))
+            payload.drop(6).chunked(7).forEachIndexed { i, c -> lines += "%X: ".format((i + 1) % 16) + join(c.map(::hex)) }
+            return lines
+        }
+        if (payload.size <= 7) {
+            val frame = listOf(payload.size) + payload + List(7 - payload.size) { 0 }
+            return listOf(join(listOf(ecu) + frame.map(::hex)))
+        }
+        val lines = mutableListOf<String>()
+        val first = listOf(0x10 or (payload.size shr 8), payload.size and 0xFF) + payload.take(6)
+        lines += join(listOf(ecu) + first.map(::hex))
+        payload.drop(6).chunked(7).forEachIndexed { i, c ->
+            val frame = listOf(0x20 or ((i + 1) and 0x0F)) + c + List(7 - c.size) { 0 }
+            lines += join(listOf(ecu) + frame.map(::hex))
+        }
+        return lines
+    }
+}

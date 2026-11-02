@@ -1,0 +1,60 @@
+# code<TAB>severity (1=low 2=moderate 3=high)<TAB>common causes separated by ';'<TAB>advice
+P0011	2	Low or dirty engine oil;Faulty camshaft timing (VVT) solenoid;Worn timing chain or tensioner;Faulty VVT phaser	Check oil level and condition first; an oil change often fixes it.
+P0016	3	Stretched timing chain/belt;Faulty crankshaft or camshaft position sensor;Faulty VVT solenoid;Reluctor ring damage	Do not ignore: a jumped timing chain can cause severe engine damage.
+P0087	3	Clogged fuel filter;Weak fuel pump;Faulty fuel pressure sensor;Fuel leak;Faulty high pressure pump (diesel/GDI)	Can cause stalling or limp mode. Check fuel pressure.
+P0101	2	Dirty or faulty MAF sensor;Air leak after the MAF;Clogged air filter;Wiring problem	Try cleaning the MAF with dedicated MAF cleaner and check intake hoses.
+P0102	2	Faulty or unplugged MAF sensor;Damaged wiring or connector;Air leak	Inspect the MAF connector and wiring.
+P0113	1	Disconnected IAT sensor;Faulty IAT sensor;Open circuit in wiring	Check the intake air temperature sensor connector.
+P0117	2	Faulty coolant temperature sensor;Short in wiring	Verify coolant temperature with live data.
+P0118	2	Faulty coolant temperature sensor;Open circuit / unplugged connector	Verify coolant temperature with live data.
+P0121	2	Faulty throttle position sensor;Dirty throttle body;Wiring problem	Clean throttle body and check TPS signal in live data.
+P0128	1	Thermostat stuck open;Faulty coolant temperature sensor;Low coolant level	Usually a thermostat; the engine takes too long to warm up.
+P0130	2	Faulty upstream O2 sensor;Wiring damage;Exhaust leak	Check O2 sensor voltage in live data; it should switch 0.1-0.9 V.
+P0133	2	Aged / slow upstream O2 sensor;Exhaust leak;Vacuum leak	Replace the O2 sensor if it responds slowly.
+P0135	1	Failed O2 sensor heater;Blown heater fuse;Wiring problem	Usually requires replacing the O2 sensor.
+P0141	1	Failed downstream O2 sensor heater;Blown fuse;Wiring	Usually requires replacing the downstream O2 sensor.
+P0171	2	Vacuum leak;Dirty or faulty MAF sensor;Weak fuel pump or clogged filter;Clogged injectors;Leaking intake gasket;Faulty PCV valve	Check fuel trims in live data: high positive LTFT confirms lean. Look for vacuum leaks.
+P0172	2	Leaking injector;Faulty fuel pressure regulator;Dirty MAF sensor;Faulty O2 sensor;Clogged air filter	Check fuel trims in live data: strong negative values confirm rich.
+P0174	2	Vacuum leak;Dirty MAF sensor;Low fuel pressure;Intake gasket leak (bank 2)	Same diagnosis as P0171 but for bank 2.
+P0175	2	Leaking injector;High fuel pressure;Dirty MAF sensor;Faulty O2 sensor	Same diagnosis as P0172 but for bank 2.
+P0217	3	Low coolant;Faulty thermostat;Cooling fan failure;Water pump failure;Head gasket	Engine overheating: stop driving to avoid engine damage.
+P0234	3	Wastegate stuck closed;Faulty boost control solenoid;Faulty boost sensor	Overboost can damage the engine; reduce load.
+P0299	2	Boost leak (hose/intercooler);Faulty wastegate or actuator;Faulty turbocharger;Clogged air filter;Faulty boost control solenoid	Inspect intercooler hoses and clamps for leaks.
+P0300	3	Worn spark plugs;Faulty ignition coils;Vacuum leak;Low fuel pressure;Clogged injectors;Low compression	Flashing MIL means catalyst-damaging misfire: reduce driving.
+P0301	3	Worn spark plug (cyl. 1);Faulty ignition coil (cyl. 1);Faulty injector (cyl. 1);Low compression	Swap coil with another cylinder: if the misfire moves, replace the coil.
+P0302	3	Worn spark plug (cyl. 2);Faulty ignition coil (cyl. 2);Faulty injector (cyl. 2);Low compression	Swap coil with another cylinder: if the misfire moves, replace the coil.
+P0303	3	Worn spark plug (cyl. 3);Faulty ignition coil (cyl. 3);Faulty injector (cyl. 3);Low compression	Swap coil with another cylinder: if the misfire moves, replace the coil.
+P0304	3	Worn spark plug (cyl. 4);Faulty ignition coil (cyl. 4);Faulty injector (cyl. 4);Low compression	Swap coil with another cylinder: if the misfire moves, replace the coil.
+P0305	3	Worn spark plug (cyl. 5);Faulty ignition coil (cyl. 5);Faulty injector (cyl. 5);Low compression	Swap coil with another cylinder: if the misfire moves, replace the coil.
+P0306	3	Worn spark plug (cyl. 6);Faulty ignition coil (cyl. 6);Faulty injector (cyl. 6);Low compression	Swap coil with another cylinder: if the misfire moves, replace the coil.
+P0325	2	Faulty knock sensor;Damaged wiring;Loose sensor mounting	Check knock sensor wiring and torque.
+P0335	3	Faulty crankshaft position sensor;Damaged wiring;Damaged reluctor ring	Engine may stall or not start.
+P0340	2	Faulty camshaft position sensor;Wiring problem;Timing issue	Check sensor and wiring; verify timing.
+P0401	2	Clogged EGR passages;Faulty EGR valve;Faulty DPFE / EGR sensor	Clean carbon from EGR valve and passages.
+P0402	2	EGR valve stuck open;Faulty EGR solenoid;Faulty DPFE sensor	May cause rough idle.
+P0420	2	Worn catalytic converter;Faulty downstream O2 sensor;Exhaust leak;Engine misfire or rich running	Fix any misfire or fuel trim problem first. Compare upstream vs downstream O2 activity in live data.
+P0430	2	Worn catalytic converter (bank 2);Faulty downstream O2 sensor;Exhaust leak	Same diagnosis as P0420 for bank 2.
+P0440	1	Loose or damaged fuel cap;EVAP hose leak;Faulty purge or vent valve	Check the fuel cap first.
+P0441	1	Faulty purge valve;Blocked or cracked EVAP hoses;Faulty purge flow sensor	Inspect purge valve and hoses.
+P0442	1	Loose fuel cap;Small EVAP hose leak;Faulty purge or vent valve seal	Tighten / replace the fuel cap and clear; smoke test if it returns.
+P0446	1	Faulty vent valve;Blocked vent filter;Wiring problem	Check the canister vent valve.
+P0455	1	Missing or loose fuel cap;Disconnected EVAP hose;Faulty purge or vent valve	Check the fuel cap and EVAP hoses.
+P0456	1	Fuel cap seal;Tiny EVAP leak;Purge valve seal	Very small leak; often the fuel cap.
+P0500	2	Faulty vehicle speed sensor;Wiring problem;ABS sensor issue	Speedometer and shifting may be affected.
+P0505	1	Dirty throttle body / idle air control valve;Vacuum leak;Faulty IAC valve	Clean the throttle body and perform an idle relearn.
+P0507	1	Vacuum leak;Dirty throttle body;Faulty PCV valve	Idle higher than expected; look for vacuum leaks.
+P0562	2	Weak battery;Faulty alternator;Corroded battery terminals;Bad ground	Check battery voltage with engine running (13.5-14.7 V expected).
+P0606	3	ECM internal fault;Low system voltage;Software issue	Check battery and grounds first; may require ECM reflash or replacement.
+P0700	2	Transmission control module has stored a fault	Read the transmission module codes for details.
+P2096	2	Exhaust leak;Faulty downstream O2 sensor;Vacuum leak;Fuel delivery problem	Check for exhaust leaks before the downstream sensor.
+P2097	2	Leaking injector;Faulty O2 sensor;High fuel pressure	Check fuel trims.
+P2135	3	Faulty throttle body;Damaged wiring;Faulty connector	May trigger limp mode; usually throttle body replacement.
+P2138	3	Faulty accelerator pedal sensor;Wiring problem	May trigger limp mode.
+P2187	2	Vacuum leak at idle;Faulty PCV valve;Intake leak	Lean only at idle typically indicates a vacuum leak.
+P2195	2	Faulty upstream O2 / air-fuel sensor;Vacuum or exhaust leak;Fuel pressure problem	Check fuel trims and sensor response.
+P2463	3	Excessive soot in DPF;Too many short trips;Faulty DPF pressure sensor;Injector or EGR problems	Perform a forced or highway regeneration; may need DPF cleaning.
+U0100	3	CAN bus wiring fault;Low battery voltage;Faulty ECM;Blown ECM fuse	Check battery, fuses and CAN wiring near the ECM.
+U0101	3	CAN bus wiring fault;Faulty TCM;Blown TCM fuse	Check TCM power, ground and CAN wiring.
+U0121	2	ABS module fault;CAN wiring;Blown ABS fuse	Check the ABS module connector and fuses.
+U0140	2	BCM fault;CAN wiring;Blown BCM fuse	Check BCM power and CAN wiring.
+U0155	2	Instrument cluster fault;CAN wiring	Check cluster connector and fuses.
