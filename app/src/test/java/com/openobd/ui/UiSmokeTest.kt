@@ -332,3 +332,74 @@ class SpanishUiTest {
         waitFor { c.session.state.value is ConnectionState.Disconnected }
     }
 }
+
+/** Find-your-car flow for a Spanish user, with the EEA service replayed from recorded responses. */
+@RunWith(AndroidJUnit4::class)
+@GraphicsMode(GraphicsMode.Mode.NATIVE)
+@Config(sdk = [34], qualifiers = "es-rES-w411dp-h891dp-xxhdpi")
+class FindCarUiTest {
+    @get:Rule
+    val rule = createAndroidComposeRule<MainActivity>()
+
+    private fun shot(name: String) {
+        rule.waitForIdle()
+        val dir = File(System.getProperty("screenshot.dir") ?: "build/screenshots").apply { mkdirs() }
+        rule.activityRule.scenario.onActivity { act ->
+            val v = act.window.decorView
+            val bmp = Bitmap.createBitmap(v.width, v.height, Bitmap.Config.ARGB_8888)
+            v.draw(Canvas(bmp))
+            File(dir, "$name.png").outputStream().use { bmp.compress(Bitmap.CompressFormat.PNG, 100, it) }
+        }
+    }
+
+    private fun waitFor(timeoutMs: Long = 20_000, condition: () -> Boolean) {
+        val end = System.currentTimeMillis() + timeoutMs
+        while (!condition()) { check(System.currentTimeMillis() < end) { "Timed out waiting" }; Thread.sleep(50); rule.mainClock.advanceTimeBy(50) }
+        rule.waitForIdle()
+    }
+
+    private fun click(text: String) {
+        waitFor { rule.onAllNodes(hasText(text) and hasClickAction()).fetchSemanticsNodes().isNotEmpty() }
+        rule.onAllNodes(hasText(text) and hasClickAction())[0].also { runCatching { it.performScrollTo() } }.performClick()
+        rule.waitForIdle()
+    }
+
+    @Test
+    fun spanishCarFromCatalog() {
+        val app = rule.activity.application as OpenObdApp
+        val c = app.container
+        c.http = com.openobd.core.FixtureHttp(listOf(
+            "DISTINCT Year" to "eea_years.json", "UPPER(Mk) AS mk" to "eea_makes.json",
+            "UPPER(Cn) AS cn" to "eea_models.json", "GROUP BY UPPER(Ft)" to "eea_versions.json",
+        ))
+        runBlocking {
+            c.settings.update { it.copy(theme = ThemeMode.DARK, language = "es", specsCountry = "ES") }
+            c.garage.load(null)
+        }
+        waitFor { I18n.language == "es" && c.garage.data.value.active != null }
+        click("Identificar tu vehículo (modelo y especificaciones)")
+        waitFor { rule.onAllNodesWithText("SEAT").fetchSemanticsNodes().isNotEmpty() }
+        shot("es_10_find_car")
+        click("2019")
+        click("SEAT")
+        click("Leon")
+        waitFor { rule.onAllNodesWithText("Gasolina · 1,5 L · 110 kW (150 CV)").fetchSemanticsNodes().isNotEmpty() }
+        shot("es_11_versions")
+        click("Gasolina · 1,5 L · 110 kW (150 CV)")
+        shot("es_12_editor")
+        click("Guardar")
+        val v = c.garage.data.value.active!!
+        waitFor { c.garage.data.value.active?.specs != null }
+        val specs = c.garage.data.value.active!!.specs!!
+        assertTrue(specs.make == "SEAT" && specs.model == "Leon" && specs.engineCc == 1498)
+        assertTrue(c.garage.data.value.active!!.name == "2019 SEAT Leon")
+        shot("es_13_specs")
+        // The fuel model now uses the car's engine size
+        assertTrue(c.session.live.params.displacementL == 1.498)
+        // No first-registration date yet, so no ITV reminder; adding it creates one
+        runBlocking {
+            c.garage.updateVehicle(v.id) { it.copy(specs = specs.copy(firstRegistration = java.util.Calendar.getInstance().apply { add(java.util.Calendar.YEAR, -5) }.timeInMillis)) }
+        }
+        assertTrue(com.openobd.core.specs.Spain.dgtLabel(specs.fuel, 2019) == com.openobd.core.specs.DgtLabel.C)
+    }
+}

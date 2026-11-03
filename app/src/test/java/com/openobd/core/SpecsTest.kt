@@ -154,7 +154,8 @@ class SpecsTest {
         assertEquals("citroen", brandForMake("CITROEN")?.id)
         assertEquals("skoda", brandForMake("SKODA")?.id)
         assertEquals("landrover", brandForMake("LAND ROVER")?.id)
-        assertEquals("Seat Leon", prettyName("SEAT LEON"))
+        assertEquals("SEAT Leon", prettyName("SEAT LEON"))
+        assertEquals("Volkswagen Golf GTI", prettyName("VOLKSWAGEN GOLF GTI"))
         assertEquals("BMW X3", prettyName("BMW X3"))
     }
 }

@@ -76,6 +76,8 @@ object Routes {
     const val ABOUT = "about"
     const val BRAND = "brand"
     const val GARAGE = "garage"
+    const val FINDCAR = "findcar/{id}"
+    fun findCar(id: String) = "findcar/$id"
     const val MAINTENANCE = "maintenance"
     const val FUEL = "fuel"
     const val TRIPS = "trips"
@@ -155,7 +157,8 @@ fun OpenObdNavHost() {
             composable(Routes.LOOKUP) { DtcLookupScreen(onBack = back) }
             composable(Routes.HISTORY) { HistoryScreen(onBack = back) }
             composable(Routes.ABOUT) { AboutScreen(onBack = back) }
-            composable(Routes.GARAGE) { com.openobd.ui.screens.GarageScreen(onBack = back) }
+            composable(Routes.GARAGE) { com.openobd.ui.screens.GarageScreen(onBack = back, onNavigate = { nav.navigate(it) }) }
+            composable(Routes.FINDCAR) { e -> com.openobd.ui.screens.FindCarScreen(e.arguments?.getString("id").orEmpty(), onBack = back) }
             composable(Routes.MAINTENANCE) { com.openobd.ui.screens.MaintenanceScreen(onBack = back) }
             composable(Routes.FUEL) { com.openobd.ui.screens.FuelLogScreen(onBack = back) }
             composable(Routes.TRIPS) { com.openobd.ui.screens.TripsScreen(onBack = back, onOpen = { nav.navigate(Routes.trip(it)) }) }

@@ -135,6 +135,15 @@ fun MyCarCard(onNavigate: (String) -> Unit) {
             }
             TextButton(onClick = { onNavigate(Routes.GARAGE) }) { Text(tr("Garage")) }
         }
+        val specs = v.specs
+        if (specs != null) {
+            Text(listOfNotNull(tr(specs.fuel.label), specs.engineLabel().ifBlank { null },
+                specs.consumptionL100?.let { fmtL100(it, settings.units) + " " + tr("official") }).joinToString(" · "),
+                style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(top = 4.dp).clickable { onNavigate(Routes.findCar(v.id)) })
+        } else {
+            TextButton(onClick = { onNavigate(Routes.findCar(v.id)) }) { Text(tr("Identify your car (model & specs)")) }
+        }
         if (due.isNotEmpty()) {
             Spacer(Modifier.height(6.dp))
             due.take(3).forEach { (item, st) ->
@@ -157,7 +166,7 @@ fun MyCarCard(onNavigate: (String) -> Unit) {
 // ---------------------------------------------------------------- Garage
 
 @Composable
-fun GarageScreen(onBack: () -> Unit) {
+fun GarageScreen(onBack: () -> Unit, onNavigate: (String) -> Unit = {}) {
     val app = LocalApp.current
     val scope = rememberCoroutineScope()
     val settings = appSettings()
@@ -190,6 +199,13 @@ fun GarageScreen(onBack: () -> Unit) {
                         }
                         if (active) Pill(tr("Selected"), Good)
                         TextButton(onClick = { editing = v }) { Text(tr("Edit")) }
+                    }
+                    v.specs?.let { s ->
+                        Text(listOfNotNull(s.year?.toString(), s.title.ifBlank { null }, s.engineLabel().ifBlank { null }).joinToString(" · "),
+                            style = MaterialTheme.typography.bodySmall)
+                    }
+                    TextButton(onClick = { onNavigate(Routes.findCar(v.id)) }) {
+                        Text(if (v.specs == null) tr("Identify your car (model & specs)") else tr("Model & specifications"))
                     }
                 }
             }
@@ -319,7 +335,7 @@ fun MaintenanceScreen(onBack: () -> Unit) {
                         (item.lastDate?.let { tr(" · last done %1\$s", (fmtDate(it))) } ?: "") + (item.lastKm?.let { " at ${fmtKm(it, settings.units)}" } ?: ""),
                         style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     TextButton(onClick = {
-                        scope.launch { app.garage.upsertMaintenance(item.copy(lastDate = System.currentTimeMillis(), lastKm = v.odometerKm ?: item.lastKm)) }
+                        scope.launch { app.garage.upsertMaintenance(item.copy(lastDate = System.currentTimeMillis(), lastKm = v.odometerKm ?: item.lastKm, dueDate = null)) }
                     }) { Icon(Icons.Default.CheckCircle, null); Spacer(Modifier.width(6.dp)); Text(tr("Mark done today")) }
                 }
             }
@@ -444,6 +460,13 @@ fun FuelLogScreen(onBack: () -> Unit) {
                 SectionCard(title = v.name) {
                     KeyValueRow(tr("Average consumption"), fmtL100(sum.averageL100, settings.units))
                     KeyValueRow(tr("Last full tank"), fmtL100(sum.lastL100, settings.units))
+                    v.specs?.consumptionL100?.let { official ->
+                        KeyValueRow(tr("Official consumption"), fmtL100(official, settings.units) + if (v.specs.consumptionEstimated) "*" else "")
+                        sum.averageL100?.let { real ->
+                            val diff = (real - official) / official * 100
+                            KeyValueRow(tr("You vs official"), "%+.0f %%".format(diff), valueColor = if (diff > 15) Warn else Good)
+                        }
+                    }
                     KeyValueRow(tr("Cost per %1\$s", (distUnit(settings.units))), sum.costPerKm?.let { fmtMoney(if (settings.units == UnitSystem.IMPERIAL) it / 0.621371 else it) } ?: "—")
                     KeyValueRow(tr("Total spent"), fmtMoney(sum.totalCost))
                     KeyValueRow(tr("Fuel bought"), fmtLiters(sum.totalLiters, settings.units))

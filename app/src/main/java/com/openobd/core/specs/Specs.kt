@@ -65,8 +65,10 @@ data class VehicleSpecs(
 }
 
 /** Title-cases registry names ("SEAT LEON" -> "Seat Leon") while keeping short acronyms (BMW, DS, GTI). */
+private val keepUppercase = setOf("SEAT", "MINI", "CUPRA", "DS", "BMW", "MG", "BYD", "GMC", "RAM", "VW", "AMG", "GTI", "TDI", "TSI", "SUV")
+
 fun prettyName(raw: String): String = raw.trim().split(Regex("\\s+")).joinToString(" ") { w ->
-    if (w.length <= 3 && w.all { it.isUpperCase() || it.isDigit() }) w
+    if (w.uppercase() in keepUppercase || (w.length <= 3 && w.all { it.isUpperCase() || it.isDigit() })) w.uppercase()
     else w.lowercase().split('-').joinToString("-") { p -> p.replaceFirstChar { it.uppercase() } }
 }
 
@@ -91,7 +93,7 @@ object Consumption {
     fun mpgUsToL100(mpg: Double?): Double? = mpg?.takeIf { it > 0 }?.let { 235.215 / it }
 }
 
-enum class DgtLabel(val label: String) { CERO("0 emisiones"), ECO("ECO"), C("C"), B("B"), NONE("Sin etiqueta") }
+enum class DgtLabel(val label: String) { CERO("Zero emissions"), ECO("ECO"), C("C"), B("B"), NONE("No label") }
 
 /** Spanish rules (Real Decreto 920/2017 for ITV; DGT criteria for environmental labels). */
 object Spain {

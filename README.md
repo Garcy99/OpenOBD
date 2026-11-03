@@ -39,6 +39,15 @@ with no ads, subscriptions or paywalls.
   transmission temperature, DPF soot …) show up in live data, gauges, charts and logs
 - Read-only by design: no coding or adaptations, which could disable a module. Code clearing is the only write
 
+**Find your car (model & specifications)**
+- Pick your country: **every EU country, Norway and Iceland**, including Spain, can browse the official catalog of every car
+  registered there (EEA open data: make → model → year → version, with engine, power, weight, CO₂ and official consumption)
+- **Netherlands**: licence-plate lookup (RDW). **UK**: licence-plate lookup with a free DVLA key. **US/Canada**: VIN decoding (NHTSA)
+  and the EPA fuel-economy catalog. Anywhere: manual entry
+- Specs are editable and saved per car. They feed fuel calculations (fuel type, engine size), compare official vs real
+  consumption in the fuel log, and create inspection reminders
+- Spain: next **ITV** date and estimated **DGT environmental label**
+
 **Garage and ownership**
 - Several cars, picked automatically by VIN, each with its own brand settings, custom PIDs, modules and history
 - Maintenance reminders by distance and time, a fuel log with real full-to-full consumption and costs

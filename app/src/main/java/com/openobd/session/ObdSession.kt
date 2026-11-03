@@ -167,6 +167,7 @@ class ObdSession(
             garage.data.collect { g ->
                 CustomSensors.update(g.active?.customPids.orEmpty())
                 updateBrand()
+                live.params = fuelParams(settingsRepo.settings.value, vehicle)
             }
         }
         location.speedProvider = { live.latestValue("010D") }
@@ -238,11 +239,23 @@ class ObdSession(
     }
 
     private fun fuelParams(s: AppSettings, v: VehicleSnapshot?): DerivedSensors.Params {
-        val kind = if (s.fuel == FuelKind.AUTO) {
+        val specs = garage.data.value.active?.specs
+        val specKind = specs?.fuel?.let { f ->
+            when {
+                f.burnsDiesel -> FuelKind.DIESEL
+                f == com.openobd.core.specs.SpecFuel.LPG -> FuelKind.LPG
+                f == com.openobd.core.specs.SpecFuel.CNG -> FuelKind.CNG
+                f == com.openobd.core.specs.SpecFuel.E85 -> FuelKind.E85
+                f.isElectricOnly || f == com.openobd.core.specs.SpecFuel.OTHER -> null
+                else -> FuelKind.GASOLINE
+            }
+        }
+        val displacement = specs?.displacementL ?: s.displacementL.toDouble()
+        val kind = if (s.fuel == FuelKind.AUTO && specKind != null) specKind else if (s.fuel == FuelKind.AUTO) {
             val ft = live.latestValue("0151")?.toInt()
             when (ft) { 4, 19, 23 -> FuelKind.DIESEL; 3, 11, 18 -> FuelKind.E85; 5, 12 -> FuelKind.LPG; 6, 13 -> FuelKind.CNG; else -> FuelKind.GASOLINE }
         } else s.fuel
-        return DerivedSensors.Params(kind.afr, kind.densityGPerL, s.displacementL.toDouble())
+        return DerivedSensors.Params(kind.afr, kind.densityGPerL, displacement)
     }
 
     private fun startVoltageMonitor() {
@@ -447,7 +460,8 @@ class ObdSession(
     }
 
     private fun updateBrand() {
-        val chosen = garage.data.value.active?.brandId?.let { Brands.byId[it] }
+        val active = garage.data.value.active
+        val chosen = active?.brandId?.let { Brands.byId[it] } ?: active?.specs?.make?.let { com.openobd.core.specs.brandForMake(it) }
         val detected = Brands.detect(vehicle?.vin)
         _brand.value = chosen ?: detected
         _brandDetected.value = chosen == null && detected != null

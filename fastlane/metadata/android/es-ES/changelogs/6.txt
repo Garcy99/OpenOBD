@@ -1,0 +1,4 @@
+• Identifica tu vehículo: elige país y modelo en el catálogo oficial de todos los turismos matriculados en la UE (incluida España), consulta matrículas de Países Bajos y Reino Unido o decodifica VIN de EE. UU.
+• Especificaciones editables por vehículo: motor, potencia, consumo oficial, CO₂
+• Consumo oficial frente al real en el registro de combustible
+• España: próxima ITV y etiqueta ambiental DGT estimada

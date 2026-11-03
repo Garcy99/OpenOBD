@@ -76,6 +76,10 @@ data class AppSettings(
     val tripGps: Boolean = true,
     /** "system", "en" or "es". */
     val language: String = "system",
+    /** Country used for vehicle lookups (ISO code); empty = from the phone's region. */
+    val specsCountry: String = "",
+    /** Optional DVLA Vehicle Enquiry Service key for UK plate lookups. */
+    val dvlaApiKey: String = "",
 ) {
     companion object {
         val DEFAULT_DASHBOARD = listOf("010C", "010D", "0105", "0104", "0111", "CALC_FUEL", "0142", "CALC_BOOST")
@@ -112,6 +116,8 @@ class SettingsRepository(private val context: Context, scope: CoroutineScope) {
         val msCanSwitch = booleanPreferencesKey("ms_can_switch")
         val tripGps = booleanPreferencesKey("trip_gps")
         val language = stringPreferencesKey("language")
+        val specsCountry = stringPreferencesKey("specs_country")
+        val dvlaKey = stringPreferencesKey("dvla_key")
     }
 
     private val json = Json { ignoreUnknownKeys = true }
@@ -147,6 +153,8 @@ class SettingsRepository(private val context: Context, scope: CoroutineScope) {
             msCanSwitch = p[K.msCanSwitch] ?: d.msCanSwitch,
             tripGps = p[K.tripGps] ?: d.tripGps,
             language = p[K.language] ?: d.language,
+            specsCountry = p[K.specsCountry] ?: d.specsCountry,
+            dvlaApiKey = p[K.dvlaKey] ?: d.dvlaApiKey,
         )
     }
 
@@ -185,6 +193,8 @@ class SettingsRepository(private val context: Context, scope: CoroutineScope) {
             p[K.msCanSwitch] = s.msCanSwitch
             p[K.tripGps] = s.tripGps
             p[K.language] = s.language
+            p[K.specsCountry] = s.specsCountry
+            p[K.dvlaKey] = s.dvlaApiKey
         }
     }
 }

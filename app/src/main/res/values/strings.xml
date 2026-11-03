@@ -1,5 +1,5 @@
 <resources>
-    <string name="app_name">OpenOBD</string>
+    <string name="app_name" translatable="false">OpenOBD</string>
     <string name="widget_description">Your car at a glance: trouble codes, next service and last trip</string>
     <string name="widget_connected">Connected</string>
     <string name="widget_not_connected">Not connected</string>

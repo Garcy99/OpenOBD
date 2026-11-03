@@ -23,6 +23,13 @@ Only in these cases, and only when you trigger them:
 - **Maps**: when you open a trip with a GPS track, map images are downloaded from OpenStreetMap's tile servers.
   Like any website, those servers see your IP address and which map area is requested. Their privacy policy:
   https://osmfoundation.org/wiki/Privacy_Policy
+- **Vehicle lookups** (Model & specifications screen): only when you search, the app sends what you typed or
+  picked to the matching public service:
+  - the make, model and year you browse to the European Environment Agency (EEA catalog, EU countries)
+  - your licence plate to the Dutch RDW (Netherlands) or the UK DVLA (with your own API key)
+  - your VIN to the US NHTSA, and the year, make and model you browse to the US EPA (fueleconomy.gov)
+
+  These are government open-data services; no account or personal data is sent.
 - **Web search**: the "Search web" button opens your browser with a search for the trouble code.
 - **Wi-Fi adapters**: the app connects to the OBD adapter on your local network. Nothing is sent to the internet.
 

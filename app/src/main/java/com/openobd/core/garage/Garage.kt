@@ -18,6 +18,8 @@ data class Vehicle(
     /** True when the odometer came from the car (PID A6) rather than typed in. */
     val odometerFromCar: Boolean = false,
     val createdAt: Long = 0,
+    /** Model and specifications from a registry / catalog lookup, editable by the user. */
+    val specs: com.openobd.core.specs.VehicleSpecs? = null,
 )
 
 @Serializable
@@ -30,6 +32,8 @@ data class MaintenanceItem(
     val lastKm: Double? = null,
     val lastDate: Long? = null,
     val notes: String = "",
+    /** Fixed due date (e.g. inspection date from the registry or the Spanish ITV calendar); overrides the interval. */
+    val dueDate: Long? = null,
 )
 
 data class MaintenanceStatus(val remainingKm: Double?, val remainingDays: Long?, val overdue: Boolean, val dueSoon: Boolean, val fraction: Float?) {
@@ -56,12 +60,13 @@ object Maintenance {
 
     fun status(item: MaintenanceItem, currentKm: Double?, now: Long): MaintenanceStatus {
         val remKm = if (item.intervalKm != null && item.lastKm != null && currentKm != null) item.lastKm + item.intervalKm - currentKm else null
-        val remDays = if (item.intervalMonths != null && item.lastDate != null) {
+        val remDays = if (item.dueDate != null) (item.dueDate - now) / DAY
+        else if (item.intervalMonths != null && item.lastDate != null) {
             val due = item.lastDate + item.intervalMonths * 30.44 * DAY
             ((due - now) / DAY).toLong()
         } else null
         val fracKm = if (remKm != null) (1 - remKm / item.intervalKm!!).toFloat() else null
-        val fracDays = if (remDays != null) (1 - remDays / (item.intervalMonths!! * 30.44)).toFloat() else null
+        val fracDays = if (remDays != null) (1 - remDays / ((item.intervalMonths ?: 12) * 30.44)).toFloat() else null
         val fraction = listOfNotNull(fracKm, fracDays).maxOrNull()?.coerceIn(0f, 1f)
         val overdue = (remKm != null && remKm < 0) || (remDays != null && remDays < 0)
         val soon = !overdue && ((remKm != null && remKm < 1000) || (remDays != null && remDays < 30))
