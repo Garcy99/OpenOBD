@@ -1332,3 +1332,4 @@ U0423	Invalid Data Received From Instrument Panel Cluster Control Module
 U0428	Invalid Data Received From Steering Angle Sensor Module
 U0447	Invalid Data Received From Gateway "A"
 U1000	Class 2 / Network Communication Fault (manufacturer specific)
+U0073	Control Module Communication Bus "A" Off

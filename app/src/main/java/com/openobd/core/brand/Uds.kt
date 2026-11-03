@@ -46,6 +46,14 @@ data class ModuleScanResult(
 
 data class ClearOutcome(val success: Boolean, val message: String)
 
+/** One value inside a UDS DTC snapshot record. */
+data class SnapshotValue(val did: Int, val name: String, val value: String)
+
+data class DtcSnapshot(val record: Int, val values: List<SnapshotValue>, val undecoded: String? = null)
+
+/** Freeze frame ("snapshot") and extended data (counters) for one module trouble code. */
+data class DtcDetails(val snapshots: List<DtcSnapshot>, val extended: List<Pair<Int, String>>)
+
 /** ISO 14229 data identifiers that are standardised across manufacturers. */
 object StandardDids {
     val identification: List<Pair<Int, String>> = listOf(
@@ -104,6 +112,33 @@ object FailureTypes {
     )
 
     fun describe(ftb: Int): String = names[ftb] ?: if (ftb >= 0xF0) "Manufacturer-specific failure type" else "Failure type 0x%02X".format(ftb)
+
+    /** What to check first, based on the failure type alone (applies to any module and brand). */
+    fun hint(ftb: Int): String? = when (ftb) {
+        0x11, 0x14 -> "Look for a wire chafed against the body or a short to ground, and check the connector for water or corrosion."
+        0x12, 0x15 -> "Look for a wire shorted to a power feed and check the connector; also test the component itself."
+        0x13 -> "An open circuit: unplugged or loose connector, broken wire or a failed component (sensor, motor, squib)."
+        0x16, 0x18, 0x1A -> "Value below normal: check battery and charging voltage, grounds and the connector first."
+        0x17, 0x19, 0x1B -> "Value above normal: check for shorts to power, then the component."
+        0x1C, 0x1D, 0x1E -> "Out of range: check wiring and connectors, then the component."
+        0x1F, 0x2F, 0x8F -> "Intermittent: wiggle-test the harness and connector while watching live data; look for corrosion or loose pins."
+        0x21, 0x22, 0x23, 0x24, 0x25, 0x26, 0x27, 0x28 -> "Signal problem: check the sensor, its mounting and air gap, and the wiring."
+        0x29, 0x64 -> "Signal implausible: compare against related sensors in live data; often a failing sensor or wiring fault."
+        0x31 -> "No signal: sensor unplugged or failed, broken wire, or (wheel speed sensors) debris or damage on the tone ring."
+        0x36, 0x37, 0x38, 0x39, 0x3A, 0x65, 0x66 -> "Pulse / frequency signal wrong: check the sensor gap, tone wheel and wiring."
+        in 0x41..0x49 -> "Internal module fault. Check its power supply and grounds first; if those are good the module may need repair or replacement."
+        0x4A, 0x56, 0x57 -> "Wrong or incompatible part / software installed; usually after a replacement."
+        0x4B, 0x98 -> "Over temperature: check cooling / airflow around the component and the load it drives."
+        in 0x51..0x55 -> "The module needs programming or configuration (common after replacing a module or battery work)."
+        0x71, 0x72, 0x73, 0x77, 0x97 -> "Actuator stuck or can't reach position: check for mechanical binding, then the motor and its wiring."
+        0x7A, 0x7B -> "Check fluid level and look for leaks."
+        0x81, 0x82, 0x83, 0x84, 0x85, 0x86 -> "Bad data received from another module: check that module's codes first."
+        0x87 -> "Missing message: another module stopped sending. Check that module, its fuse/power and the network wiring."
+        0x88 -> "Bus off: CAN wiring fault or a module disturbing the network; check connectors, termination and recently fitted accessories."
+        0x92, 0x93, 0x94 -> "Component not working as expected: check its supply, ground and mechanical condition."
+        0x96 -> "Component internal failure: usually needs replacement after confirming power and ground."
+        else -> null
+    }
 }
 
 /**
@@ -234,6 +269,52 @@ class ModuleClient(private val elm: Elm327) {
         }
         if (ok) ClearOutcome(true, "Codes cleared in ${m.name}.")
         else ClearOutcome(false, neg?.let { "The module refused: ${nrcText(it.data.getOrNull(2) ?: 0)}" } ?: "The module did not answer.")
+    }
+
+    // ------------------------------------------------------------------ DTC snapshot / extended data
+
+    /** Reads freeze frame (UDS 19 04) and extended data records (UDS 19 06) for a UDS module code. */
+    suspend fun readDtcDetails(m: EcuModule, dtc: ModuleDtc): DtcDetails = withModule(m) {
+        val (a, b) = DtcDecoder.encode(dtc.code)
+        val dtcHex = "%02X%02X%02X".format(a, b, dtc.failureType ?: 0)
+        val snaps = positive(request("1904${dtcHex}FF", 4000), 0x19)?.let { parseSnapshots(it.data) } ?: emptyList()
+        val ext = mutableListOf<Pair<Int, String>>()
+        for (rec in 0x01..0x10) {
+            val msg = positive(request("1906$dtcHex%02X".format(rec), 2000), 0x19) ?: continue
+            if (msg.data.size <= 7) continue
+            val bytes = msg.data.copyOfRange(7, msg.data.size) // 59 06 DTC(3) status record#
+            ext += msg.data[6] to (if (bytes.size == 1) bytes[0].toString() else bytes.joinToString(" ") { "%02X".format(it) })
+        }
+        DtcDetails(snaps, ext)
+    }
+
+    /** Parses a 59 04 response. Values for standard DIDs are decoded; manufacturer DIDs are shown raw. */
+    fun parseSnapshots(d: IntArray): List<DtcSnapshot> {
+        val out = mutableListOf<DtcSnapshot>()
+        var i = 6 // 59 04 DTC(3) status
+        while (i + 1 < d.size) {
+            val record = d[i]; val count = d[i + 1]
+            i += 2
+            val values = mutableListOf<SnapshotValue>()
+            var undecoded: String? = null
+            for (n in 0 until count) {
+                if (i + 1 >= d.size) break
+                val did = (d[i] shl 8) or d[i + 1]
+                i += 2
+                val len = DidCatalog.length(did)
+                    ?: if (n == count - 1 && out.isEmpty() && d.size - i < 64) d.size - i else null
+                if (len == null || i + len > d.size) {
+                    undecoded = "DID %04X and following: ".format(did) + d.copyOfRange(i, d.size).joinToString(" ") { "%02X".format(it) }
+                    i = d.size
+                    break
+                }
+                values += DidCatalog.decode(did, d.copyOfRange(i, i + len))
+                i += len
+            }
+            out += DtcSnapshot(record, values, undecoded)
+            if (undecoded != null) break
+        }
+        return out
     }
 
     // ------------------------------------------------------------------ identification

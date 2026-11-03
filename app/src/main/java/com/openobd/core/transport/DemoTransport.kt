@@ -234,7 +234,14 @@ class DemoTransport(
         return when (b[0]) {
             0x3E -> listOf(0x7E, 0x00)
             0x10 -> listOf(0x50, b.getOrElse(1) { 1 }, 0x00, 0x32, 0x01, 0xF4)
-            0x19 -> if (b.getOrNull(1) != 0x02) neg(0x12) else {
+            0x19 -> if (b.getOrNull(1) == 0x04 || b.getOrNull(1) == 0x06) {
+                // Snapshot / extended data for the ABS wheel-speed code
+                val code = DtcDecoder.decode(b[2], b[3])
+                val entry = m.dtcs.firstOrNull { it.first == code && it.second == b[4] } ?: return neg(0x31)
+                val head = listOf(0x59, b[1], b[2], b[3], b[4], entry.third)
+                if (b[1] == 0x04) head + listOf(0x01, 0x04, 0xF4, 0x0D, 0x2A, 0xF4, 0x0C, 0x0B, 0xB8, 0xF4, 0x42, 0x36, 0xB0, 0xDD, 0x01, 0x01, 0x86, 0xA0)
+                else when (b[5]) { 0x01 -> head + listOf(0x01, 0x03); 0x02 -> head + listOf(0x02, 0x28); else -> neg(0x31) }
+            } else if (b.getOrNull(1) != 0x02) neg(0x12) else {
                 val codes = if (tx == 0x7E0) stored.map { Triple(it, 0x00, 0x2F) } + pending.map { Triple(it, 0x00, 0x24) } else m.dtcs
                 listOf(0x59, 0x02, 0xFF) + codes.flatMap { (c, ftb, st) -> DtcDecoder.encode(c).let { listOf(it.first, it.second, ftb, st) } }
             }

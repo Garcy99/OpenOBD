@@ -117,7 +117,7 @@ fun ModuleScreen(moduleId: String, onBack: () -> Unit, onConnect: () -> Unit) {
                     Text("No trouble codes stored in this module.", color = Good)
                 } else {
                     Text("${r.dtcs.size} trouble code(s)", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
-                    r.dtcs.forEach { d -> ModuleDtcCard(d) }
+                    r.dtcs.forEach { d -> ModuleDtcCard(module, d) }
                 }
             }
 
@@ -172,7 +172,7 @@ fun ModuleScreen(moduleId: String, onBack: () -> Unit, onConnect: () -> Unit) {
 }
 
 @Composable
-private fun ModuleDtcCard(d: ModuleDtc) {
+private fun ModuleDtcCard(module: com.openobd.core.brand.EcuModule, d: ModuleDtc) {
     val session = LocalApp.current.session
     val desc = session.describe(d.code)
     var open by remember { mutableStateOf(false) }
@@ -180,15 +180,84 @@ private fun ModuleDtcCard(d: ModuleDtc) {
         Row {
             Text(d.fullCode, fontFamily = FontFamily.Monospace, fontWeight = FontWeight.Bold, style = MaterialTheme.typography.titleLarge,
                 color = if (d.isActive || d.warningLamp) Bad else Warn, modifier = Modifier.weight(1f))
+            desc.knowledge?.let { k -> Pill(desc.severityLabel, when (k.severity) { 3 -> Bad; 2 -> Warn; else -> Good }); Spacer(Modifier.width(6.dp)) }
             Pill(d.system.label, MaterialTheme.colorScheme.primary)
         }
         Text(desc.description, style = MaterialTheme.typography.bodyMedium)
         d.failureTypeText?.let { Text("Failure type: $it", style = MaterialTheme.typography.bodySmall) }
         Text(d.statusText, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         Spacer(Modifier.height(4.dp))
-        TextButton(onClick = { open = true }) { Text("Details") }
+        TextButton(onClick = { open = true }) { Text("Details, freeze frame & what to check") }
     }
-    if (open) DtcDetailDialog(d.fullCode, desc, d.failureTypeText) { open = false }
+    if (open) ModuleDtcDialog(module, d) { open = false }
+}
+
+@Composable
+private fun ModuleDtcDialog(module: com.openobd.core.brand.EcuModule, d: ModuleDtc, onDismiss: () -> Unit) {
+    val session = LocalApp.current.session
+    val context = androidx.compose.ui.platform.LocalContext.current
+    val scope = rememberCoroutineScope()
+    val desc = session.describe(d.code)
+    var details by remember { mutableStateOf<com.openobd.core.brand.DtcDetails?>(null) }
+    var loading by remember { mutableStateOf(false) }
+    var error by remember { mutableStateOf<String?>(null) }
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(d.fullCode, fontFamily = FontFamily.Monospace, fontWeight = FontWeight.Bold) },
+        text = {
+            Column(Modifier.verticalScroll(rememberScrollState())) {
+                Text(desc.description, style = MaterialTheme.typography.titleMedium)
+                Text(module.name + " · " + d.statusText, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                d.failureType?.let { ftb ->
+                    Spacer(Modifier.height(10.dp))
+                    Text("Failure type: ${com.openobd.core.brand.FailureTypes.describe(ftb)}", fontWeight = FontWeight.SemiBold)
+                    com.openobd.core.brand.FailureTypes.hint(ftb)?.let { Text(it, style = MaterialTheme.typography.bodyMedium) }
+                }
+                desc.knowledge?.let { k ->
+                    Spacer(Modifier.height(10.dp))
+                    Text("Common causes", fontWeight = FontWeight.SemiBold)
+                    k.causes.forEach { Text("• $it", style = MaterialTheme.typography.bodyMedium) }
+                    Text(k.advice, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.padding(top = 4.dp))
+                }
+                if (!desc.known) Text("Manufacturer-specific code: meaning varies by brand; use web search.", color = Warn,
+                    style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(top = 8.dp))
+                if (d.protocol == com.openobd.core.brand.DiagProtocol.UDS) {
+                    Spacer(Modifier.height(10.dp))
+                    when {
+                        loading -> LoadingBox("Reading freeze frame and counters")
+                        error != null -> ErrorText(error!!)
+                        details == null -> TextButton(onClick = {
+                            loading = true
+                            scope.launch {
+                                try { details = session.dtcDetails(module, d) } catch (e: Exception) { error = e.message }
+                                loading = false
+                            }
+                        }) { Text("Read freeze frame & counters") }
+                        else -> {
+                            val dd = details!!
+                            if (dd.snapshots.isEmpty() && dd.extended.isEmpty()) Text("The module stored no freeze frame or counters for this code.",
+                                style = MaterialTheme.typography.bodySmall)
+                            dd.snapshots.forEach { snap ->
+                                Text("Freeze frame #${snap.record}", fontWeight = FontWeight.SemiBold, modifier = Modifier.padding(top = 6.dp))
+                                snap.values.forEach { v -> KeyValueRow(v.name, v.value) }
+                                snap.undecoded?.let { Text(it, fontFamily = FontFamily.Monospace, style = MaterialTheme.typography.bodySmall) }
+                            }
+                            if (dd.extended.isNotEmpty()) {
+                                Text("Extended data", fontWeight = FontWeight.SemiBold, modifier = Modifier.padding(top = 6.dp))
+                                dd.extended.forEach { (rec, v) -> KeyValueRow("Record %02X".format(rec), v) }
+                                Text("Record contents are manufacturer-defined; low record numbers are often the occurrence and aging counters.",
+                                    style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        confirmButton = { TextButton(onClick = onDismiss) { Text("Close") } },
+        dismissButton = {
+            TextButton(onClick = { com.openobd.ui.openUrl(context, "https://www.google.com/search?q=" + android.net.Uri.encode("${d.code} ${desc.description}")) }) { Text("Search web") }
+        },
+    )
 }
 
 private val ModuleDtc.system get() = com.openobd.core.obd.DtcSystem.of(code)

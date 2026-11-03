@@ -439,6 +439,8 @@ class ObdSession(
         if (r.success) history.add(ScanRecord(System.currentTimeMillis(), vehicle?.vin, false, emptyList(), cleared = true, note = "${m.name}: ${r.message}"))
     }
 
+    suspend fun dtcDetails(m: EcuModule, dtc: com.openobd.core.brand.ModuleDtc): com.openobd.core.brand.DtcDetails = moduleOp { it.readDtcDetails(m, dtc) }
+
     suspend fun identifyModule(m: EcuModule): List<Pair<String, String>> = moduleOp { it.readIdentification(m) }
 
     suspend fun readDid(m: EcuModule, did: Int): IntArray = moduleOp { it.readDid(m, did) }

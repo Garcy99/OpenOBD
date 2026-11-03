@@ -150,3 +150,23 @@ class MsCanAndCloneTest {
         assertEquals(2, ObdClient(elm).also { it.discover() }.readPids(listOf(0x0C, 0x0D)).size)
     }
 }
+
+class DtcDetailsTest {
+    @Test
+    fun readsSnapshotAndExtendedData() = runBlocking {
+        val t = DemoTransport(latencyMs = 0).also { it.open() }
+        val elm = Elm327(t).also { it.initialize(ElmConfig()) }
+        val mc = ModuleClient(elm)
+        val abs = Families.FORD.modules.first { it.shortName == "ABS" }
+        val dtc = mc.scan(abs).dtcs.single()
+        val details = mc.readDtcDetails(abs, dtc)
+        val snap = details.snapshots.single()
+        val byName = snap.values.associate { it.name to it.value }
+        assertEquals("42 km/h", byName["Vehicle speed"])
+        assertEquals("750 rpm", byName["Engine RPM"])
+        assertEquals("14.00 V", byName["Control module voltage"])
+        assertEquals("01 86 A0", snap.values.last().value)
+        assertEquals(listOf(1 to "3", 2 to "40"), details.extended)
+        assertTrue(com.openobd.core.brand.FailureTypes.hint(0x31)!!.contains("No signal"))
+    }
+}

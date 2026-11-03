@@ -58,3 +58,26 @@ U0101	3	CAN bus wiring fault;Faulty TCM;Blown TCM fuse	Check TCM power, ground a
 U0121	2	ABS module fault;CAN wiring;Blown ABS fuse	Check the ABS module connector and fuses.
 U0140	2	BCM fault;CAN wiring;Blown BCM fuse	Check BCM power and CAN wiring.
 U0155	2	Instrument cluster fault;CAN wiring	Check cluster connector and fuses.
+C0035	2	Damaged left front wheel speed sensor;Wiring or connector damage near the wheel;Debris or rust on the tone ring;Worn wheel bearing (magnetic encoder)	ABS and stability control are usually disabled. Compare the four wheel speeds while driving slowly.
+C0040	2	Damaged right front wheel speed sensor;Wiring or connector damage near the wheel;Debris or rust on the tone ring;Worn wheel bearing (magnetic encoder)	ABS and stability control are usually disabled. Compare the four wheel speeds while driving slowly.
+C0045	2	Damaged left rear wheel speed sensor;Wiring or connector damage near the wheel;Debris or rust on the tone ring;Worn wheel bearing (magnetic encoder)	ABS and stability control are usually disabled. Compare the four wheel speeds while driving slowly.
+C0050	2	Damaged right rear wheel speed sensor;Wiring or connector damage near the wheel;Debris or rust on the tone ring;Worn wheel bearing (magnetic encoder)	ABS and stability control are usually disabled. Compare the four wheel speeds while driving slowly.
+C0110	2	Failed ABS pump motor;Blown pump fuse or relay;Poor ground at the ABS unit;ABS module internal fault	ABS may be disabled; normal braking remains. Check fuses and grounds first.
+C0121	2	Low battery voltage;Blown ABS fuse;ABS module internal valve relay	Check battery and charging voltage before replacing the ABS unit.
+C0161	2	Faulty or misadjusted brake light switch;Blown brake light bulbs or fuse;Wiring	Check that the brake lights work, then the switch.
+C0196	2	Yaw rate sensor failure;Connector or wiring;Sensor needs calibration after alignment or replacement	Stability control may be disabled. Some cars need a sensor calibration with a scan tool.
+B0001	3	Faulty clockspring (spiral cable) in the steering column;Driver airbag connector;Wiring	The airbag may not deploy. Have it checked; never probe airbag circuits with a test light.
+B0002	3	Faulty clockspring (spiral cable);Driver airbag connector;Wiring	The airbag may not deploy. Have it checked; never probe airbag circuits with a test light.
+B0010	3	Passenger airbag connector;Wiring behind the dashboard;Airbag module	The airbag may not deploy. Have it checked.
+B0020	3	Seat side-airbag connector disturbed (seat moved or removed);Wiring under the seat;Airbag module	Check the yellow connector under the seat with the battery disconnected.
+B0028	3	Seat side-airbag connector disturbed (seat moved or removed);Wiring under the seat;Airbag module	Check the yellow connector under the seat with the battery disconnected.
+B0081	3	Occupant classification sensor or mat fault;Seat wiring;Objects or covers on the passenger seat	The passenger airbag may be disabled.
+U0001	3	Short or open in the high-speed CAN wiring;A failed module pulling the bus down;Missing termination	Many modules may show communication codes. Unplug modules one at a time to find the culprit.
+U0073	3	CAN wiring fault;A module disturbing the bus;Aftermarket accessory spliced into CAN wires	Check wiring and recently fitted accessories.
+U0131	3	Power steering module power or fuse;CAN wiring to the steering module;Steering module fault	Steering assist may be reduced or lost.
+U0151	3	Airbag module power or fuse;CAN wiring;Airbag module fault	The airbag light will be on; airbags may not deploy.
+U0164	1	HVAC module power or fuse;CAN wiring;HVAC control unit fault	Usually only affects climate control.
+U0184	1	Radio removed or without power;Radio fuse;Network wiring	Common after radio replacement; often harmless.
+U0198	1	Telematics module without power or removed;Fuse;Network wiring	Usually only affects connected services.
+U0401	2	Engine control module reporting invalid data;ECM power/ground;Software mismatch	Read the engine codes first.
+U0422	2	Body control module reporting invalid data;BCM power/ground;Software or configuration mismatch	Read the body control module codes first.
