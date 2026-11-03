@@ -89,6 +89,9 @@ dependencies {
     implementation(libs.osmdroid)
     debugImplementation(libs.androidx.ui.tooling)
 
+    // Optional AI diagnosis assistant (user-supplied Claude API key)
+    implementation(libs.anthropic.java)
+
     testImplementation(libs.junit)
     testImplementation(libs.kotlinx.coroutines.test)
     testImplementation(libs.robolectric)

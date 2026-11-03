@@ -75,6 +75,13 @@ class TranslationCoverageTest {
         com.openobd.core.report.Verdict.entries.forEach { keys += it.label; keys += it.detail }
         com.openobd.core.report.ItvVerdict.entries.forEach { keys += it.label; keys += it.detail }
         keys += listOf("Scanning control modules", "Reading VIN from modules")
+        keys += com.openobd.core.diagnosis.Diagnosis.texts
+        keys += com.openobd.core.health.HealthTrends.texts
+        com.openobd.core.health.HealthMetric.entries.forEach { keys += it.label }
+        com.openobd.core.diagnosis.DriveAdvice.entries.forEach { keys += it.label }
+        keys += listOf("The Claude API key was rejected. Check it in Settings.", "This API key is not allowed to use the model.",
+            "Too many requests right now. Wait a minute and try again.", "No connection to the assistant. Check your internet connection.",
+            "The assistant declined to answer this request.", "The assistant returned an empty answer.", "The assistant is not available right now. Try again later.")
         return keys
     }
 

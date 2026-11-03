@@ -177,6 +177,7 @@ class ObdSession(
         }
         location.speedProvider = { live.latestValue("010D") }
         live.addListener(demoGpsListener())
+        live.addListener { values, _, now -> healthRecorder?.onCycle(values, now) }
         scope.launch {
             var last: String? = null
             _state.collect { s ->
@@ -245,11 +246,17 @@ class ObdSession(
         val snapshot = VehicleSnapshot(t.description, info, supported, c.ecus, vin, voltage, s.connectionType == ConnectionType.DEMO)
         selectVehicleFor(vin)
         if (0xA6 in supported) readOdometer(c)
+        // Battery at rest is only meaningful with the engine off.
+        val rpmAtConnect = runCatching { c.readPids(listOf(0x0C))[0x0C]?.takeIf { it.size >= 2 }?.let { ((it[0] shl 8) or it[1]) / 4.0 } }.getOrNull()
+        healthRecorder = garage.data.value.active?.let { v ->
+            com.openobd.core.health.HealthRecorder(v.id, voltage?.takeIf { rpmAtConnect == 0.0 }, System.currentTimeMillis())
+        }
         _state.value = ConnectionState.Connected(snapshot)
         updateBrand()
         live.params = fuelParams(s, snapshot)
         live.start(c, supported)
         live.subscribe("trip", listOf("010D", "010C", "CALC_FUEL"))
+        live.subscribe("health", listOf("010C", "0105", "010D", "0142", "0106", "0107"))
         updateAlertSubscriptions(s)
         trip.reset()
         tripStart = System.currentTimeMillis()
@@ -311,7 +318,25 @@ class ObdSession(
         }
     }
 
+    @Volatile private var healthRecorder: com.openobd.core.health.HealthRecorder? = null
+
+    /** Long-term health of the active car, from one sample per drive. */
+    fun healthReport(): com.openobd.core.health.HealthReport {
+        val id = garage.data.value.active?.id
+        return com.openobd.core.health.HealthTrends.analyze(garage.data.value.health.filter { it.vehicleId == id })
+    }
+
+    private suspend fun saveHealthSample() {
+        val rec = healthRecorder ?: return
+        healthRecorder = null
+        (monitorTests.value as? Op.Done)?.value?.let { tests ->
+            rec.misfires = tests.filter { it.mid in 0xA2..0xAD && it.tid == 0x0B }.associate { (it.mid - 0xA1) to it.value }
+        }
+        rec.result()?.let { runCatching { garage.addHealthSample(it) } }
+    }
+
     private suspend fun cleanup() {
+        saveHealthSample()
         finishTrip()
         live.stop()
         voltageJob?.cancel()
@@ -399,6 +424,62 @@ class ObdSession(
     }
 
     fun loadFreezeFrame() = runOp(freezeFrame, "Reading freeze frame") { c -> c.readFreezeFrame(0) }
+
+    // ------------------------------------------------------------------ explained diagnosis
+
+    /** What this session already knows that helps explain a code (no new requests). */
+    fun diagnosisContext(code: String): com.openobd.core.diagnosis.DiagnosisContext {
+        val live = this.live.readings.value.mapValues { it.value.value }
+        val scan = (dtcScan.value as? Op.Done)?.value
+        val active = garage.data.value.active
+        val trips = garage.data.value.trips.filter { it.vehicleId == active?.id && it.distanceKm > 0.5 }.sortedByDescending { it.start }.take(10)
+        return com.openobd.core.diagnosis.DiagnosisContext(
+            freezeFrame = (freezeFrame.value as? Op.Done)?.value?.values.orEmpty(),
+            live = live,
+            mode06 = (monitorTests.value as? Op.Done)?.value.orEmpty(),
+            otherCodes = scan?.codes?.map { it.code }?.filter { it != code }?.distinct().orEmpty(),
+            isDiesel = scan?.readiness?.isDiesel == true || active?.specs?.fuel?.name?.contains("DIESEL") == true,
+            averageTripKm = trips.takeIf { it.size >= 3 }?.map { it.distanceKm }?.average(),
+            batteryV = vehicle?.voltage,
+            runMinutes = live["011F"]?.let { it / 60 },
+        )
+    }
+
+    fun explain(code: String): com.openobd.core.diagnosis.Explanation =
+        com.openobd.core.diagnosis.Diagnosis.explain(code, describe(code).knowledge, diagnosisContext(code))
+
+    /** Reads the freeze frame and on-board tests so the explanation has more evidence. */
+    fun readMoreDiagnosisData() {
+        if (freezeFrame.value !is Op.Done) loadFreezeFrame()
+        scope.launch {
+            while (freezeFrame.value is Op.Loading) delay(100)
+            if (monitorTests.value !is Op.Done && client?.isCan == true) loadMonitorTests()
+        }
+    }
+
+    /** The car data sent to the AI assistant for [code] (no VIN, no location). */
+    fun assistantContext(code: String): String {
+        val active = garage.data.value.active
+        val specs = active?.specs
+        val car = com.openobd.core.diagnosis.AssistantContext.Car(
+            description = specs?.let { s -> listOf(s.make, s.model, s.version, s.year?.toString(), s.engineCc?.let { "$it cc" }, s.powerKw?.let { "%.0f kW".format(it) })
+                .filter { !it.isNullOrBlank() }.joinToString(" ") }?.takeIf { it.isNotBlank() } ?: brand.value?.name,
+            fuel = specs?.fuel?.label,
+            protocol = vehicle?.elm?.protocol?.label,
+        )
+        fun c(code: String, source: String) = com.openobd.core.diagnosis.AssistantContext.Code(code, describe(code).description, source)
+        val scan = (dtcScan.value as? Op.Done)?.value
+        val focusType = scan?.codes?.firstOrNull { it.code == code }?.type?.label ?: "code"
+        val others = scan?.codes?.filter { it.code != code }?.distinctBy { it.code }?.map { c(it.code, it.type.label) }.orEmpty()
+        fun named(values: Map<String, Double>) = values.entries.take(30).associate { (k, v) ->
+            val def = SensorCatalog.get(k)
+            (def?.name ?: k) to ("%.1f".format(java.util.Locale.US, v).removeSuffix(".0") + " " + (def?.customUnit ?: def?.unit?.symbol ?: "")).trim()
+        }
+        val ctx = diagnosisContext(code)
+        val failed = ctx.mode06.filter { !it.passed }.map { "${it.monitorName} / ${it.testName}: ${it.value} (limits ${it.min}..${it.max} ${it.unit})" }
+        val readiness = scan?.readiness?.let { r -> "${r.complete.size}/${r.supported.size} ready" + if (r.incomplete.isNotEmpty()) ", not ready: " + r.incomplete.joinToString { it.name } else "" }
+        return com.openobd.core.diagnosis.AssistantContext.build(car, c(code, focusType), explain(code), others, named(ctx.freezeFrame), named(ctx.live), failed, readiness, ctx.batteryV)
+    }
 
     /** Used car / pre-inspection check: everything the car reports about hidden or recent faults. */
     fun runVehicleCheck() = runOp(vehicleCheck, "Reading monitors") { c -> buildVehicleCheck(c) }

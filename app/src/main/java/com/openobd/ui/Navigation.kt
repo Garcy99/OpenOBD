@@ -85,6 +85,11 @@ object Routes {
     fun trip(id: String) = "trip/$id"
     const val PIDS = "pids"
     const val CHECK = "check"
+    const val HEALTH = "health"
+    const val CODE = "code/{code}"
+    fun code(c: String) = "code/$c"
+    const val ASSISTANT = "assistant/{code}"
+    fun assistant(c: String) = "assistant/$c"
     const val MODULE = "module/{id}"
     fun module(id: String) = "module/" + android.net.Uri.encode(id)
 }
@@ -146,6 +151,14 @@ fun OpenObdNavHost() {
             composable(Routes.DIAGNOSTICS) { DiagnosticsScreen(onConnect = toHome, onNavigate = { nav.navigate(it) }) }
             composable(Routes.MORE) { MoreScreen(onNavigate = { nav.navigate(it) }) }
             composable(Routes.READINESS) { ReadinessScreen(onBack = back, onConnect = toHome) }
+            composable(Routes.CODE) { e ->
+                val code = e.arguments?.getString("code").orEmpty()
+                com.openobd.ui.screens.CodeScreen(code, onBack = back, onAssistant = { nav.navigate(Routes.assistant(code)) })
+            }
+            composable(Routes.ASSISTANT) { e ->
+                com.openobd.ui.screens.AssistantScreen(e.arguments?.getString("code").orEmpty(), onBack = back, onSettings = { nav.navigate(Routes.SETTINGS) })
+            }
+            composable(Routes.HEALTH) { com.openobd.ui.screens.HealthScreen(onBack = back) }
             composable(Routes.CHECK) { com.openobd.ui.screens.VehicleCheckScreen(onBack = back, onConnect = toHome) }
             composable(Routes.VEHICLE) { VehicleInfoScreen(onBack = back, onConnect = toHome) }
             composable(Routes.FREEZE) { FreezeFrameScreen(onBack = back, onConnect = toHome) }

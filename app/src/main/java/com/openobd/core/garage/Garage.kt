@@ -173,6 +173,8 @@ data class GarageData(
     val maintenance: List<MaintenanceItem> = emptyList(),
     val fuel: List<FuelEntry> = emptyList(),
     val trips: List<TripRecord> = emptyList(),
+    /** One sample per drive, for long-term health trends. */
+    val health: List<com.openobd.core.health.HealthSample> = emptyList(),
 ) {
     val active: Vehicle? get() = vehicles.firstOrNull { it.id == activeVehicleId } ?: vehicles.firstOrNull()
 

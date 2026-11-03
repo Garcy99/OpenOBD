@@ -113,6 +113,21 @@ fun SettingsScreen(onBack: () -> Unit) {
                 Dropdown(AppSettings.DEMO_PROTOCOLS, s.demoProtocol, { it.label }) { p -> update { it.copy(demoProtocol = p) } }
                 SwitchRow(tr("Unreliable adapter (fragmented replies, noise, errors, lost prompts)"), s.demoFaults) { v -> update { it.copy(demoFaults = v) } }
             }
+            SectionCard(title = tr("AI assistant")) {
+                Text(tr("Optional: explain faults in plain language with Claude, by Anthropic. Uses your own API key from console.anthropic.com (paid per use). ") +
+                    tr("Only codes, sensor values and the car model are sent when you ask - never the VIN or your location."),
+                    style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                var key by remember(s.claudeApiKey) { mutableStateOf(s.claudeApiKey) }
+                OutlinedTextField(
+                    key, { key = it.trim() }, Modifier.fillMaxWidth(), singleLine = true,
+                    label = { Text(tr("Claude API key")) },
+                    visualTransformation = androidx.compose.ui.text.input.PasswordVisualTransformation(),
+                )
+                Row {
+                    TextButton(onClick = { update { it.copy(claudeApiKey = key) } }, enabled = key != s.claudeApiKey) { Text(tr("Save")) }
+                    if (s.claudeApiKey.isNotEmpty()) TextButton(onClick = { key = ""; update { it.copy(claudeApiKey = "") } }) { Text(tr("Remove key")) }
+                }
+            }
             SectionCard(title = tr("Troubleshooting")) { DebugReportSection() }
             SectionCard(title = tr("Alerts")) {
                 Text(tr("Vibrate and show a warning when a sensor crosses a threshold (values in metric units)."),

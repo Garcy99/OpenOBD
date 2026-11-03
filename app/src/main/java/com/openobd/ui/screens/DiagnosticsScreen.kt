@@ -158,7 +158,7 @@ fun DiagnosticsScreen(onConnect: () -> Unit, onNavigate: (String) -> Unit) {
             dismissButton = { TextButton(onClick = { confirmClear = false }) { Text(tr("Cancel")) } },
         )
     }
-    detail?.let { d -> DtcDetailDialog(d.code, session.describe(d.code), tr(d.type.label) + " · ECU " + d.ecu) { detail = null } }
+    detail?.let { d -> androidx.compose.runtime.LaunchedEffect(d) { detail = null; onNavigate(com.openobd.ui.Routes.code(d.code)) } }
 }
 
 @Composable

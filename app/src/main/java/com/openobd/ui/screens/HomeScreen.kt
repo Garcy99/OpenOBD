@@ -34,6 +34,7 @@ import androidx.compose.material.icons.filled.Error
 import androidx.compose.material.icons.filled.Flag
 import androidx.compose.material.icons.filled.Hub
 import androidx.compose.material.icons.filled.FactCheck
+import androidx.compose.material.icons.filled.MonitorHeart
 import androidx.compose.material.icons.filled.Checklist
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.filled.Route
@@ -405,9 +406,9 @@ private fun QuickActions(onNavigate: (String) -> Unit, onTab: (String) -> Unit) 
         A(tr("0-100 timer"), Icons.Default.Timer) { onNavigate(Routes.PERFORMANCE) },
         A(tr("Vehicle info"), Icons.Default.DirectionsCar) { onNavigate(Routes.VEHICLE) },
         A(tr("Freeze frame"), Icons.Default.Flag) { onNavigate(Routes.FREEZE) },
-        A(tr("Car check"), Icons.Default.FactCheck) { onNavigate(Routes.CHECK) },
-        A(tr("Readiness"), Icons.Default.Checklist) { onNavigate(Routes.READINESS) },
         A(tr("Modules"), Icons.Default.Hub) { onNavigate(Routes.BRAND) },
+        A(tr("Health"), Icons.Default.MonitorHeart) { onNavigate(Routes.HEALTH) },
+        A(tr("Car check"), Icons.Default.FactCheck) { onNavigate(Routes.CHECK) },
     )
     SectionCard(title = tr("Quick actions")) {
         actions.chunked(3).forEach { row ->

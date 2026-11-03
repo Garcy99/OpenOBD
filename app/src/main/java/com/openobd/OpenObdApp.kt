@@ -24,6 +24,8 @@ class AppContainer(app: Application) {
     val logs = LogRepository(app)
     val garage = GarageRepository(app)
     val diagnostics = com.openobd.data.Diagnostics(app)
+    /** Creates the AI assistant backend for an API key; replaceable in tests. */
+    var assistantBackend: (String) -> com.openobd.data.ChatBackend = { key -> com.openobd.data.ClaudeBackend(key) }
     /** Network client for vehicle lookups; replaceable in tests. */
     var http: com.openobd.core.specs.Http = com.openobd.core.specs.UrlHttp("OpenOBD/${com.openobd.BuildConfig.VERSION_NAME} (Android; open source)")
     val dtcDatabase: DtcDatabase by lazy {

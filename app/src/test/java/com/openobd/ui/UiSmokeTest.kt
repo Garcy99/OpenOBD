@@ -128,8 +128,10 @@ class UiSmokeTest {
         )
 
         tap("P0301")
+        waitFor { rule.onAllNodesWithText("Can I keep driving?").fetchSemanticsNodes().isNotEmpty() }
         shot("07_code_detail_$suffix")
-        tap("Close")
+        rule.activityRule.scenario.onActivity { it.onBackPressedDispatcher.onBackPressed() }
+        rule.waitForIdle()
 
         tab("More")
         shot("08_more_$suffix")
@@ -491,6 +493,68 @@ class VehicleCheckUiTest {
         shot("30_vehicle_check_dark")
 
         // The PDF itself is generated on real Android in the device tests (Robolectric has no native PDF engine).
+        c.session.disconnect()
+    }
+}
+
+/** Code explanation screen and the AI assistant chat (with a fake backend instead of the Claude API). */
+@RunWith(AndroidJUnit4::class)
+@GraphicsMode(GraphicsMode.Mode.NATIVE)
+@Config(sdk = [34], qualifiers = "es-rES-w411dp-h891dp-xxhdpi")
+class AssistantUiTest {
+    @get:Rule
+    val rule = createAndroidComposeRule<MainActivity>()
+
+    private fun waitFor(timeoutMs: Long = 30_000, condition: () -> Boolean) {
+        val end = System.currentTimeMillis() + timeoutMs
+        while (!condition()) {
+            check(System.currentTimeMillis() < end) { "Timed out waiting" }
+            Thread.sleep(50)
+            rule.mainClock.advanceTimeBy(50)
+        }
+        rule.waitForIdle()
+    }
+
+    private fun shot(name: String) {
+        rule.waitForIdle()
+        val dir = File(System.getProperty("screenshot.dir") ?: "build/screenshots").apply { mkdirs() }
+        rule.activityRule.scenario.onActivity { act ->
+            val v = act.window.decorView
+            val bmp = Bitmap.createBitmap(v.width, v.height, Bitmap.Config.ARGB_8888)
+            v.draw(Canvas(bmp))
+            File(dir, "$name.png").outputStream().use { bmp.compress(Bitmap.CompressFormat.PNG, 100, it) }
+        }
+    }
+
+    @Test
+    fun explainAndAsk() {
+        val app = rule.activity.application as OpenObdApp
+        val c = app.container
+        val sent = mutableListOf<String>()
+        c.assistantBackend = { key ->
+            check(key == "sk-test")
+            com.openobd.data.ChatBackend { _, turns -> sent += turns.last().text; "Lo más probable es un fallo de la bobina del cilindro 1." }
+        }
+        runBlocking { c.settings.update { it.copy(connectionType = ConnectionType.DEMO, language = "es", tripGps = false, theme = ThemeMode.DARK, claudeApiKey = "sk-test") } }
+        waitFor { c.settings.settings.value.claudeApiKey == "sk-test" && I18n.language == "es" }
+        c.session.connect()
+        waitFor { c.session.state.value is ConnectionState.Connected }
+        waitFor { c.session.dtcScan.value is Op.Done }
+        rule.onAllNodes(hasText("Códigos") and isSelectable())[0].performClick()
+        rule.waitForIdle()
+        rule.onAllNodesWithText("P0301")[0].performClick()
+        waitFor { rule.onAllNodesWithText("¿Puedo seguir conduciendo?").fetchSemanticsNodes().isNotEmpty() }
+        shot("31_code_explained_es")
+
+        rule.onAllNodes(hasScrollAction())[0].performScrollToNode(hasText("Preguntar al asistente IA"))
+        rule.onAllNodes(hasText("Preguntar al asistente IA") and hasClickAction())[0].performClick()
+        rule.waitForIdle()
+        rule.onAllNodes(hasText("Explica esta avería y qué debo hacer") and hasClickAction())[0].performClick()
+        waitFor { rule.onAllNodesWithText("Lo más probable es un fallo de la bobina del cilindro 1.").fetchSemanticsNodes().isNotEmpty() }
+        shot("32_assistant_es")
+        // The first message carries the car data; no VIN is sent.
+        assertTrue(sent.first(), sent.first().contains("P0301") && sent.first().contains("Explica esta avería"))
+        assertTrue(!sent.first().contains(c.session.vehicle?.vin ?: "-"))
         c.session.disconnect()
     }
 }
