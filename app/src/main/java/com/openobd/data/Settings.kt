@@ -24,7 +24,7 @@ import kotlinx.serialization.json.Json
 
 enum class ConnectionType(val label: String) { BLUETOOTH("Bluetooth"), BLE("Bluetooth LE"), WIFI("Wi-Fi"), DEMO("Demo") }
 
-enum class ThemeMode { SYSTEM, LIGHT, DARK }
+enum class ThemeMode { SYSTEM, LIGHT, DARK, AMOLED }
 
 enum class FuelKind(val label: String, val afr: Double, val densityGPerL: Double) {
     AUTO("Auto-detect", 14.7, 745.0),
@@ -44,6 +44,7 @@ data class AlertRule(
     val enabled: Boolean = true,
 )
 
+@Serializable
 data class AppSettings(
     val connectionType: ConnectionType = ConnectionType.BLUETOOTH,
     val deviceAddress: String? = null,
@@ -74,6 +75,8 @@ data class AppSettings(
     val msCanSwitch: Boolean = false,
     /** Record a GPS track for saved trips (needs location permission). */
     val tripGps: Boolean = true,
+    /** The first-run setup was completed or skipped. */
+    val onboarded: Boolean = false,
     /** Protocol spoken by the simulated car in demo mode. */
     val demoProtocol: ObdProtocol = ObdProtocol.ISO_15765_4_CAN_11_500,
     /** Demo mode simulates an unreliable adapter (fragmented replies, noise, errors, lost prompts). */
@@ -127,6 +130,7 @@ class SettingsRepository(private val context: Context, scope: CoroutineScope) {
         val customModules = stringPreferencesKey("custom_modules")
         val msCanSwitch = booleanPreferencesKey("ms_can_switch")
         val tripGps = booleanPreferencesKey("trip_gps")
+        val onboarded = booleanPreferencesKey("onboarded")
         val demoProtocol = stringPreferencesKey("demo_protocol")
         val demoFaults = booleanPreferencesKey("demo_faults")
         val language = stringPreferencesKey("language")
@@ -167,6 +171,7 @@ class SettingsRepository(private val context: Context, scope: CoroutineScope) {
             customModules = p[K.customModules]?.let { runCatching { json.decodeFromString<List<EcuModule>>(it) }.getOrNull() } ?: d.customModules,
             msCanSwitch = p[K.msCanSwitch] ?: d.msCanSwitch,
             tripGps = p[K.tripGps] ?: d.tripGps,
+            onboarded = p[K.onboarded] ?: d.onboarded,
             demoProtocol = enumOf(p[K.demoProtocol], d.demoProtocol).takeIf { it in AppSettings.DEMO_PROTOCOLS } ?: d.demoProtocol,
             demoFaults = p[K.demoFaults] ?: d.demoFaults,
             language = p[K.language] ?: d.language,
@@ -210,6 +215,7 @@ class SettingsRepository(private val context: Context, scope: CoroutineScope) {
             p[K.customModules] = json.encodeToString(s.customModules)
             p[K.msCanSwitch] = s.msCanSwitch
             p[K.tripGps] = s.tripGps
+            p[K.onboarded] = s.onboarded
             p[K.demoProtocol] = s.demoProtocol.name
             p[K.demoFaults] = s.demoFaults
             p[K.language] = s.language

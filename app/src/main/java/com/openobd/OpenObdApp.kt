@@ -17,7 +17,7 @@ import kotlinx.coroutines.flow.debounce
 import kotlinx.coroutines.launch
 
 /** Simple manual dependency container. */
-class AppContainer(app: Application) {
+class AppContainer(private val app: Application) {
     val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
     val settings = SettingsRepository(app, scope)
     val history = HistoryRepository(app)
@@ -34,6 +34,26 @@ class AppContainer(app: Application) {
             runCatching { app.assets.open("dtc/causes.tsv") }.getOrNull(),
         )
     }
+    private val backupJson = kotlinx.serialization.json.Json { ignoreUnknownKeys = true; encodeDefaults = true }
+
+    /** Writes a backup of all user data (API keys excluded). Returns the number of files written. */
+    suspend fun backupTo(out: java.io.OutputStream): Int = kotlinx.coroutines.withContext(Dispatchers.IO) {
+        val s = settings.settings.value.copy(claudeApiKey = "", dvlaApiKey = "")
+        com.openobd.data.Backup.write(out, app.filesDir, backupJson.encodeToString(com.openobd.data.AppSettings.serializer(), s), com.openobd.BuildConfig.VERSION_NAME)
+    }
+
+    /** Restores a backup, keeping this phone's API keys. Returns the number of files restored. */
+    suspend fun restoreFrom(input: java.io.InputStream): Int = kotlinx.coroutines.withContext(Dispatchers.IO) {
+        val c = com.openobd.data.Backup.read(input, app.filesDir)
+        c.settingsJson?.let { j -> runCatching { backupJson.decodeFromString(com.openobd.data.AppSettings.serializer(), j) }.getOrNull() }?.let { r ->
+            settings.update { cur -> r.copy(claudeApiKey = cur.claudeApiKey, dvlaApiKey = cur.dvlaApiKey) }
+        }
+        garage.load(null)
+        history.load()
+        logs.refresh()
+        c.files
+    }
+
     val session by lazy { ObdSession(app, scope, settings, history, logs, dtcDatabase, garage, diagnostics.log) }
 }
 

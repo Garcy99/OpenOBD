@@ -36,8 +36,20 @@ private val Light = lightColorScheme(
     outline = Color(0xFFCBD5E1), error = Color(0xFFDC2626),
 )
 
+/** Pure black for OLED screens: saves battery at night and looks like part of the dashboard. */
+private val Amoled = Dark.copy(
+    background = Color.Black, surface = Color.Black,
+    surfaceContainer = Color(0xFF0B0B0B), surfaceContainerLow = Color(0xFF060606), surfaceContainerLowest = Color.Black,
+    surfaceContainerHigh = Color(0xFF121212), surfaceContainerHighest = Color(0xFF1A1A1A), surfaceVariant = Color(0xFF161616),
+)
+
 @Composable
 fun OpenObdTheme(mode: ThemeMode, content: @Composable () -> Unit) {
-    val dark = when (mode) { ThemeMode.SYSTEM -> isSystemInDarkTheme(); ThemeMode.DARK -> true; ThemeMode.LIGHT -> false }
-    MaterialTheme(colorScheme = if (dark) Dark else Light, typography = Typography(), content = content)
+    val scheme = when (mode) {
+        ThemeMode.SYSTEM -> if (isSystemInDarkTheme()) Dark else Light
+        ThemeMode.DARK -> Dark
+        ThemeMode.LIGHT -> Light
+        ThemeMode.AMOLED -> Amoled
+    }
+    MaterialTheme(colorScheme = scheme, typography = Typography(), content = content)
 }

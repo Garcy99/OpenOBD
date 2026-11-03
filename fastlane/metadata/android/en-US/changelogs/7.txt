@@ -1,0 +1,7 @@
+• Opel/Vauxhall: GMLAN codes in all modules, 95.2k MS-CAN
+• Used car & pre-ITV check with PDF report
+• Explained codes: can I keep driving? Causes ranked with your car's data
+• Optional AI assistant (Claude, own API key)
+• Car health trends: battery, charging, trims, warm-up
+• DPF regeneration helper, service guides, identifier explorer
+• Dashboard layouts, black theme, tablet layout, backup, log replay

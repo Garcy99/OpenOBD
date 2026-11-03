@@ -1,0 +1,7 @@
+• Opel/Vauxhall: códigos GMLAN en todos los módulos, MS-CAN 95,2k
+• Revisión de coche usado y pre-ITV con PDF
+• Códigos explicados: ¿puedo seguir conduciendo? Causas con datos de tu coche
+• Asistente IA opcional (Claude, tu clave)
+• Salud del coche: batería, carga, mezcla, calentamiento
+• Ayuda FAP, guías de mantenimiento, explorador de identificadores
+• Diseños de panel, tema negro, tablet, copia de seguridad, registros

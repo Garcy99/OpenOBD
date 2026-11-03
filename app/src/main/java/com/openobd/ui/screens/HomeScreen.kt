@@ -93,6 +93,18 @@ import com.openobd.ui.theme.Good
 import com.openobd.ui.theme.Warn
 import kotlinx.coroutines.launch
 
+@Composable
+private fun WelcomeCard(onStart: () -> Unit, onSkip: () -> Unit) {
+    SectionCard(title = tr("Welcome to OpenOBD")) {
+        Text(tr("A two-minute setup: your adapter, your car and what the app can do for it."), style = MaterialTheme.typography.bodyMedium)
+        Row {
+            Button(onClick = onStart) { Text(tr("Start setup")) }
+            Spacer(Modifier.width(8.dp))
+            TextButton(onClick = onSkip) { Text(tr("Skip")) }
+        }
+    }
+}
+
 /** Shown after the app closed unexpectedly, so the report can be shared once. */
 @Composable
 private fun CrashCard() {
@@ -178,6 +190,10 @@ fun HomeScreen(onNavigate: (String) -> Unit, onTab: (String) -> Unit) {
                 onDisconnect = session::disconnect,
             )
             CrashCard()
+            if (!settings.onboarded && state !is ConnectionState.Connected) WelcomeCard(
+                onStart = { onNavigate(Routes.WELCOME) },
+                onSkip = { scope.launch { app.settings.update { it.copy(onboarded = true) } } },
+            )
             MyCarCard(onNavigate)
             when (val s = state) {
                 is ConnectionState.Connected -> {

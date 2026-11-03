@@ -2,6 +2,7 @@ package com.openobd.ui.screens
 
 import com.openobd.ui.tr
 
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
@@ -43,7 +44,7 @@ import java.text.DateFormat
 import java.util.Date
 
 @Composable
-fun LogsScreen(onBack: () -> Unit) {
+fun LogsScreen(onBack: () -> Unit, onOpen: (String) -> Unit = {}) {
     val app = LocalApp.current
     val session = app.session
     val context = LocalContext.current
@@ -71,6 +72,7 @@ fun LogsScreen(onBack: () -> Unit) {
         } else LazyColumn {
             items(files, key = { it.file.path }) { f ->
                 ListItem(
+                    modifier = Modifier.clickable { onOpen(f.file.name) },
                     headlineContent = { Text(f.file.name) },
                     supportingContent = { Text(DateFormat.getDateTimeInstance().format(Date(f.modified)) + " · " + "%.1f KB".format(f.sizeBytes / 1024.0)) },
                     leadingContent = { Icon(Icons.Default.Description, null) },

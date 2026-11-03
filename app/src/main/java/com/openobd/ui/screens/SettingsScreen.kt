@@ -76,7 +76,7 @@ fun SettingsScreen(onBack: () -> Unit) {
                 Label(tr("Units"))
                 Chips(UnitSystem.entries, s.units, { if (it == UnitSystem.METRIC) tr("Metric") else tr("Imperial (US)") }) { u -> update { it.copy(units = u) } }
                 Label(tr("Theme"))
-                Chips(ThemeMode.entries, s.theme, { tr(it.name.lowercase().replaceFirstChar(Char::uppercase)) }) { m -> update { it.copy(theme = m) } }
+                Chips(ThemeMode.entries, s.theme, { if (it == ThemeMode.AMOLED) tr("Black") else tr(it.name.lowercase().replaceFirstChar(Char::uppercase)) }) { m -> update { it.copy(theme = m) } }
                 SwitchRow(tr("Keep screen on while connected"), s.keepScreenOn) { v -> update { it.copy(keepScreenOn = v) } }
                 NumberField(tr("Shift light RPM (0 = off)"), s.shiftLightRpm.toString()) { v -> v.toIntOrNull()?.let { n -> update { it.copy(shiftLightRpm = n) } } }
             }
@@ -128,6 +128,7 @@ fun SettingsScreen(onBack: () -> Unit) {
                     if (s.claudeApiKey.isNotEmpty()) TextButton(onClick = { key = ""; update { it.copy(claudeApiKey = "") } }) { Text(tr("Remove key")) }
                 }
             }
+            SectionCard(title = tr("Backup")) { BackupSection() }
             SectionCard(title = tr("Troubleshooting")) { DebugReportSection() }
             SectionCard(title = tr("Alerts")) {
                 Text(tr("Vibrate and show a warning when a sensor crosses a threshold (values in metric units)."),
@@ -265,6 +266,46 @@ private fun AdapterCheck() {
                 }
             },
             confirmButton = { TextButton(onClick = { result = null }) { Text("OK") } },
+        )
+    }
+}
+
+@Composable
+fun BackupSection() {
+    val app = LocalApp.current
+    val context = androidx.compose.ui.platform.LocalContext.current
+    val scope = rememberCoroutineScope()
+    var message by remember { mutableStateOf<String?>(null) }
+    var pendingRestore by remember { mutableStateOf<android.net.Uri?>(null) }
+    val create = androidx.activity.compose.rememberLauncherForActivityResult(androidx.activity.result.contract.ActivityResultContracts.CreateDocument("application/zip")) { uri ->
+        if (uri != null) scope.launch {
+            message = runCatching { context.contentResolver.openOutputStream(uri)!!.use { app.backupTo(it) } }
+                .fold({ tr("Backup saved (%1\$s files).", it) }, { tr("Backup failed: %1\$s", it.message ?: "") })
+        }
+    }
+    val open = androidx.activity.compose.rememberLauncherForActivityResult(androidx.activity.result.contract.ActivityResultContracts.OpenDocument()) { uri -> pendingRestore = uri }
+    Text(tr("Save your cars, maintenance, fuel log, trips, health history, scan history and logs to one file (for example on Google Drive), and restore them on a new phone. API keys are not included."),
+        style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+    Row {
+        TextButton(onClick = { create.launch("openobd-backup-" + java.text.SimpleDateFormat("yyyyMMdd", java.util.Locale.US).format(java.util.Date()) + ".zip") }) { Text(tr("Back up")) }
+        TextButton(onClick = { open.launch(arrayOf("application/zip", "application/octet-stream")) }) { Text(tr("Restore")) }
+    }
+    message?.let { Text(it, style = MaterialTheme.typography.bodySmall) }
+    pendingRestore?.let { uri ->
+        AlertDialog(
+            onDismissRequest = { pendingRestore = null },
+            title = { Text(tr("Restore this backup?")) },
+            text = { Text(tr("Your current cars, history and logs on this phone will be replaced by the ones in the backup.")) },
+            confirmButton = {
+                TextButton(onClick = {
+                    pendingRestore = null
+                    scope.launch {
+                        message = runCatching { context.contentResolver.openInputStream(uri)!!.use { app.restoreFrom(it) } }
+                            .fold({ tr("Restored %1\$s files.", it) }, { tr("Restore failed: %1\$s", tr(it.message ?: "")) })
+                    }
+                }) { Text(tr("Restore")) }
+            },
+            dismissButton = { TextButton(onClick = { pendingRestore = null }) { Text(tr("Cancel")) } },
         )
     }
 }

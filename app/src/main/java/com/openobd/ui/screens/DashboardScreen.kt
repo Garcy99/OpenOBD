@@ -6,6 +6,7 @@ import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -20,6 +21,10 @@ import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Fullscreen
 import androidx.compose.material.icons.filled.RestartAlt
+import androidx.compose.material.icons.filled.Speed
+import androidx.compose.material.icons.filled.Pin
+import androidx.compose.material.icons.automirrored.filled.KeyboardArrowLeft
+import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Icon
@@ -84,8 +89,13 @@ fun DashboardScreen(onConnect: () -> Unit, onHud: () -> Unit) {
         }
         val supported = vehicle?.supportedPids ?: emptySet()
         val available = remember(supported) { SensorCatalog.available(supported) }
-        val keys = settings.dashboard
+        // Entries are sensor keys, optionally with "@d" for a large digital tile.
+        val entries = settings.dashboard
+        val keys = entries.map { it.substringBefore('@') }
         SubscribeSensors("dashboard", keys)
+        fun updateEntries(t: (MutableList<String>) -> Unit) {
+            scope.launch { app.settings.update { s -> s.copy(dashboard = s.dashboard.toMutableList().also(t)) } }
+        }
         val readings by app.session.live.readings.collectAsStateWithLifecycle()
 
         LazyVerticalGrid(
@@ -94,7 +104,21 @@ fun DashboardScreen(onConnect: () -> Unit, onHud: () -> Unit) {
             horizontalArrangement = androidx.compose.foundation.layout.Arrangement.spacedBy(10.dp),
             verticalArrangement = androidx.compose.foundation.layout.Arrangement.spacedBy(10.dp),
         ) {
+            if (editing) item(span = { androidx.compose.foundation.lazy.grid.GridItemSpan(maxLineSpan) }) {
+                Column {
+                    Text(tr("Layouts"), style = MaterialTheme.typography.labelLarge)
+                    androidx.compose.foundation.lazy.LazyRow(horizontalArrangement = androidx.compose.foundation.layout.Arrangement.spacedBy(6.dp)) {
+                        items(DashboardPresets.all.size) { i ->
+                            val (name, list) = DashboardPresets.all[i]
+                            androidx.compose.material3.AssistChip(onClick = { scope.launch { app.settings.update { it.copy(dashboard = list) } } }, label = { Text(tr(name)) })
+                        }
+                    }
+                    Text(tr("Tap a gauge to change it; use the arrows to move it and the dial button to switch between gauge and big number."),
+                        style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+            }
             itemsIndexed(keys, key = { i, k -> "$i$k" }) { index, key ->
+                val digital = entries.getOrNull(index)?.endsWith("@d") == true
                 val def = SensorCatalog.get(key)
                 val reading = readings[key]
                 Card(
@@ -112,7 +136,10 @@ fun DashboardScreen(onConnect: () -> Unit, onHud: () -> Unit) {
                             val fraction = v?.let { ((displayValue(def, it, units) - lo) / (hi - lo)).toFloat() }
                             val f = formatSensor(def, v, units)
                             val supportedHere = vehicle == null || (def.pid < 0 && available.any { it.key == key }) || def.pid in supported
-                            AnalogGauge(
+                            if (digital) DigitalTile(
+                                label = tr(def.name), valueText = if (supportedHere) f.value else "N/A", unit = f.unit,
+                                minText = reading?.let { formatSensor(def, it.min, units).value }, maxText = reading?.let { formatSensor(def, it.max, units).value },
+                            ) else AnalogGauge(
                                 label = tr(def.shortName),
                                 valueText = if (supportedHere) f.value else "N/A",
                                 unit = f.unit,
@@ -129,6 +156,17 @@ fun DashboardScreen(onConnect: () -> Unit, onHud: () -> Unit) {
                                 onClick = { scope.launch { app.settings.update { it.copy(dashboard = it.dashboard.filterIndexed { i, _ -> i != index }) } } },
                                 modifier = Modifier.align(Alignment.TopEnd),
                             ) { Icon(Icons.Default.Close, tr("Remove")) }
+                            Row(Modifier.align(Alignment.BottomCenter)) {
+                                IconButton(onClick = { updateEntries { l -> if (index > 0) java.util.Collections.swap(l, index, index - 1) } }, enabled = index > 0) {
+                                    Icon(Icons.AutoMirrored.Filled.KeyboardArrowLeft, tr("Move earlier"))
+                                }
+                                IconButton(onClick = { updateEntries { l -> if (index < l.size) l[index] = if (digital) key else "$key@d" } }) {
+                                    Icon(if (digital) Icons.Default.Speed else Icons.Default.Pin, tr("Switch gauge style"))
+                                }
+                                IconButton(onClick = { updateEntries { l -> if (index < l.size - 1) java.util.Collections.swap(l, index, index + 1) } }, enabled = index < keys.size - 1) {
+                                    Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, tr("Move later"))
+                                }
+                            }
                         }
                     }
                 }
@@ -172,6 +210,30 @@ fun DashboardScreen(onConnect: () -> Unit, onHud: () -> Unit) {
                 },
             )
         }
+    }
+}
+
+/** Ready-made dashboard layouts. */
+object DashboardPresets {
+    val all = listOf(
+        "Everyday" to listOf("010C", "010D", "0105", "0104", "0111", "CALC_FUEL", "0142", "CALC_BOOST"),
+        "Diesel" to listOf("010C", "CALC_BOOST@d", "0105", "0123", "012C", "017A_D", "0178_1", "CALC_FUEL"),
+        "Economy" to listOf("CALC_FUEL@d", "CALC_CONS@d", "010D", "010C", "0104", "0111"),
+        "Performance" to listOf("010C", "010D", "CALC_POWER", "CALC_TORQUE", "CALC_BOOST", "0111", "010F", "0105"),
+        "Temperatures" to listOf("0105@d", "010F", "015C", "0146", "013C", "0105"),
+    )
+}
+
+/** Large number tile: easier to read at a glance than a dial. */
+@Composable
+private fun DigitalTile(label: String, valueText: String, unit: String, minText: String?, maxText: String?) {
+    Column(Modifier.fillMaxWidth().aspectRatio(1f).padding(14.dp), verticalArrangement = androidx.compose.foundation.layout.Arrangement.SpaceBetween) {
+        Text(label, style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 2)
+        Row(verticalAlignment = Alignment.Bottom) {
+            Text(valueText, style = MaterialTheme.typography.displayMedium, fontWeight = androidx.compose.ui.text.font.FontWeight.Bold, maxLines = 1)
+            Text(" $unit", style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(bottom = 8.dp))
+        }
+        Text(listOfNotNull(minText?.let { "↓ $it" }, maxText?.let { "↑ $it" }).joinToString("   "), style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
     }
 }
 

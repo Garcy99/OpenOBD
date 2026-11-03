@@ -39,9 +39,9 @@ class DieselToolsTest {
         val m = RegenMonitor()
         var t = 0L
         val temps = listOf(300.0, 420.0, 520.0, 600.0, 610.0, 500.0, 390.0, 350.0, 460.0)
-        val active = temps.map { temp -> t += 1000; m.onCycle(cruise + ("017CI" to temp), t).regenActive }
+        val active = temps.map { temp -> t += 1000; m.onCycle(cruise + ("017C_I" to temp), t).regenActive }
         assertEquals(listOf(false, false, true, true, true, true, true, false, true), active)
-        assertEquals(2, m.onCycle(cruise + ("017CI" to 470.0), t + 1000).regensSeen)
+        assertEquals(2, m.onCycle(cruise + ("017C_I" to 470.0), t + 1000).regensSeen)
     }
 
     @Test
@@ -70,5 +70,17 @@ class DieselToolsTest {
         assertEquals(setOf(0x90, 0xC1), mc.scanIds(ebcm, 0x80..0xCF, gmlanIds = true).keys)
         // OBD works normally afterwards.
         assertEquals(2, client.readPids(listOf(0x0C, 0x0D)).size)
+    }
+}
+
+class SensorKeysTest {
+    /** Every sensor key hard-coded in layouts and helpers must exist, or the tile shows "Unknown sensor". */
+    @Test
+    fun hardCodedKeysExist() {
+        val keys = com.openobd.ui.screens.DashboardPresets.all.flatMap { p -> p.second.map { it.substringBefore('@') } } +
+            com.openobd.core.diesel.RegenMonitor.keys + com.openobd.data.AppSettings.DEFAULT_DASHBOARD +
+            listOf("010C", "0105", "010D", "0142", "0106", "0107", "011F")
+        val missing = keys.distinct().filter { com.openobd.core.obd.SensorCatalog.get(it) == null }
+        org.junit.Assert.assertEquals(emptyList<String>(), missing)
     }
 }

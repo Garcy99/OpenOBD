@@ -10,6 +10,7 @@ import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.performScrollToNode
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.onAllNodesWithText
+import androidx.compose.ui.test.onAllNodesWithContentDescription
 import androidx.compose.ui.test.performClick
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.openobd.MainActivity
@@ -555,6 +556,77 @@ class AssistantUiTest {
         // The first message carries the car data; no VIN is sent.
         assertTrue(sent.first(), sent.first().contains("P0301") && sent.first().contains("Explica esta avería"))
         assertTrue(!sent.first().contains(c.session.vehicle?.vin ?: "-"))
+        c.session.disconnect()
+    }
+}
+
+/** First-run wizard and dashboard layouts on a phone. */
+@RunWith(AndroidJUnit4::class)
+@GraphicsMode(GraphicsMode.Mode.NATIVE)
+@Config(sdk = [34], qualifiers = "w411dp-h891dp-xxhdpi")
+class WelcomeAndDashboardUiTest {
+    @get:Rule
+    val rule = createAndroidComposeRule<MainActivity>()
+
+    private fun waitFor(timeoutMs: Long = 20_000, condition: () -> Boolean) {
+        val end = System.currentTimeMillis() + timeoutMs
+        while (!condition()) { check(System.currentTimeMillis() < end) { "Timed out waiting" }; Thread.sleep(50); rule.mainClock.advanceTimeBy(50) }
+        rule.waitForIdle()
+    }
+
+    private fun click(text: String) { rule.onAllNodes(hasText(text) and hasClickAction())[0].performClick(); rule.waitForIdle() }
+
+    @Test
+    fun wizardThenDashboardPreset() {
+        val c = (rule.activity.application as OpenObdApp).container
+        runBlocking { c.settings.update { it.copy(language = "en", onboarded = false, tripGps = false) } }
+        waitFor { I18n.language == "en" && !c.settings.settings.value.onboarded }
+        click("Start setup")
+        click("Next")
+        click("Demo (no adapter)")
+        waitFor { c.settings.settings.value.connectionType == ConnectionType.DEMO }
+        click("Next"); click("Next"); click("Start")
+        waitFor { c.settings.settings.value.onboarded }
+        assertTrue(rule.onAllNodesWithText("Welcome to OpenOBD").fetchSemanticsNodes().isEmpty())
+
+        rule.onAllNodes(hasText("Dashboard") and isSelectable())[0].performClick()
+        rule.waitForIdle()
+        rule.onAllNodesWithContentDescription("Edit")[0].performClick()
+        rule.waitForIdle()
+        click("Diesel")
+        waitFor { c.settings.settings.value.dashboard == com.openobd.ui.screens.DashboardPresets.all.first { it.first == "Diesel" }.second }
+        rule.onAllNodesWithContentDescription("Switch gauge style")[0].performClick()
+        waitFor { c.settings.settings.value.dashboard.first() == "010C@d" }
+        rule.onAllNodesWithContentDescription("Move later")[0].performClick()
+        waitFor { c.settings.settings.value.dashboard.take(2) == listOf("CALC_BOOST@d", "010C@d") }
+    }
+}
+
+/** Tablet / landscape: navigation rail instead of the bottom bar, black (AMOLED) theme. */
+@RunWith(AndroidJUnit4::class)
+@GraphicsMode(GraphicsMode.Mode.NATIVE)
+@Config(sdk = [34], qualifiers = "w1280dp-h800dp-land-mdpi")
+class TabletUiTest {
+    @get:Rule
+    val rule = createAndroidComposeRule<MainActivity>()
+
+    @Test
+    fun railLayout() {
+        val c = (rule.activity.application as OpenObdApp).container
+        runBlocking { c.settings.update { it.copy(language = "en", theme = ThemeMode.AMOLED, connectionType = ConnectionType.DEMO, tripGps = false, onboarded = true) } }
+        val end = System.currentTimeMillis() + 20_000
+        while (c.settings.settings.value.theme != ThemeMode.AMOLED && System.currentTimeMillis() < end) { Thread.sleep(50); rule.mainClock.advanceTimeBy(50) }
+        c.session.connect()
+        while (c.session.state.value !is ConnectionState.Connected && System.currentTimeMillis() < end + 20_000) { Thread.sleep(50); rule.mainClock.advanceTimeBy(50) }
+        rule.onAllNodes(hasText("Dashboard") and isSelectable())[0].performClick()
+        Thread.sleep(1500); rule.mainClock.advanceTimeBy(1500); rule.waitForIdle()
+        val dir = File(System.getProperty("screenshot.dir") ?: "build/screenshots").apply { mkdirs() }
+        rule.activityRule.scenario.onActivity { act ->
+            val v = act.window.decorView
+            val bmp = Bitmap.createBitmap(v.width, v.height, Bitmap.Config.ARGB_8888)
+            v.draw(Canvas(bmp))
+            File(dir, "40_tablet_amoled_dashboard.png").outputStream().use { bmp.compress(Bitmap.CompressFormat.PNG, 100, it) }
+        }
         c.session.disconnect()
     }
 }

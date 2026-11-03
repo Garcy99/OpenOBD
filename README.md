@@ -11,6 +11,15 @@ with no ads, subscriptions or paywalls.
 
 ## Features
 
+**New in 1.5**
+- **Used car & pre-ITV check** with a PDF report: codes in every module, codes cleared recently to hide faults, permanent codes, monitor readiness, VIN consistency across modules, odometer, battery and charging
+- **Explained codes**: a *can I keep driving?* verdict and causes ranked with your car's own data (fuel trims at idle vs load, misfire counters per cylinder, catalyst test, warm-up, trip length, voltage)
+- Optional **AI assistant** (Claude, with your own API key; only codes, values and car model are sent)
+- **Car health trends**: battery at rest, charging voltage, idle fuel trims and rpm, warm-up time and misfires, compared with the car's own baseline
+- **Opel / Vauxhall (GM Global A)**: GMLAN trouble codes (\$A9) and clearing in every module, 0x24x addressing, MS-CAN at 95.2 kbps with HS/MS switch adapters
+- **Diesel particulate filter helper** (live regeneration conditions, regeneration detection), service guides, **identifier explorer** for manufacturer data
+- Dashboard layouts (Everyday, Diesel, Economy, Performance, Temperatures) and big-number tiles, black AMOLED theme, tablet layout, setup wizard, backup & restore, log viewer with replay and before/after comparison
+
 **Diagnostics**
 - Read **confirmed, pending and permanent** trouble codes (services 03 / 07 / 0A) from **every ECU** (engine, transmission, hybrid …)
 - **Clear codes** and the check-engine light (service 04), with negative-response handling ("turn engine off, ignition on")

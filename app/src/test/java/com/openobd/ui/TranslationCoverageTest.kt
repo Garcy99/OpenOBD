@@ -50,7 +50,8 @@ class TranslationCoverageTest {
         listOf(intArrayOf(0x80, 0x77, 0xFF, 0x00), intArrayOf(0x80, 0x7F, 0xFF, 0x00)).forEach { d -> Readiness.decode(d).monitors.forEach { keys += it.name } }
         ConnectionType.entries.forEach { keys += it.label }
         FuelKind.entries.forEach { keys += it.label }
-        ThemeMode.entries.forEach { keys += it.name.lowercase().replaceFirstChar(Char::uppercase) }
+        ThemeMode.entries.filter { it != ThemeMode.AMOLED }.forEach { keys += it.name.lowercase().replaceFirstChar(Char::uppercase) }
+        com.openobd.ui.screens.DashboardPresets.all.forEach { keys += it.first }
         ModuleCategory.entries.forEach { keys += it.label }
         Families.all.forEach { f -> keys += f.notes; f.modules.forEach { keys += it.name } }
         keys += Families.GENERIC.label

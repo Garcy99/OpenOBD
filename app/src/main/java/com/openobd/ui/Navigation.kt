@@ -1,6 +1,7 @@
 package com.openobd.ui
 
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Apps
 import androidx.compose.material.icons.filled.Build
@@ -86,6 +87,9 @@ object Routes {
     const val PIDS = "pids"
     const val CHECK = "check"
     const val HEALTH = "health"
+    const val WELCOME = "welcome"
+    const val LOG = "log/{name}"
+    fun log(name: String) = "log/" + android.net.Uri.encode(name)
     const val DIESEL = "diesel"
     const val GUIDES = "guides"
     const val EXPLORER = "explorer"
@@ -129,10 +133,12 @@ fun OpenObdNavHost() {
         }
     }
 
+    // Tablets and landscape phones get a side rail instead of the bottom bar.
+    val wide = androidx.compose.ui.platform.LocalConfiguration.current.screenWidthDp >= 600
     Scaffold(
         snackbarHost = { SnackbarHost(snackbar) },
         bottomBar = {
-            if (current != Routes.HUD) NavigationBar {
+            if (current != Routes.HUD && !wide) NavigationBar {
                 tabs.forEach { t ->
                     NavigationBarItem(
                         selected = current == t.route,
@@ -146,47 +152,61 @@ fun OpenObdNavHost() {
     ) { pad ->
         val back: () -> Unit = { nav.popBackStack() }
         val toHome: () -> Unit = { nav.goTab(Routes.HOME) }
-        NavHost(nav, startDestination = Routes.HOME, modifier = Modifier.padding(bottom = pad.calculateBottomPadding())) {
-            composable(Routes.HOME) { HomeScreen(onNavigate = { nav.navigate(it) }, onTab = { nav.goTab(it) }) }
-            composable(Routes.DASHBOARD) { DashboardScreen(onConnect = toHome, onHud = { nav.navigate(Routes.HUD) }) }
-            composable(Routes.LIVE) { LiveDataScreen(onConnect = toHome, onChart = { nav.navigate(Routes.CHART) }) }
-            composable(Routes.CHART) { ChartScreen(onBack = back, onConnect = toHome) }
-            composable(Routes.DIAGNOSTICS) { DiagnosticsScreen(onConnect = toHome, onNavigate = { nav.navigate(it) }) }
-            composable(Routes.MORE) { MoreScreen(onNavigate = { nav.navigate(it) }) }
-            composable(Routes.READINESS) { ReadinessScreen(onBack = back, onConnect = toHome) }
-            composable(Routes.CODE) { e ->
-                val code = e.arguments?.getString("code").orEmpty()
-                com.openobd.ui.screens.CodeScreen(code, onBack = back, onAssistant = { nav.navigate(Routes.assistant(code)) })
+        androidx.compose.foundation.layout.Row(Modifier.fillMaxSize()) {
+            if (wide && current != Routes.HUD) androidx.compose.material3.NavigationRail {
+                tabs.forEach { t ->
+                    androidx.compose.material3.NavigationRailItem(
+                        selected = current == t.route,
+                        onClick = { nav.goTab(t.route) },
+                        icon = { Icon(t.icon, null) },
+                        label = { Text(tr(t.label), maxLines = 1) },
+                    )
+                }
             }
-            composable(Routes.ASSISTANT) { e ->
-                com.openobd.ui.screens.AssistantScreen(e.arguments?.getString("code").orEmpty(), onBack = back, onSettings = { nav.navigate(Routes.SETTINGS) })
-            }
-            composable(Routes.DIESEL) { com.openobd.ui.screens.DieselScreen(onBack = back, onConnect = toHome, onGuides = { nav.navigate(Routes.GUIDES) }) }
-            composable(Routes.GUIDES) { com.openobd.ui.screens.ServiceGuidesScreen(onBack = back, onDieselHelper = { nav.navigate(Routes.DIESEL) }) }
-            composable(Routes.EXPLORER) { com.openobd.ui.screens.IdExplorerScreen(onBack = back, onConnect = toHome) }
+            NavHost(nav, startDestination = Routes.HOME, modifier = Modifier.weight(1f).padding(bottom = pad.calculateBottomPadding())) {
+                composable(Routes.HOME) { HomeScreen(onNavigate = { nav.navigate(it) }, onTab = { nav.goTab(it) }) }
+                composable(Routes.DASHBOARD) { DashboardScreen(onConnect = toHome, onHud = { nav.navigate(Routes.HUD) }) }
+                composable(Routes.LIVE) { LiveDataScreen(onConnect = toHome, onChart = { nav.navigate(Routes.CHART) }) }
+                composable(Routes.CHART) { ChartScreen(onBack = back, onConnect = toHome) }
+                composable(Routes.DIAGNOSTICS) { DiagnosticsScreen(onConnect = toHome, onNavigate = { nav.navigate(it) }) }
+                composable(Routes.MORE) { MoreScreen(onNavigate = { nav.navigate(it) }) }
+                composable(Routes.READINESS) { ReadinessScreen(onBack = back, onConnect = toHome) }
+                composable(Routes.CODE) { e ->
+                    val code = e.arguments?.getString("code").orEmpty()
+                    com.openobd.ui.screens.CodeScreen(code, onBack = back, onAssistant = { nav.navigate(Routes.assistant(code)) })
+                }
+                composable(Routes.ASSISTANT) { e ->
+                    com.openobd.ui.screens.AssistantScreen(e.arguments?.getString("code").orEmpty(), onBack = back, onSettings = { nav.navigate(Routes.SETTINGS) })
+                }
+                composable(Routes.DIESEL) { com.openobd.ui.screens.DieselScreen(onBack = back, onConnect = toHome, onGuides = { nav.navigate(Routes.GUIDES) }) }
+                composable(Routes.GUIDES) { com.openobd.ui.screens.ServiceGuidesScreen(onBack = back, onDieselHelper = { nav.navigate(Routes.DIESEL) }) }
+                composable(Routes.EXPLORER) { com.openobd.ui.screens.IdExplorerScreen(onBack = back, onConnect = toHome) }
+                composable(Routes.WELCOME) { com.openobd.ui.screens.WelcomeScreen(onDone = { nav.goTab(Routes.HOME) }, onGarage = { nav.navigate(Routes.GARAGE) }) }
             composable(Routes.HEALTH) { com.openobd.ui.screens.HealthScreen(onBack = back) }
-            composable(Routes.CHECK) { com.openobd.ui.screens.VehicleCheckScreen(onBack = back, onConnect = toHome) }
-            composable(Routes.VEHICLE) { VehicleInfoScreen(onBack = back, onConnect = toHome) }
-            composable(Routes.FREEZE) { FreezeFrameScreen(onBack = back, onConnect = toHome) }
-            composable(Routes.TESTS) { MonitorTestsScreen(onBack = back, onConnect = toHome) }
-            composable(Routes.PERFORMANCE) { PerformanceScreen(onBack = back, onConnect = toHome) }
-            composable(Routes.TRIP_LIVE) { TripScreen(onBack = back, onConnect = toHome, onHistory = { nav.navigate(Routes.TRIPS) }) }
-            composable(Routes.LOGS) { LogsScreen(onBack = back) }
-            composable(Routes.TERMINAL) { TerminalScreen(onBack = back) }
-            composable(Routes.SETTINGS) { SettingsScreen(onBack = back) }
-            composable(Routes.HUD) { HudScreen(onBack = back) }
-            composable(Routes.LOOKUP) { DtcLookupScreen(onBack = back) }
-            composable(Routes.HISTORY) { HistoryScreen(onBack = back) }
-            composable(Routes.ABOUT) { AboutScreen(onBack = back) }
-            composable(Routes.GARAGE) { com.openobd.ui.screens.GarageScreen(onBack = back, onNavigate = { nav.navigate(it) }) }
-            composable(Routes.FINDCAR) { e -> com.openobd.ui.screens.FindCarScreen(e.arguments?.getString("id").orEmpty(), onBack = back) }
-            composable(Routes.MAINTENANCE) { com.openobd.ui.screens.MaintenanceScreen(onBack = back) }
-            composable(Routes.FUEL) { com.openobd.ui.screens.FuelLogScreen(onBack = back) }
-            composable(Routes.TRIPS) { com.openobd.ui.screens.TripsScreen(onBack = back, onOpen = { nav.navigate(Routes.trip(it)) }) }
-            composable(Routes.TRIP) { e -> com.openobd.ui.screens.TripDetailScreen(e.arguments?.getString("id").orEmpty(), onBack = back) }
-            composable(Routes.BRAND) { BrandScreen(onBack = back, onNavigate = { nav.navigate(it) }) }
-            composable(Routes.PIDS) { CustomPidsScreen(onBack = back) }
-            composable(Routes.MODULE) { e -> ModuleScreen(e.arguments?.getString("id").orEmpty(), onBack = back, onConnect = toHome) }
+                composable(Routes.CHECK) { com.openobd.ui.screens.VehicleCheckScreen(onBack = back, onConnect = toHome) }
+                composable(Routes.VEHICLE) { VehicleInfoScreen(onBack = back, onConnect = toHome) }
+                composable(Routes.FREEZE) { FreezeFrameScreen(onBack = back, onConnect = toHome) }
+                composable(Routes.TESTS) { MonitorTestsScreen(onBack = back, onConnect = toHome) }
+                composable(Routes.PERFORMANCE) { PerformanceScreen(onBack = back, onConnect = toHome) }
+                composable(Routes.TRIP_LIVE) { TripScreen(onBack = back, onConnect = toHome, onHistory = { nav.navigate(Routes.TRIPS) }) }
+                composable(Routes.LOGS) { LogsScreen(onBack = back, onOpen = { nav.navigate(Routes.log(it)) }) }
+                composable(Routes.LOG) { e -> com.openobd.ui.screens.LogViewerScreen(e.arguments?.getString("name").orEmpty(), onBack = back) }
+                composable(Routes.TERMINAL) { TerminalScreen(onBack = back) }
+                composable(Routes.SETTINGS) { SettingsScreen(onBack = back) }
+                composable(Routes.HUD) { HudScreen(onBack = back) }
+                composable(Routes.LOOKUP) { DtcLookupScreen(onBack = back) }
+                composable(Routes.HISTORY) { HistoryScreen(onBack = back) }
+                composable(Routes.ABOUT) { AboutScreen(onBack = back) }
+                composable(Routes.GARAGE) { com.openobd.ui.screens.GarageScreen(onBack = back, onNavigate = { nav.navigate(it) }) }
+                composable(Routes.FINDCAR) { e -> com.openobd.ui.screens.FindCarScreen(e.arguments?.getString("id").orEmpty(), onBack = back) }
+                composable(Routes.MAINTENANCE) { com.openobd.ui.screens.MaintenanceScreen(onBack = back) }
+                composable(Routes.FUEL) { com.openobd.ui.screens.FuelLogScreen(onBack = back) }
+                composable(Routes.TRIPS) { com.openobd.ui.screens.TripsScreen(onBack = back, onOpen = { nav.navigate(Routes.trip(it)) }) }
+                composable(Routes.TRIP) { e -> com.openobd.ui.screens.TripDetailScreen(e.arguments?.getString("id").orEmpty(), onBack = back) }
+                composable(Routes.BRAND) { BrandScreen(onBack = back, onNavigate = { nav.navigate(it) }) }
+                composable(Routes.PIDS) { CustomPidsScreen(onBack = back) }
+                composable(Routes.MODULE) { e -> ModuleScreen(e.arguments?.getString("id").orEmpty(), onBack = back, onConnect = toHome) }
+            }
         }
     }
 }

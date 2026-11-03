@@ -27,7 +27,7 @@ data class RegenStatus(
 class RegenMonitor(private val targetSeconds: Double = 20 * 60.0, private val toleranceSeconds: Double = 60.0) {
     companion object {
         /** Live data keys the monitor needs (only the supported ones are polled). */
-        val keys = listOf("0105", "010D", "010C", "017CI", "01781", "017AD")
+        val keys = listOf("0105", "010D", "010C", "017C_I", "0178_1", "017A_D")
     }
 
     private var lastTime: Long? = null
@@ -48,11 +48,11 @@ class RegenMonitor(private val targetSeconds: Double = 20 * 60.0, private val to
             outOfConditions += dt
             if (outOfConditions > toleranceSeconds) inConditions = 0.0
         }
-        val temp = v["017CI"] ?: v["01781"]
+        val temp = v["017C_I"] ?: v["0178_1"]
         if (temp != null) {
             if (!active && temp > 450) { active = true; regens++ }
             else if (active && temp < 380) active = false
         }
-        return RegenStatus(coolantOk, speedOk, rpmOk, inConditions, targetSeconds, temp?.let { active }, temp, v["017AD"], regens)
+        return RegenStatus(coolantOk, speedOk, rpmOk, inConditions, targetSeconds, temp?.let { active }, temp, v["017A_D"], regens)
     }
 }
