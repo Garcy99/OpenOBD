@@ -1,0 +1,5 @@
+• Garaje: varios vehículos, recordatorios de mantenimiento, registro de combustible e historial de viajes con mapa GPS
+• Imagen congelada, contadores y consejos de reparación de los módulos
+• Widget para la pantalla de inicio
+• Modo rápido OBDLink/STN y prueba de velocidad
+• Traducción al español

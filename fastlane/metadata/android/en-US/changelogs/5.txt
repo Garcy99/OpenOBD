@@ -1,0 +1,5 @@
+• Garage: several cars, maintenance reminders, fuel log, trip history with GPS map
+• Module freeze frames, counters and repair hints
+• Home-screen widget
+• OBDLink/STN fast mode and speed test
+• Spanish translation

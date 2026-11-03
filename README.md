@@ -31,12 +31,19 @@ with no ads, subscriptions or paywalls.
 - **Adapter check**: tests which commands your adapter really supports (many "v1.4/v1.5" adapters are clones), and the app falls back
   automatically (e.g. CAN filter/mask when `ATCRA` is missing)
 - **Discover modules**: probes every diagnostic CAN address, so it finds the modules on any brand
+- Module **freeze frames and counters**, plus "what to check" hints based on the failure type
 - UDS codes with **failure type** ("C0035-31: left front wheel speed sensor, no signal") and status (active, confirmed, pending, warning lamp)
 - **Module identification**: part number, software and hardware versions, serial and VIN, plus a raw data-identifier reader
 - **Manufacturer-specific code descriptions** for Ford, Toyota, Honda, Nissan, GM, Chrysler and Hyundai/Kia
 - **Custom / brand PIDs** with a full equation engine and **Torque CSV import/export**, so community PID packs (EV battery health,
   transmission temperature, DPF soot …) show up in live data, gauges, charts and logs
 - Read-only by design: no coding or adaptations, which could disable a module. Code clearing is the only write
+
+**Garage and ownership**
+- Several cars, picked automatically by VIN, each with its own brand settings, custom PIDs, modules and history
+- Maintenance reminders by distance and time, a fuel log with real full-to-full consumption and costs
+- Trip history saved automatically, with a GPS track on an OpenStreetMap map
+- Home-screen widget: codes, next service and last trip
 
 **Live data**
 - The **full SAE J1979 service 01 PID table** (0x01–0xA6+), 217 sensors including diesel (DPF, boost, EGT, NOx, DEF), hybrid and wide-band O2
@@ -52,8 +59,11 @@ with no ads, subscriptions or paywalls.
 - Automatic protocol detection: CAN 11/29-bit at 250/500k, KWP2000, ISO 9141-2, J1850 PWM/VPW
 - **Multi-PID requests** on CAN and response-count hints, so polling is several times faster than one-PID-at-a-time apps
 - Works around cheap clones: three RFCOMM connection strategies, BLE characteristic auto-discovery, spaces/headers handled either way
+- **OBDLink/STN fast mode** (verified per connection) and a built-in **speed test**
 - Raw **terminal** for AT/ST/OBD commands
 - **Demo mode** with a simulated car, so you can try every feature without an adapter
+
+**Languages**: English and Spanish (Settings → Language). Generic code descriptions are English.
 
 ## Build and install
 
@@ -67,8 +77,8 @@ Install `app/build/outputs/apk/debug/app-debug.apk` on your phone (`adb install`
 and allow installs from unknown sources). Every push also builds the APK on GitHub Actions, so you can
 download it from the run's artifacts.
 
-`./gradlew assembleRelease` produces a minified APK signed with the debug key. Set up your own
-signing config before publishing to Google Play.
+To sign with your own key, publish GitHub releases or submit to Google Play, see
+[docs/RELEASING.md](docs/RELEASING.md). Privacy policy: [docs/PRIVACY.md](docs/PRIVACY.md).
 
 ## Using it in the car
 

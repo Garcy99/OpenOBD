@@ -1,0 +1,32 @@
+OpenOBD turns your phone and an ELM327-compatible OBD-II adapter (Bluetooth, Bluetooth LE or Wi-Fi) into a complete car diagnostic tool. It's free and open source, with no ads, subscriptions or account.
+
+DIAGNOSTICS
+• Read confirmed, pending and permanent trouble codes from every ECU, and clear them (check engine light)
+• Offline database of 1,300+ generic codes, with causes, severity and repair tips for common ones
+• Freeze frame, emission readiness (smog check) and Mode 06 monitor tests, including misfire counts per cylinder
+• Vehicle information: VIN decoder, calibration IDs, CVN, ECU names
+
+BRAND FEATURES
+• Brand detected automatically from the VIN
+• Scan ABS, airbag, body, cluster, steering, climate and EV battery modules (UDS / KWP2000 on CAN)
+• Known module addresses for Ford/Lincoln, Mazda, VW/Audi/Škoda/SEAT, Hyundai/Kia, Toyota/Lexus, Nissan, Renault and GM, plus discovery for any brand
+• Module freeze frames, failure types and "what to check" hints
+• Support for HS/MS-CAN switch adapters (Ford/Mazda)
+• Custom PIDs with Torque CSV import
+
+LIVE DATA
+• Every standard OBD-II PID (200+ sensors), plus calculated fuel economy, boost, power and torque
+• Custom gauge dashboard, real-time charts, head-up display mode and alerts
+• CSV data logging in the background
+• Fast polling with multi-PID requests and OBDLink/STN fast mode
+
+GARAGE
+• Several cars, each with its own settings and history
+• Maintenance reminders by distance and time
+• Fuel log with real consumption and costs
+• Trip history with GPS map
+• Home-screen widget
+
+Try it without a car: Demo mode simulates a vehicle.
+
+OpenOBD only reads data and clears trouble codes; it never writes coding or adaptations. Don't use the app while driving. Some features depend on your adapter and vehicle.

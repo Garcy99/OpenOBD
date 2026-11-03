@@ -1,0 +1,32 @@
+OpenOBD convierte tu móvil y un adaptador OBD-II compatible con ELM327 (Bluetooth, Bluetooth LE o Wi-Fi) en una herramienta de diagnóstico completa. Es gratis y de código abierto, sin anuncios, suscripciones ni cuenta.
+
+DIAGNÓSTICO
+• Lee códigos de avería confirmados, pendientes y permanentes de todas las centralitas, y bórralos (testigo de avería del motor)
+• Base de datos sin conexión con más de 1300 códigos genéricos, con causas, gravedad y consejos para los más habituales
+• Imagen congelada, preparación de emisiones (ITV) y pruebas de monitores del modo 06, incluidos fallos de encendido por cilindro
+• Información del vehículo: decodificador de VIN, IDs de calibración, CVN, nombres de centralitas
+
+FUNCIONES DE MARCA
+• Marca detectada automáticamente a partir del VIN
+• Escanea módulos de ABS, airbag, carrocería, cuadro, dirección, climatización y batería de VE (UDS / KWP2000 sobre CAN)
+• Direcciones conocidas para Ford/Lincoln, Mazda, VW/Audi/Škoda/SEAT, Hyundai/Kia, Toyota/Lexus, Nissan, Renault y GM, y descubrimiento para cualquier marca
+• Imagen congelada de módulos, tipos de fallo y consejos de "qué revisar"
+• Compatible con adaptadores con conmutador HS/MS-CAN (Ford/Mazda)
+• PIDs personalizados con importación de CSV de Torque
+
+DATOS EN VIVO
+• Todos los PIDs OBD-II estándar (más de 200 sensores), además de consumo, presión del turbo, potencia y par calculados
+• Panel de indicadores personalizable, gráficas en tiempo real, modo HUD y alertas
+• Registro de datos en CSV en segundo plano
+• Lectura rápida con peticiones multi-PID y modo rápido OBDLink/STN
+
+GARAJE
+• Varios vehículos, cada uno con sus ajustes e historial
+• Recordatorios de mantenimiento por distancia y tiempo
+• Registro de combustible con consumo real y costes
+• Historial de viajes con mapa GPS
+• Widget para la pantalla de inicio
+
+Pruébala sin coche: el modo Demo simula un vehículo.
+
+OpenOBD solo lee datos y borra códigos de avería; nunca escribe codificaciones ni adaptaciones. No uses la app mientras conduces. Algunas funciones dependen de tu adaptador y de tu vehículo.

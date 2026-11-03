@@ -1,3 +1,5 @@
+import java.util.Properties
+
 plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.android)
@@ -13,9 +15,25 @@ android {
         applicationId = "com.openobd"
         minSdk = 26
         targetSdk = 35
-        versionCode = 1
-        versionName = "1.0.0"
+        versionCode = 5
+        versionName = "1.3.0"
         vectorDrawables { useSupportLibrary = true }
+    }
+
+    // Release signing: keystore.properties (local, git-ignored) or OPENOBD_* environment variables (CI).
+    // Without either, release builds fall back to the debug key so they still install for testing.
+    val keystoreProps = Properties().apply {
+        rootProject.file("keystore.properties").takeIf { it.exists() }?.inputStream()?.use { load(it) }
+    }
+    fun secret(prop: String, env: String): String? = keystoreProps.getProperty(prop) ?: System.getenv(env)
+    val releaseStoreFile = secret("storeFile", "OPENOBD_KEYSTORE_FILE")
+    signingConfigs {
+        if (releaseStoreFile != null) create("release") {
+            storeFile = rootProject.file(releaseStoreFile)
+            storePassword = secret("storePassword", "OPENOBD_KEYSTORE_PASSWORD")
+            keyAlias = secret("keyAlias", "OPENOBD_KEY_ALIAS")
+            keyPassword = secret("keyPassword", "OPENOBD_KEY_PASSWORD")
+        }
     }
 
     buildTypes {
@@ -23,9 +41,7 @@ android {
             isMinifyEnabled = true
             isShrinkResources = true
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
-            // Signed with the debug key so `assembleRelease` produces an installable APK out of the box.
-            // Replace with your own signing config before publishing to a store.
-            signingConfig = signingConfigs.getByName("debug")
+            signingConfig = signingConfigs.findByName("release") ?: signingConfigs.getByName("debug")
         }
     }
     compileOptions {

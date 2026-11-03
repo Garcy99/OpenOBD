@@ -12,3 +12,5 @@
 *.aab
 *.keystore
 *.jks
+keystore.properties
+*.keystore.b64
