@@ -60,6 +60,7 @@ android {
         unitTests.all { test ->
             test.systemProperty("screenshot.dir", layout.buildDirectory.dir("screenshots").get().asFile.absolutePath)
             // Optional Maven mirror for Robolectric's Android runtime jars: -ProbolectricRepo=https://...
+            providers.gradleProperty("liveSpecs").orNull?.let { test.systemProperty("liveSpecs", it) }
             providers.gradleProperty("robolectricRepo").orNull?.let { test.systemProperty("robolectric.dependency.repo.url", it) }
             test.maxHeapSize = "3g"
         }
