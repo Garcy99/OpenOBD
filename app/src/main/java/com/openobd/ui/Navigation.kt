@@ -86,6 +86,9 @@ object Routes {
     const val PIDS = "pids"
     const val CHECK = "check"
     const val HEALTH = "health"
+    const val DIESEL = "diesel"
+    const val GUIDES = "guides"
+    const val EXPLORER = "explorer"
     const val CODE = "code/{code}"
     fun code(c: String) = "code/$c"
     const val ASSISTANT = "assistant/{code}"
@@ -158,6 +161,9 @@ fun OpenObdNavHost() {
             composable(Routes.ASSISTANT) { e ->
                 com.openobd.ui.screens.AssistantScreen(e.arguments?.getString("code").orEmpty(), onBack = back, onSettings = { nav.navigate(Routes.SETTINGS) })
             }
+            composable(Routes.DIESEL) { com.openobd.ui.screens.DieselScreen(onBack = back, onConnect = toHome, onGuides = { nav.navigate(Routes.GUIDES) }) }
+            composable(Routes.GUIDES) { com.openobd.ui.screens.ServiceGuidesScreen(onBack = back, onDieselHelper = { nav.navigate(Routes.DIESEL) }) }
+            composable(Routes.EXPLORER) { com.openobd.ui.screens.IdExplorerScreen(onBack = back, onConnect = toHome) }
             composable(Routes.HEALTH) { com.openobd.ui.screens.HealthScreen(onBack = back) }
             composable(Routes.CHECK) { com.openobd.ui.screens.VehicleCheckScreen(onBack = back, onConnect = toHome) }
             composable(Routes.VEHICLE) { VehicleInfoScreen(onBack = back, onConnect = toHome) }

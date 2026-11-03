@@ -77,6 +77,7 @@ class TranslationCoverageTest {
         keys += listOf("Scanning control modules", "Reading VIN from modules")
         keys += com.openobd.core.diagnosis.Diagnosis.texts
         keys += com.openobd.core.health.HealthTrends.texts
+        keys += com.openobd.core.service.Procedures.texts
         com.openobd.core.health.HealthMetric.entries.forEach { keys += it.label }
         com.openobd.core.diagnosis.DriveAdvice.entries.forEach { keys += it.label }
         keys += listOf("The Claude API key was rejected. Check it in Settings.", "This API key is not allowed to use the model.",

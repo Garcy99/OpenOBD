@@ -316,7 +316,11 @@ class DemoTransport(
             0x3E -> usdt(0x7E)
             0x04 -> { m.dtcs.clear(); usdt(0x44) }
             0x22 -> usdt(0x7F, 0x22, 0x11)
-            0x1A -> if (b.getOrNull(1) == 0x90) usdt(0x5A, 0x90, *(m.vin ?: vin).map { it.code }.toIntArray()) else usdt(0x7F, 0x1A, 0x31)
+            0x1A -> when (b.getOrNull(1)) {
+                0x90 -> usdt(0x5A, 0x90, *(m.vin ?: vin).map { it.code }.toIntArray())
+                0xC1 -> usdt(0x5A, 0xC1, *m.partNumber.map { it.code }.toIntArray())
+                else -> usdt(0x7F, 0x1A, 0x31)
+            }
             0xA9 -> {
                 val uudt = m.rx - 0x100
                 if (!accepts(uudt)) return listOf("NO DATA")
@@ -375,6 +379,11 @@ class DemoTransport(
                     0xF195 -> ascii("SW 2.4.1")
                     0xF197 -> ascii(m.name)
                     0xF18C -> ascii("SN%06d".format(tx * 37))
+                    // Demo-only value that changes over time, for the identifier explorer.
+                    0x0D10 -> if (tx == 0x7E0) {
+                        val raw = (120 + t() * 2).roundToInt().coerceIn(0, 65535)
+                        listOf(0x62, 0x0D, 0x10, raw shr 8, raw and 0xFF)
+                    } else neg(0x31)
                     0x1E1C -> if (tx in 0x7E0..0x7E1) {
                         val raw = ((62 + noise(1.5) + t() / 30.0) * 16).roundToInt().coerceIn(0, 65535)
                         listOf(0x62, 0x1E, 0x1C, raw shr 8, raw and 0xFF)

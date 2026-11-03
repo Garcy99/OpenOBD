@@ -383,6 +383,41 @@ class ModuleClient(private val elm: Elm327) {
         null
     }
 
+    /**
+     * Finds which data identifiers a module answers in [ids]: UDS \$22 (2-byte ids) or, with [gmlanIds],
+     * GMLAN \$1A (1-byte ids). Absent ids cost one short timeout each, so ranges should stay small (~256).
+     */
+    suspend fun scanIds(
+        m: EcuModule, ids: IntRange, gmlanIds: Boolean = false,
+        progress: (Int, Int) -> Unit = { _, _ -> },
+    ): Map<Int, IntArray> = withModule(m) {
+        at("ATST19")
+        val out = linkedMapOf<Int, IntArray>()
+        val total = ids.count()
+        ids.forEachIndexed { i, id ->
+            if (i % 8 == 0) progress(i, total)
+            readIdLocked(id, gmlanIds, 1500)?.let { out[id] = it }
+        }
+        progress(total, total)
+        out
+    }
+
+    /** Reads several identifiers in one module session (for watching values change while driving). */
+    suspend fun readIds(m: EcuModule, ids: Collection<Int>, gmlanIds: Boolean = false): Map<Int, IntArray> = withModule(m) {
+        ids.mapNotNull { id -> readIdLocked(id, gmlanIds, 2000)?.let { id to it } }.toMap()
+    }
+
+    private suspend fun Elm327.Locked.readIdLocked(id: Int, gmlanIds: Boolean, timeout: Long): IntArray? {
+        return if (gmlanIds) {
+            positive(request("1A%02X".format(id and 0xFF), timeout), 0x1A)?.takeIf { it.data.getOrNull(1) == (id and 0xFF) }
+                ?.let { it.data.copyOfRange(2, it.data.size) }
+        } else {
+            positive(request("22%04X".format(id and 0xFFFF), timeout), 0x22)
+                ?.takeIf { it.data.size >= 3 && ((it.data[1] shl 8) or it.data[2]) == (id and 0xFFFF) }
+                ?.let { it.data.copyOfRange(3, it.data.size) }
+        }
+    }
+
     /** Reads any data identifier. Returns the raw bytes after the DID echo, or throws with the NRC text. */
     suspend fun readDid(m: EcuModule, did: Int): IntArray = withModule(m) {
         val msgs = request("22%04X".format(did), 4000)

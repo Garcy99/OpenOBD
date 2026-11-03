@@ -178,6 +178,7 @@ class ObdSession(
         location.speedProvider = { live.latestValue("010D") }
         live.addListener(demoGpsListener())
         live.addListener { values, _, now -> healthRecorder?.onCycle(values, now) }
+        live.addListener { values, _, now -> regenMonitor?.let { _regen.value = it.onCycle(values, now) } }
         scope.launch {
             var last: String? = null
             _state.collect { s ->
@@ -319,6 +320,47 @@ class ObdSession(
     }
 
     @Volatile private var healthRecorder: com.openobd.core.health.HealthRecorder? = null
+
+    // ------------------------------------------------------------------ diesel / DPF and service tools
+
+    @Volatile private var regenMonitor: com.openobd.core.diesel.RegenMonitor? = null
+    private val _regen = MutableStateFlow<com.openobd.core.diesel.RegenStatus?>(null)
+    val regen: StateFlow<com.openobd.core.diesel.RegenStatus?> = _regen
+
+    fun startRegenMonitor() {
+        if (regenMonitor == null) regenMonitor = com.openobd.core.diesel.RegenMonitor()
+        live.subscribe("regen", com.openobd.core.diesel.RegenMonitor.keys)
+    }
+
+    fun stopRegenMonitor() {
+        live.unsubscribe("regen")
+        regenMonitor = null
+        _regen.value = null
+    }
+
+    /** True when the active car runs on diesel (from its specs or the readiness monitors it reports). */
+    val isDiesel: Boolean
+        get() = garage.data.value.active?.specs?.fuel?.name?.contains("DIESEL") == true ||
+            (dtcScan.value as? Op.Done)?.value?.readiness?.isDiesel == true
+
+    /** Identifier explorer: which data identifiers [module] answers in [ids]. */
+    suspend fun scanIds(module: EcuModule, ids: IntRange, gmlanIds: Boolean, progress: (Int, Int) -> Unit): Map<Int, IntArray> =
+        moduleOp { it.scanIds(module, ids, gmlanIds, progress) }
+
+    suspend fun readIds(module: EcuModule, ids: Collection<Int>, gmlanIds: Boolean): Map<Int, IntArray> =
+        moduleOp { it.readIds(module, ids, gmlanIds) }
+
+    /** Saves an identifier found with the explorer as a custom PID of the active car. */
+    suspend fun saveIdAsCustomPid(module: EcuModule, id: Int, gmlanIds: Boolean, length: Int) {
+        val request = if (gmlanIds) "1A%02X".format(id) else "22%04X".format(id)
+        val pid = com.openobd.core.brand.CustomPid(
+            id = garage.newId(), name = "${module.shortName} " + (if (gmlanIds) "%02X".format(id) else "%04X".format(id)),
+            shortName = if (gmlanIds) "%02X".format(id) else "%04X".format(id), request = request,
+            equation = if (length >= 2) "(A*256)+B" else "A", min = 0.0, max = if (length >= 2) 65535.0 else 255.0,
+            header = "%03X".format(module.tx), receive = "%03X".format(module.rx),
+        )
+        garage.updateActive { it.copy(customPids = it.customPids + pid) }
+    }
 
     /** Long-term health of the active car, from one sample per drive. */
     fun healthReport(): com.openobd.core.health.HealthReport {

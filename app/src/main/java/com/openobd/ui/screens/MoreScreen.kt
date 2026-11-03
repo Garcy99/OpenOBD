@@ -10,6 +10,9 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Checklist
 import androidx.compose.material.icons.filled.FactCheck
 import androidx.compose.material.icons.filled.MonitorHeart
+import androidx.compose.material.icons.filled.LocalFireDepartment
+import androidx.compose.material.icons.filled.MenuBook
+import androidx.compose.material.icons.filled.TravelExplore
 import androidx.compose.material.icons.filled.DirectionsCar
 import androidx.compose.material.icons.filled.Flag
 import androidx.compose.material.icons.filled.Fullscreen
@@ -48,6 +51,9 @@ private val items = listOf(
     MenuItem(Routes.FUEL, "Fuel log", tr("Fill-ups, real consumption and costs"), Icons.Default.LocalGasStation),
     MenuItem(Routes.TRIPS, "Trip history", tr("Saved trips with GPS map, fuel and speed"), Icons.Default.Map),
     MenuItem(Routes.HEALTH, "Car health", tr("Battery, charging, fuel trims and warm-up over time, with early warnings"), Icons.Default.MonitorHeart),
+    MenuItem(Routes.DIESEL, "Diesel particulate filter", tr("Guided regeneration drive with live conditions and DPF values"), Icons.Default.LocalFireDepartment),
+    MenuItem(Routes.GUIDES, "Service guides", tr("Oil service reset, after a battery change, drive cycle for the ITV"), Icons.Default.MenuBook),
+    MenuItem(Routes.EXPLORER, "Identifier explorer", tr("Advanced: discover and watch manufacturer data identifiers"), Icons.Default.TravelExplore),
     MenuItem(Routes.CHECK, "Used car & pre-ITV check", tr("Hidden or recently cleared faults, VIN and odometer, readiness · PDF report"), Icons.Default.FactCheck),
     MenuItem(Routes.BRAND, "Brand features & modules", tr("ABS, airbag, body, EV battery modules · manufacturer codes · brand PIDs"), Icons.Default.Hub),
     MenuItem(Routes.READINESS, "Emission readiness (I/M)", tr("Smog check monitors, since clear and this drive cycle"), Icons.Default.Checklist),
