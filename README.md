@@ -128,6 +128,24 @@ app/src/main/java/com/openobd/
 - `BrandTest` covers VIN brand detection, catalog consistency, the equation engine and Torque CSV round-trips.
 - `DtcDatabaseTest` pins well-known code descriptions so a bad data import can't ship.
 - `UiSmokeTest` (Robolectric) drives the real app through every main screen in demo mode and saves screenshots to `app/build/screenshots`.
+- `LegacyProtocolTest` runs full sessions against simulated cars on every OBD-II protocol (29-bit CAN, J1850 PWM/VPW, ISO 9141-2, KWP2000) with their real framing, checksums and DTC/VIN formats.
+- `FaultInjectionTest` puts a hostile link between the app and the simulator (fragmented BLE notifications, noise, adapter errors, corrupted digits, lost prompts, late replies, link loss) and checks nothing crashes and every answer is exact again once the faults stop.
+- `ParserFuzzTest` throws random and half-valid data at every parser that reads car or user input.
+- `AdapterQuirksTest` reproduces behaviour found with the independent emulator below.
+
+Against the independent [ELM327-emulator](https://github.com/Ircama/ELM327-emulator) (also run in CI):
+
+```bash
+pip install ELM327-emulator
+elm -n 35000 -s car -d
+./gradlew testDebugUnitTest --tests '*ExternalEmulatorTest' -PelmEmulator=127.0.0.1:35000
+```
+
+On a real device or emulator (CI runs API 26, 30 and 34): `./gradlew connectedDebugAndroidTest`.
+A nightly workflow checks the live vehicle data services (`-PliveSpecs=true`) and the newest emulator release.
+
+In the app, *Settings > Demo simulator* makes demo mode imitate an older car or an unreliable adapter, and
+*Settings > Troubleshooting > Share debug report* exports the raw adapter traffic when something goes wrong with a real car.
 
 ## Disclaimer
 
