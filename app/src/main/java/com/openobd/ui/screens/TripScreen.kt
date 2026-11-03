@@ -9,6 +9,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.History
 import androidx.compose.material.icons.filled.RestartAlt
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -35,12 +36,13 @@ import com.openobd.ui.components.formatDuration
 import com.openobd.ui.connectedVehicle
 
 @Composable
-fun TripScreen(onBack: () -> Unit, onConnect: () -> Unit) {
+fun TripScreen(onBack: () -> Unit, onConnect: () -> Unit, onHistory: () -> Unit = {}) {
     val session = LocalApp.current.session
     val vehicle = connectedVehicle()
     val settings = appSettings()
     Column(Modifier.fillMaxSize()) {
         ScreenTopBar("Trip computer", onBack, actions = {
+            IconButton(onClick = onHistory) { Icon(Icons.Default.History, "Trip history") }
             IconButton(onClick = session.trip::reset) { Icon(Icons.Default.RestartAlt, "Reset trip") }
         })
         if (vehicle == null) { NotConnected(onConnect); return@Column }

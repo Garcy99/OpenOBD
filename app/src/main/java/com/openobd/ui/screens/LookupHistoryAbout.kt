@@ -91,7 +91,10 @@ fun DtcLookupScreen(onBack: () -> Unit) {
 fun HistoryScreen(onBack: () -> Unit) {
     val app = LocalApp.current
     val scope = rememberCoroutineScope()
-    val records by app.history.records.collectAsStateWithLifecycle()
+    val allRecords by app.history.records.collectAsStateWithLifecycle()
+    val garageData by app.garage.data.collectAsStateWithLifecycle()
+    val activeId = garageData.active?.id
+    val records = allRecords.filter { it.vehicleId == null || it.vehicleId == activeId }
     Column(Modifier.fillMaxSize()) {
         ScreenTopBar("Scan history", onBack, actions = {
             if (records.isNotEmpty()) IconButton(onClick = { scope.launch { app.history.clear() } }) { Icon(Icons.Default.DeleteSweep, "Clear history") }

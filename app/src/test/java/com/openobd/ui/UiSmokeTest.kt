@@ -89,6 +89,11 @@ class UiSmokeTest {
 
     private fun tour(theme: ThemeMode, suffix: String) {
         val c = app.container
+        // Pretend the user granted the runtime permissions requested on Connect.
+        org.robolectric.Shadows.shadowOf(app).grantPermissions(
+            android.Manifest.permission.ACCESS_FINE_LOCATION, android.Manifest.permission.ACCESS_COARSE_LOCATION,
+            android.Manifest.permission.POST_NOTIFICATIONS, android.Manifest.permission.BLUETOOTH_CONNECT, android.Manifest.permission.BLUETOOTH_SCAN,
+        )
         runBlocking { c.settings.update { it.copy(connectionType = ConnectionType.DEMO, theme = theme) } }
         waitFor { c.settings.settings.value.theme == theme }
         shot("01_home_disconnected_$suffix")
@@ -173,7 +178,7 @@ class UiSmokeTest {
         tap("Brand features & modules")
         shot("17_brand_$suffix")
         runBlocking {
-            c.settings.update {
+            c.garage.updateActive {
                 it.copy(brandId = "ford", customPids = listOf(com.openobd.core.brand.CustomPid("demo", "Transmission temperature", "TFT", "221E1C",
                     "((A*256)+B)/16", -40.0, 150.0, "°C", "7E1")))
             }
@@ -213,5 +218,30 @@ class UiSmokeTest {
 
         c.session.disconnect()
         waitFor { c.session.state.value is ConnectionState.Disconnected }
+
+        // The drive was saved as a trip (with a simulated GPS track in demo mode)
+        waitFor { c.garage.data.value.trips.isNotEmpty() }
+        val vid = c.garage.data.value.active!!.id
+        runBlocking {
+            c.garage.upsertMaintenance(com.openobd.core.garage.MaintenanceItem("m1", vid, "Engine oil & filter", 10_000, 12, lastKm = 120_000.0,
+                lastDate = System.currentTimeMillis() - 200L * 86_400_000))
+            c.garage.upsertMaintenance(com.openobd.core.garage.MaintenanceItem("m2", vid, "Brake fluid", null, 24, lastDate = System.currentTimeMillis() - 740L * 86_400_000))
+            c.garage.upsertFuel(com.openobd.core.garage.FuelEntry("f1", vid, System.currentTimeMillis() - 20L * 86_400_000, 128_100.0, 42.0, 67.2))
+            c.garage.upsertFuel(com.openobd.core.garage.FuelEntry("f2", vid, System.currentTimeMillis() - 8L * 86_400_000, 128_620.0, 36.4, 58.6))
+            c.garage.upsertFuel(com.openobd.core.garage.FuelEntry("f3", vid, System.currentTimeMillis() - 1L * 86_400_000, 129_100.0, 33.1, 52.0))
+        }
+        tab("Vehicle")
+        shot("23_home_garage_$suffix")
+        tap("Service")
+        shot("24_maintenance_$suffix")
+        rule.activityRule.scenario.onActivity { it.onBackPressedDispatcher.onBackPressed() }
+        tap("Fuel")
+        shot("25_fuel_$suffix")
+        rule.activityRule.scenario.onActivity { it.onBackPressedDispatcher.onBackPressed() }
+        tap("Trips")
+        shot("26_trips_$suffix")
+        rule.onAllNodes(hasText("km", substring = true) and hasClickAction())[0].performClick()
+        Thread.sleep(500)
+        shot("27_trip_detail_$suffix")
     }
 }

@@ -92,6 +92,7 @@ fun SettingsScreen(onBack: () -> Unit) {
                 NumberField("Engine displacement (L) - used when there is no MAF sensor", s.displacementL.toString()) { v ->
                     v.replace(',', '.').toFloatOrNull()?.let { d -> update { it.copy(displacementL = d) } }
                 }
+                SwitchRow("Record GPS track for trips (shown on a map)", s.tripGps) { v -> update { it.copy(tripGps = v) } }
                 NumberField("Fuel price per liter (trip cost)", s.fuelPricePerL.toString()) { v ->
                     v.replace(',', '.').toFloatOrNull()?.let { d -> update { it.copy(fuelPricePerL = d) } }
                 }

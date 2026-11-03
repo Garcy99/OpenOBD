@@ -3,6 +3,7 @@ package com.openobd
 import android.app.Application
 import android.content.Intent
 import com.openobd.core.dtc.DtcDatabase
+import com.openobd.data.GarageRepository
 import com.openobd.data.HistoryRepository
 import com.openobd.data.LogRepository
 import com.openobd.data.SettingsRepository
@@ -20,13 +21,14 @@ class AppContainer(app: Application) {
     val settings = SettingsRepository(app, scope)
     val history = HistoryRepository(app)
     val logs = LogRepository(app)
+    val garage = GarageRepository(app)
     val dtcDatabase: DtcDatabase by lazy {
         DtcDatabase(
             runCatching { app.assets.open("dtc/generic.tsv") }.getOrNull(),
             runCatching { app.assets.open("dtc/causes.tsv") }.getOrNull(),
         )
     }
-    val session by lazy { ObdSession(app, scope, settings, history, logs, dtcDatabase) }
+    val session by lazy { ObdSession(app, scope, settings, history, logs, dtcDatabase, garage) }
 }
 
 class OpenObdApp : Application() {
@@ -37,6 +39,7 @@ class OpenObdApp : Application() {
         super.onCreate()
         container = AppContainer(this)
         container.scope.launch {
+            container.garage.load(container.settings.readOnce())
             container.history.load()
             container.logs.refresh()
             container.dtcDatabase.size // warm up off the main thread

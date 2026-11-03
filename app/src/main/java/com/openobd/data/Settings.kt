@@ -15,6 +15,7 @@ import com.openobd.core.obd.UnitSystem
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.serialization.Serializable
@@ -71,6 +72,8 @@ data class AppSettings(
     val customModules: List<EcuModule> = emptyList(),
     /** Adapter has a manual HS-CAN / MS-CAN switch (common "ELM327 switch" adapters for Ford / Mazda). */
     val msCanSwitch: Boolean = false,
+    /** Record a GPS track for saved trips (needs location permission). */
+    val tripGps: Boolean = true,
 ) {
     companion object {
         val DEFAULT_DASHBOARD = listOf("010C", "010D", "0105", "0104", "0111", "CALC_FUEL", "0142", "CALC_BOOST")
@@ -105,6 +108,7 @@ class SettingsRepository(private val context: Context, scope: CoroutineScope) {
         val customPids = stringPreferencesKey("custom_pids")
         val customModules = stringPreferencesKey("custom_modules")
         val msCanSwitch = booleanPreferencesKey("ms_can_switch")
+        val tripGps = booleanPreferencesKey("trip_gps")
     }
 
     private val json = Json { ignoreUnknownKeys = true }
@@ -138,8 +142,12 @@ class SettingsRepository(private val context: Context, scope: CoroutineScope) {
             customPids = p[K.customPids]?.let { runCatching { json.decodeFromString<List<CustomPid>>(it) }.getOrNull() } ?: d.customPids,
             customModules = p[K.customModules]?.let { runCatching { json.decodeFromString<List<EcuModule>>(it) }.getOrNull() } ?: d.customModules,
             msCanSwitch = p[K.msCanSwitch] ?: d.msCanSwitch,
+            tripGps = p[K.tripGps] ?: d.tripGps,
         )
     }
+
+    /** Reads the stored settings once (used for one-time migrations before the state flow is warm). */
+    suspend fun readOnce(): AppSettings = read(context.dataStore.data.first())
 
     val settings: StateFlow<AppSettings> = context.dataStore.data.map(::read)
         .stateIn(scope, SharingStarted.Eagerly, AppSettings())
@@ -171,6 +179,7 @@ class SettingsRepository(private val context: Context, scope: CoroutineScope) {
             p[K.customPids] = json.encodeToString(s.customPids)
             p[K.customModules] = json.encodeToString(s.customModules)
             p[K.msCanSwitch] = s.msCanSwitch
+            p[K.tripGps] = s.tripGps
         }
     }
 }

@@ -68,6 +68,8 @@ fun BrandScreen(onBack: () -> Unit, onNavigate: (String) -> Unit) {
     val scope = rememberCoroutineScope()
     val vehicle = connectedVehicle()
     val settings = appSettings()
+    val garageData by app.garage.data.collectAsStateWithLifecycle()
+    val activeVehicle = garageData.active
     val brand by session.brand.collectAsStateWithLifecycle()
     val detected by session.brandAutoDetected.collectAsStateWithLifecycle()
     val scan by session.moduleScan.collectAsStateWithLifecycle()
@@ -82,6 +84,7 @@ fun BrandScreen(onBack: () -> Unit, onNavigate: (String) -> Unit) {
         ScreenTopBar("Brand features", onBack)
         Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
             SectionCard {
+                activeVehicle?.let { Text(it.name, style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.primary) }
                 Text(brand?.name ?: "No brand selected", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
                 Text(
                     when {
@@ -94,7 +97,7 @@ fun BrandScreen(onBack: () -> Unit, onNavigate: (String) -> Unit) {
                 Spacer(Modifier.height(10.dp))
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     FilledTonalButton(onClick = { picking = true }) { Text("Choose brand") }
-                    if (settings.brandId != null) OutlinedButton(onClick = { scope.launch { app.settings.update { it.copy(brandId = null) } } }) { Text("Auto-detect") }
+                    if (activeVehicle?.brandId != null) OutlinedButton(onClick = { scope.launch { app.garage.updateActive { it.copy(brandId = null) } } }) { Text("Auto-detect") }
                 }
                 Spacer(Modifier.height(10.dp))
                 Text(family.notes, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
@@ -155,13 +158,14 @@ fun BrandScreen(onBack: () -> Unit, onNavigate: (String) -> Unit) {
                             fontWeight = FontWeight.SemiBold, modifier = Modifier.padding(vertical = 6.dp))
                         d.value.forEach { m -> ModuleRow(m, null) { onNavigate(Routes.module(m.id)) } }
                         if (new.isNotEmpty()) TextButton(onClick = {
-                            scope.launch { app.settings.update { it.copy(customModules = (it.customModules + new).distinctBy { m -> m.id }) } }
+                            scope.launch { app.garage.updateActive { it.copy(customModules = (it.customModules + new).distinctBy { m -> m.id }) } }
                         }) { Text("Add ${new.size} new module(s) to my list") }
                     }
                     Op.Idle -> Unit
                 }
-                if (settings.customModules.isNotEmpty()) TextButton(onClick = { scope.launch { app.settings.update { it.copy(customModules = emptyList()) } } }) {
-                    Text("Forget ${settings.customModules.size} saved module(s)")
+                val saved = activeVehicle?.customModules.orEmpty()
+                if (saved.isNotEmpty()) TextButton(onClick = { scope.launch { app.garage.updateActive { it.copy(customModules = emptyList()) } } }) {
+                    Text("Forget ${saved.size} saved module(s)")
                 }
             }
 
@@ -173,7 +177,7 @@ fun BrandScreen(onBack: () -> Unit, onNavigate: (String) -> Unit) {
             }
 
             SectionCard(title = "Brand & custom PIDs") {
-                Text("${settings.customPids.size} custom PID(s). Add manufacturer data (transmission temperature, EV battery health, tire pressures, DPF soot …) " +
+                Text("${activeVehicle?.customPids.orEmpty().size} custom PID(s). Add manufacturer data (transmission temperature, EV battery health, tire pressures, DPF soot …) " +
                     "by hand or import Torque-format CSV packs shared by owner communities.",
                     style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 TextButton(onClick = { onNavigate(Routes.PIDS) }) { Text("Manage custom PIDs") }
@@ -189,7 +193,7 @@ fun BrandScreen(onBack: () -> Unit, onNavigate: (String) -> Unit) {
 
     if (picking) BrandPickerDialog(onDismiss = { picking = false }) { b ->
         picking = false
-        scope.launch { app.settings.update { it.copy(brandId = b.id) } }
+        scope.launch { app.garage.updateActive { it.copy(brandId = b.id) } }
     }
     if (showCodes) {
         AlertDialog(

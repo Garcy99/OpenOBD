@@ -68,7 +68,8 @@ fun CustomPidsScreen(onBack: () -> Unit) {
     val scope = rememberCoroutineScope()
     val settings = appSettings()
     val vehicle = connectedVehicle()
-    val pids = settings.customPids
+    val garageData by app.garage.data.collectAsStateWithLifecycle()
+    val pids = garageData.active?.customPids.orEmpty()
     var editing by remember { mutableStateOf<CustomPid?>(null) }
     var pasting by remember { mutableStateOf(false) }
     var importReport by remember { mutableStateOf<TorqueCsv.ImportResult?>(null) }
@@ -76,7 +77,7 @@ fun CustomPidsScreen(onBack: () -> Unit) {
     fun import(text: String) {
         val r = TorqueCsv.parse(text)
         importReport = r
-        if (r.pids.isNotEmpty()) scope.launch { app.settings.update { it.copy(customPids = it.customPids + r.pids) } }
+        if (r.pids.isNotEmpty()) scope.launch { app.garage.updateActive { it.copy(customPids = it.customPids + r.pids) } }
     }
     val fileLauncher = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
         if (uri != null) runCatching {
@@ -123,7 +124,7 @@ fun CustomPidsScreen(onBack: () -> Unit) {
                 }
             }
             item {
-                TextButton(onClick = { scope.launch { app.settings.update { it.copy(customPids = emptyList()) } } }) {
+                TextButton(onClick = { scope.launch { app.garage.updateActive { it.copy(customPids = emptyList()) } } }) {
                     Text("Delete all custom PIDs", color = MaterialTheme.colorScheme.error)
                 }
             }
@@ -134,9 +135,9 @@ fun CustomPidsScreen(onBack: () -> Unit) {
         PidEditor(p, isNew = pids.none { it.id == p.id }, onDismiss = { editing = null },
             onSave = { saved ->
                 editing = null
-                scope.launch { app.settings.update { s -> s.copy(customPids = if (s.customPids.any { it.id == saved.id }) s.customPids.map { if (it.id == saved.id) saved else it } else s.customPids + saved) } }
+                scope.launch { app.garage.updateActive { s -> s.copy(customPids = if (s.customPids.any { it.id == saved.id }) s.customPids.map { if (it.id == saved.id) saved else it } else s.customPids + saved) } }
             },
-            onDelete = { editing = null; scope.launch { app.settings.update { s -> s.copy(customPids = s.customPids.filter { it.id != p.id }) } } })
+            onDelete = { editing = null; scope.launch { app.garage.updateActive { s -> s.copy(customPids = s.customPids.filter { it.id != p.id }) } } })
     }
     if (pasting) {
         var text by remember { mutableStateOf("") }

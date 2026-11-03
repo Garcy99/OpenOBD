@@ -21,6 +21,7 @@ data class ScanRecord(
     val codes: List<StoredDtc>,
     val cleared: Boolean = false,
     val note: String? = null,
+    val vehicleId: String? = null,
 )
 
 /** Keeps a local history of DTC scans and clears, so you can see when codes came back. */

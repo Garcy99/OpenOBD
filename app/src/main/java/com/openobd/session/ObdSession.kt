@@ -99,7 +99,11 @@ class ObdSession(
     val history: HistoryRepository,
     val logs: LogRepository,
     val dtcDatabase: DtcDatabase,
+    val garage: com.openobd.data.GarageRepository,
 ) {
+    private val location = LocationTracker(context)
+    @Volatile private var tripActive = false
+    @Volatile private var tripStart = 0L
     private val _state = MutableStateFlow<ConnectionState>(ConnectionState.Disconnected)
     val state: StateFlow<ConnectionState> = _state
 
@@ -156,10 +160,17 @@ class ObdSession(
             settingsRepo.settings.collectLatest { s ->
                 live.params = fuelParams(s, vehicle)
                 updateAlertSubscriptions(s)
-                CustomSensors.update(s.customPids)
                 updateBrand()
             }
         }
+        scope.launch {
+            garage.data.collect { g ->
+                CustomSensors.update(g.active?.customPids.orEmpty())
+                updateBrand()
+            }
+        }
+        location.speedProvider = { live.latestValue("010D") }
+        live.addListener(demoGpsListener())
     }
 
     // ------------------------------------------------------------------ connection
@@ -208,6 +219,8 @@ class ObdSession(
         val vin = runCatching { c.readVin() }.getOrNull()
         val voltage = e.readVoltage()
         val snapshot = VehicleSnapshot(t.description, info, supported, c.ecus, vin, voltage, t is DemoTransport)
+        selectVehicleFor(vin)
+        if (0xA6 in supported) readOdometer(c)
         _state.value = ConnectionState.Connected(snapshot)
         updateBrand()
         live.params = fuelParams(s, snapshot)
@@ -215,6 +228,9 @@ class ObdSession(
         live.subscribe("trip", listOf("010D", "010C", "CALC_FUEL"))
         updateAlertSubscriptions(s)
         trip.reset()
+        tripStart = System.currentTimeMillis()
+        tripActive = true
+        if (s.tripGps && t !is DemoTransport) location.start()
         startVoltageMonitor()
         // Pre-load monitor status for the home screen
         scope.launch { runCatching { scanDtcsInternal(record = false) } }
@@ -260,6 +276,7 @@ class ObdSession(
     }
 
     private suspend fun cleanup() {
+        finishTrip()
         live.stop()
         voltageJob?.cancel()
         if (logs.isRecording) stopRecording()
@@ -312,7 +329,7 @@ class ObdSession(
             val scan = DtcScan(results.values.flatMap { it.codes }, results.mapNotNull { (k, v) -> v.error?.let { k to it } }.toMap(), readinessStatus)
             dtcScan.value = Op.Done(scan)
             if (record) {
-                history.add(ScanRecord(System.currentTimeMillis(), vehicle?.vin, readinessStatus?.milOn ?: false,
+                history.add(ScanRecord(System.currentTimeMillis(), vehicle?.vin, readinessStatus?.milOn ?: false, vehicleId = garage.data.value.active?.id, codes =
                     scan.codes.map { StoredDtc(it.code, it.type.name, it.ecu, describe(it.code).description) }))
             }
             return scan
@@ -333,7 +350,7 @@ class ObdSession(
     fun clearDtcs() = runOp(clearResult, "Clearing trouble codes") { c ->
         val r = c.clearDtcs()
         if (!r.success) throw IllegalStateException(r.message)
-        history.add(ScanRecord(System.currentTimeMillis(), vehicle?.vin, false, emptyList(), cleared = true, note = r.message))
+        history.add(ScanRecord(System.currentTimeMillis(), vehicle?.vin, false, emptyList(), cleared = true, note = r.message, vehicleId = garage.data.value.active?.id))
         delay(1500) // let ECUs settle before re-reading
         scope.launch { runCatching { scanDtcsInternal(record = false) } }
         r.message
@@ -368,8 +385,68 @@ class ObdSession(
 
     // ------------------------------------------------------------------ brand features
 
+    // ------------------------------------------------------------------ garage / trips
+
+    private suspend fun selectVehicleFor(vin: String?) {
+        if (!garage.loaded) garage.load(settingsRepo.readOnce())
+        val info = vin?.let { com.openobd.core.obd.VinDecoder.decode(it) }
+        val brandName = Brands.detect(vin)?.name ?: info?.manufacturer
+        val name = listOfNotNull(info?.modelYear?.toString(), brandName).joinToString(" ").ifBlank { "Car ${garage.data.value.vehicles.size + 1}" }
+        garage.update { it.forConnection(vin, name, garage.newId(), System.currentTimeMillis()) }
+    }
+
+    private suspend fun readOdometer(c: ObdClient) {
+        val bytes = runCatching { c.readPids(listOf(0xA6))[0xA6] }.getOrNull() ?: return
+        val km = Pids.sensors["01A6"]?.decodeSafe(bytes) ?: return
+        if (km > 0) garage.updateActive { it.copy(odometerKm = km, odometerUpdatedAt = System.currentTimeMillis(), odometerFromCar = true) }
+    }
+
+    private suspend fun finishTrip() {
+        if (!tripActive) return
+        tripActive = false
+        location.stop()
+        val st = trip.stats.value
+        val track = location.takePoints()
+        val vehicle = garage.data.value.active ?: return
+        if (st.distanceKm < 0.2 && st.movingS < 60) return
+        client?.takeIf { 0xA6 in (this.vehicle?.supportedPids ?: emptySet()) }?.let { runCatching { readOdometer(it) } }
+        val price = settingsRepo.settings.value.fuelPricePerL
+        val fuel = if (st.hasFuelData) st.fuelL else null
+        garage.saveTrip(
+            com.openobd.core.garage.TripRecord(
+                id = garage.newId(), vehicleId = vehicle.id, start = tripStart, end = System.currentTimeMillis(),
+                distanceKm = st.distanceKm, fuelL = fuel, maxSpeed = st.maxSpeed, avgSpeed = st.avgSpeed, movingS = st.movingS,
+                idleS = st.idleS, maxRpm = st.maxRpm, cost = fuel?.let { f -> if (price > 0) f * price else null }, trackPoints = track.size,
+            ),
+            track,
+        )
+        // Without an odometer PID, keep the vehicle's odometer roughly current from trip distance.
+        val v = garage.data.value.active
+        if (v != null && !v.odometerFromCar && v.odometerKm != null) garage.updateVehicle(v.id) { it.copy(odometerKm = it.odometerKm!! + st.distanceKm, odometerUpdatedAt = System.currentTimeMillis()) }
+    }
+
+    /** Demo mode has no real GPS; drive a gentle loop so the trip map can be tried. */
+    private fun demoGpsListener(): CycleListener {
+        var lat = 40.4168; var lon = -3.7038; var heading = 0.0; var last = 0L
+        return CycleListener { values, _, now ->
+            if (vehicle?.isDemo != true || !tripActive) { last = 0L; return@CycleListener }
+            val speed = values["010D"] ?: return@CycleListener
+            if (last != 0L) {
+                val dt = (now - last) / 1000.0
+                val d = speed / 3.6 * dt
+                heading += 0.004 * d
+                lat += d * Math.cos(heading) / 111_320.0
+                lon += d * Math.sin(heading) / (111_320.0 * Math.cos(Math.toRadians(lat)))
+            }
+            if (now - last >= 2000 || last == 0L) {
+                location.addSynthetic(com.openobd.core.garage.TrackPoint(now, lat, lon, speed.toFloat()))
+            }
+            last = now
+        }
+    }
+
     private fun updateBrand() {
-        val chosen = settingsRepo.settings.value.brandId?.let { Brands.byId[it] }
+        val chosen = garage.data.value.active?.brandId?.let { Brands.byId[it] }
         val detected = Brands.detect(vehicle?.vin)
         _brand.value = chosen ?: detected
         _brandDetected.value = chosen == null && detected != null
@@ -378,7 +455,7 @@ class ObdSession(
     /** Modules to scan for the current brand: the family's known modules plus saved / discovered ones. */
     fun modulesForBrand(): List<EcuModule> {
         val family = (brand.value?.family ?: com.openobd.core.brand.Families.GENERIC)
-        val saved = settingsRepo.settings.value.customModules
+        val saved = garage.data.value.active?.customModules.orEmpty()
         return (family.modules + saved).distinctBy { it.id }
     }
 
@@ -424,7 +501,7 @@ class ObdSession(
                 moduleScan.value = Op.Done(results)
                 val codes = results.flatMap { r -> r.dtcs.map { StoredDtc(it.fullCode, "MODULE", r.module.shortName, describe(it.code).description) } }
                 history.add(ScanRecord(System.currentTimeMillis(), vehicle?.vin, false, codes,
-                    note = "Module scan: ${results.count { it.online }} of ${results.size} modules answered"))
+                    note = "Module scan: ${results.count { it.online }} of ${results.size} modules answered", vehicleId = garage.data.value.active?.id))
             } catch (e: Exception) {
                 moduleScan.value = Op.Error(e.message ?: "Scan failed")
             }
@@ -436,7 +513,7 @@ class ObdSession(
     }
 
     suspend fun clearModule(m: EcuModule): ClearOutcome = moduleOp { it.clear(m) }.also { r ->
-        if (r.success) history.add(ScanRecord(System.currentTimeMillis(), vehicle?.vin, false, emptyList(), cleared = true, note = "${m.name}: ${r.message}"))
+        if (r.success) history.add(ScanRecord(System.currentTimeMillis(), vehicle?.vin, false, emptyList(), cleared = true, note = "${m.name}: ${r.message}", vehicleId = garage.data.value.active?.id))
     }
 
     suspend fun dtcDetails(m: EcuModule, dtc: com.openobd.core.brand.ModuleDtc): com.openobd.core.brand.DtcDetails = moduleOp { it.readDtcDetails(m, dtc) }

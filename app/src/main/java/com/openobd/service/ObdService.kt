@@ -40,7 +40,14 @@ class ObdService : LifecycleService() {
         try {
             ServiceCompat.startForeground(
                 this, NOTIFICATION_ID, build("Connected"),
-                if (Build.VERSION.SDK_INT >= 29) ServiceInfo.FOREGROUND_SERVICE_TYPE_CONNECTED_DEVICE else 0,
+                if (Build.VERSION.SDK_INT >= 29) {
+                    var type = ServiceInfo.FOREGROUND_SERVICE_TYPE_CONNECTED_DEVICE
+                    val gps = (application as OpenObdApp).container.settings.settings.value.tripGps
+                    if (gps && checkSelfPermission(android.Manifest.permission.ACCESS_FINE_LOCATION) == android.content.pm.PackageManager.PERMISSION_GRANTED) {
+                        type = type or ServiceInfo.FOREGROUND_SERVICE_TYPE_LOCATION
+                    }
+                    type
+                } else 0,
             )
         } catch (e: Exception) {
             stopSelf()

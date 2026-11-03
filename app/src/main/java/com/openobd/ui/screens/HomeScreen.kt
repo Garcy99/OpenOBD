@@ -99,23 +99,25 @@ fun HomeScreen(onNavigate: (String) -> Unit, onTab: (String) -> Unit) {
     var showPicker by remember { mutableStateOf(false) }
     var pendingConnect by remember { mutableStateOf(false) }
 
-    val notifLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) { }
+    val needsBt = settings.connectionType == ConnectionType.BLUETOOTH || settings.connectionType == ConnectionType.BLE
     val btLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) { result ->
-        if (result.values.all { it }) {
+        val btOk = Permissions.bluetooth().all { result[it] ?: Permissions.granted(context, arrayOf(it)) }
+        if (btOk || (pendingConnect && !needsBt)) {
             if (pendingConnect) session.connect() else showPicker = true
         } else {
             Toast.makeText(context, "Bluetooth permission is required to talk to the adapter", Toast.LENGTH_LONG).show()
         }
         pendingConnect = false
     }
-    val needsBt = settings.connectionType == ConnectionType.BLUETOOTH || settings.connectionType == ConnectionType.BLE
 
     fun connect() {
-        val notif = Permissions.notifications()
-        if (notif.isNotEmpty() && !Permissions.granted(context, notif)) notifLauncher.launch(notif)
-        if (needsBt && !Permissions.granted(context, Permissions.bluetooth())) {
+        // Ask for everything in one dialog sequence: Bluetooth (if needed), notifications, location for trip tracks.
+        val wanted = (if (needsBt) Permissions.bluetooth().toList() else emptyList()) + Permissions.notifications() +
+            (if (settings.tripGps) Permissions.location().toList() else emptyList())
+        val missing = wanted.filter { !Permissions.granted(context, arrayOf(it)) }
+        if (missing.isNotEmpty()) {
             pendingConnect = true
-            btLauncher.launch(Permissions.bluetooth())
+            btLauncher.launch(missing.toTypedArray())
         } else session.connect()
     }
 
@@ -144,6 +146,7 @@ fun HomeScreen(onNavigate: (String) -> Unit, onTab: (String) -> Unit) {
                 onConnect = ::connect,
                 onDisconnect = session::disconnect,
             )
+            MyCarCard(onNavigate)
             when (val s = state) {
                 is ConnectionState.Connected -> {
                     VehicleCard(s)
@@ -367,7 +370,7 @@ private fun QuickActions(onNavigate: (String) -> Unit, onTab: (String) -> Unit) 
     val actions = listOf(
         A("Dashboard", Icons.Default.Speed) { onTab(Routes.DASHBOARD) },
         A("Live data", Icons.Default.ShowChart) { onTab(Routes.LIVE) },
-        A("Trip", Icons.Default.Route) { onNavigate(Routes.TRIP) },
+        A("Trip", Icons.Default.Route) { onNavigate(Routes.TRIP_LIVE) },
         A("0-100 timer", Icons.Default.Timer) { onNavigate(Routes.PERFORMANCE) },
         A("Vehicle info", Icons.Default.DirectionsCar) { onNavigate(Routes.VEHICLE) },
         A("Freeze frame", Icons.Default.Flag) { onNavigate(Routes.FREEZE) },
