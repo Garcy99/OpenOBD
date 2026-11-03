@@ -51,14 +51,35 @@ class DemoSessionTest {
 
     private fun waitFor(what: String, timeoutMs: Long = 60_000, condition: () -> Boolean) {
         try {
-            compose.waitUntil(timeoutMs) { condition() }
+            retrying { compose.waitUntil(timeoutMs) { condition() } }
         } catch (e: Throwable) {
             throw AssertionError("Timed out waiting for $what (state ${c.session.state.value})\n" + c.diagnostics.log.format().takeLast(4000), e)
         }
-        compose.waitForIdle()
+        retrying { compose.waitForIdle() }
     }
 
-    private fun tap(text: String) {
+    /**
+     * Espresso's idle check can collide with a frame that is still being laid out while live data keeps
+     * redrawing the screen ("performMeasureAndLayout called during measure layout"). That is a test
+     * framework race, not an app failure, so the interaction is simply repeated.
+     */
+    private fun <T> retrying(block: () -> T): T {
+        var last: Throwable? = null
+        repeat(4) {
+            try {
+                return block()
+            } catch (e: RuntimeException) {
+                if (generateSequence<Throwable>(e) { it.cause }.none { it.message?.contains("performMeasureAndLayout") == true }) throw e
+                last = e
+                Thread.sleep(300)
+            }
+        }
+        throw last!!
+    }
+
+    private fun tap(text: String) = retrying { tapOnce(text) }
+
+    private fun tapOnce(text: String) {
         if (compose.onAllNodesWithText(text).fetchSemanticsNodes().isEmpty()) {
             compose.onAllNodes(hasScrollAction()).fetchSemanticsNodes().indices.forEach { i ->
                 runCatching { compose.onAllNodes(hasScrollAction())[i].performScrollToNode(hasText(text)) }
@@ -70,12 +91,12 @@ class DemoSessionTest {
         compose.waitForIdle()
     }
 
-    private fun tab(text: String) {
+    private fun tab(text: String) = retrying {
         compose.onAllNodes(hasText(text) and isSelectable())[0].performClick()
         compose.waitForIdle()
     }
 
-    private fun visible(text: String) = compose.onAllNodesWithText(text).fetchSemanticsNodes().isNotEmpty()
+    private fun visible(text: String) = retrying { compose.onAllNodesWithText(text).fetchSemanticsNodes().isNotEmpty() }
 
     private fun configure(protocol: ObdProtocol = ObdProtocol.ISO_15765_4_CAN_11_500, language: String = "en") = runBlocking {
         c.settings.update {
