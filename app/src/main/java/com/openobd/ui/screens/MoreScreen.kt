@@ -10,6 +10,8 @@ import androidx.compose.material.icons.filled.DirectionsCar
 import androidx.compose.material.icons.filled.Flag
 import androidx.compose.material.icons.filled.Fullscreen
 import androidx.compose.material.icons.filled.History
+import androidx.compose.material.icons.filled.Hub
+import androidx.compose.material.icons.filled.Tune
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.ManageSearch
 import androidx.compose.material.icons.filled.Route
@@ -33,6 +35,7 @@ import com.openobd.ui.components.ScreenTopBar
 private data class MenuItem(val route: String, val title: String, val subtitle: String, val icon: ImageVector)
 
 private val items = listOf(
+    MenuItem(Routes.BRAND, "Brand features & modules", "ABS, airbag, body, EV battery modules · manufacturer codes · brand PIDs", Icons.Default.Hub),
     MenuItem(Routes.READINESS, "Emission readiness (I/M)", "Smog check monitors, since clear and this drive cycle", Icons.Default.Checklist),
     MenuItem(Routes.FREEZE, "Freeze frame", "Sensor snapshot captured when a fault was stored", Icons.Default.Flag),
     MenuItem(Routes.TESTS, "On-board monitor tests (Mode 06)", "Catalyst, O2 sensors, misfire counts per cylinder, EVAP", Icons.Default.Science),
@@ -42,6 +45,7 @@ private val items = listOf(
     MenuItem(Routes.HUD, "Head-up display", "Mirrored display for the windshield", Icons.Default.Fullscreen),
     MenuItem(Routes.LOGS, "Data logs", "Recorded CSV sessions, share or export", Icons.Default.Storage),
     MenuItem(Routes.HISTORY, "Scan history", "Every scan and clear, so you know when codes came back", Icons.Default.History),
+    MenuItem(Routes.PIDS, "Custom PIDs", "Add or import (Torque CSV) manufacturer-specific PIDs", Icons.Default.Tune),
     MenuItem(Routes.LOOKUP, "Trouble code lookup", "Offline database of 1300+ generic codes", Icons.Default.ManageSearch),
     MenuItem(Routes.TERMINAL, "Terminal", "Send raw AT / OBD commands to the adapter", Icons.Default.Terminal),
     MenuItem(Routes.SETTINGS, "Settings", "Units, adapter options, alerts, theme", Icons.Default.Settings),

@@ -29,6 +29,21 @@ class DemoTransport(
     private var spaces = true
     private var headers = false
     private var connectedToCar = false
+    private var header = "7DF"
+    private var receiveFilter: String? = null
+    private var canFilter: Int? = null
+    private var canMask: Int? = null
+
+    /** Simulated non-OBD control modules: request ID -> module. Mutable so tests can inspect / clear. */
+    class SimModule(val rx: Int, val name: String, val partNumber: String, val dtcs: MutableList<Triple<String, Int, Int>>)
+    val modules: Map<Int, SimModule> = mapOf(
+        0x7E0 to SimModule(0x7E8, "ECM", "OB-12A650-DEMO", mutableListOf()),
+        0x7E1 to SimModule(0x7E9, "TCM", "OB-7C150-DEMO", mutableListOf()),
+        0x760 to SimModule(0x768, "ABS", "OB-2C219-DEMO", mutableListOf(Triple("C0035", 0x31, 0x09))),
+        0x737 to SimModule(0x73F, "RCM", "OB-14B321-DEMO", mutableListOf(Triple("B0001", 0x13, 0x88))),
+        0x726 to SimModule(0x72E, "BCM", "OB-15604-DEMO", mutableListOf(Triple("U0155", 0x00, 0x28))),
+        0x720 to SimModule(0x728, "IPC", "OB-10849-DEMO", mutableListOf()),
+    )
 
     // Car state
     val stored = mutableListOf("P0301", "P0420")
@@ -86,7 +101,16 @@ class DemoTransport(
     }
 
     private fun handleAt(c: String): List<String> = when {
-        c == "Z" || c == "WS" -> { echo = true; spaces = true; headers = false; connectedToCar = false; listOf("", "ELM327 v1.5") }
+        c == "Z" || c == "WS" -> {
+            echo = true; spaces = true; headers = false; connectedToCar = false
+            header = "7DF"; receiveFilter = null; canFilter = null; canMask = null
+            listOf("", "ELM327 v1.5")
+        }
+        c.startsWith("SH") -> { header = c.substring(2); listOf("OK") }
+        c == "CRA" -> { receiveFilter = null; canFilter = null; canMask = null; listOf("OK") }
+        c.startsWith("CRA") -> { receiveFilter = c.substring(3); listOf("OK") }
+        c.startsWith("CF") -> { canFilter = c.substring(2).toIntOrNull(16); listOf("OK") }
+        c.startsWith("CM") -> { canMask = c.substring(2).toIntOrNull(16); listOf("OK") }
         c == "I" -> listOf("ELM327 v1.5")
         c == "@1" -> listOf("OpenOBD Demo Adapter")
         c == "RV" -> listOf("%.1fV".format(if (connectedToCar) 14.1 + random.nextDouble(-0.1, 0.1) else 12.6))
@@ -106,6 +130,23 @@ class DemoTransport(
         val bytes = hex.chunked(2).map { it.toInt(16) }
         val firstContact = !connectedToCar
         connectedToCar = true
+        if (header != "7DF") {
+            val tx = header.toIntOrNull(16) ?: return listOf("NO DATA")
+            val module = modules[tx] ?: return listOf("NO DATA")
+            val isObdService = bytes[0] in setOf(0x01, 0x02, 0x03, 0x04, 0x06, 0x07, 0x09, 0x0A)
+            val rxHex = "%03X".format(module.rx)
+            if (!accepts(module.rx)) return listOf("NO DATA")
+            if (isObdService && tx in 0x7E0..0x7E1) {
+                val saved = header
+                header = "7DF"
+                val all = handleObd(cmd)
+                header = saved
+                val mine = all.filter { it.startsWith(rxHex) || !headers }
+                return if (headers) mine.ifEmpty { listOf("NO DATA") } else all
+            }
+            val payload = moduleReply(tx, module, bytes) ?: return listOf("NO DATA")
+            return format(rxHex, payload)
+        }
         val replies = mutableListOf<Pair<String, List<Int>>>()
         val mode = bytes[0]
         when (mode) {
@@ -154,6 +195,51 @@ class DemoTransport(
         if (replies.isEmpty()) return listOf("NO DATA")
         val prefix = if (firstContact) listOf("SEARCHING...") else emptyList()
         return prefix + replies.flatMap { (ecu, payload) -> format(ecu, payload) }
+    }
+
+    private fun accepts(rx: Int): Boolean {
+        receiveFilter?.let { f ->
+            val id = "%03X".format(rx)
+            if (f.length != id.length || f.indices.any { f[it] != 'X' && f[it] != id[it] }) return false
+        }
+        val cf = canFilter; val cm = canMask
+        if (cf != null && cm != null && (rx and cm) != (cf and cm)) return false
+        return true
+    }
+
+    /** UDS behaviour of the simulated modules. */
+    private fun moduleReply(tx: Int, m: SimModule, b: List<Int>): List<Int>? {
+        fun neg(nrc: Int) = listOf(0x7F, b[0], nrc)
+        return when (b[0]) {
+            0x3E -> listOf(0x7E, 0x00)
+            0x10 -> listOf(0x50, b.getOrElse(1) { 1 }, 0x00, 0x32, 0x01, 0xF4)
+            0x19 -> if (b.getOrNull(1) != 0x02) neg(0x12) else {
+                val codes = if (tx == 0x7E0) stored.map { Triple(it, 0x00, 0x2F) } + pending.map { Triple(it, 0x00, 0x24) } else m.dtcs
+                listOf(0x59, 0x02, 0xFF) + codes.flatMap { (c, ftb, st) -> DtcDecoder.encode(c).let { listOf(it.first, it.second, ftb, st) } }
+            }
+            0x14 -> {
+                m.dtcs.clear()
+                if (tx == 0x7E0) { stored.clear(); pending.clear(); monitorsComplete = false }
+                listOf(0x54)
+            }
+            0x22 -> {
+                val did = (b.getOrElse(1) { 0 } shl 8) or b.getOrElse(2) { 0 }
+                fun ascii(s: String) = listOf(0x62, b[1], b[2]) + s.map { it.code }
+                when (did) {
+                    0xF187 -> ascii(m.partNumber)
+                    0xF190 -> ascii(vin)
+                    0xF195 -> ascii("SW 2.4.1")
+                    0xF197 -> ascii(m.name)
+                    0xF18C -> ascii("SN%06d".format(tx * 37))
+                    0x1E1C -> if (tx in 0x7E0..0x7E1) {
+                        val raw = ((62 + noise(1.5) + t() / 30.0) * 16).roundToInt().coerceIn(0, 65535)
+                        listOf(0x62, 0x1E, 0x1C, raw shr 8, raw and 0xFF)
+                    } else neg(0x31)
+                    else -> neg(0x31)
+                }
+            }
+            else -> neg(0x11)
+        }
     }
 
     private fun supportBitmap(base: Int, supported: Set<Int>): IntArray? {

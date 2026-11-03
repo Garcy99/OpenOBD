@@ -132,7 +132,7 @@ fun DiagnosticsScreen(onConnect: () -> Unit, onNavigate: (String) -> Unit) {
                             modifier = Modifier.padding(top = 4.dp))
                         Text(type.description, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                         if (codes.isEmpty()) Text("None", style = MaterialTheme.typography.bodyMedium, color = Good)
-                        codes.forEach { d -> DtcCard(d, session.dtcDatabase.lookup(d.code), session.client?.ecuName(d.ecu)) { detail = d } }
+                        codes.forEach { d -> DtcCard(d, session.describe(d.code), session.client?.ecuName(d.ecu)) { detail = d } }
                     }
                     Spacer(Modifier.height(16.dp))
                 }
@@ -156,7 +156,7 @@ fun DiagnosticsScreen(onConnect: () -> Unit, onNavigate: (String) -> Unit) {
             dismissButton = { TextButton(onClick = { confirmClear = false }) { Text("Cancel") } },
         )
     }
-    detail?.let { d -> DtcDetailDialog(d.code, session.dtcDatabase.lookup(d.code), d.type.label + " · ECU " + d.ecu) { detail = null } }
+    detail?.let { d -> DtcDetailDialog(d.code, session.describe(d.code), d.type.label + " · ECU " + d.ecu) { detail = null } }
 }
 
 @Composable

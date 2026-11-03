@@ -1,7 +1,16 @@
 package com.openobd.session
 
 import android.content.Context
+import com.openobd.core.brand.Brand
+import com.openobd.core.brand.Brands
+import com.openobd.core.brand.ClearOutcome
+import com.openobd.core.brand.CustomSensors
+import com.openobd.core.brand.EcuModule
+import com.openobd.core.brand.ManufacturerCodes
+import com.openobd.core.brand.ModuleClient
+import com.openobd.core.brand.ModuleScanResult
 import com.openobd.core.dtc.DtcDatabase
+import com.openobd.core.dtc.DtcDescription
 import com.openobd.core.elm.Elm327
 import com.openobd.core.elm.ElmConfig
 import com.openobd.core.elm.ElmInfo
@@ -33,6 +42,7 @@ import com.openobd.transport.WifiTransport
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.async
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -101,6 +111,14 @@ class ObdSession(
     val freezeFrame = MutableStateFlow<Op<FreezeFrame?>>(Op.Idle)
     val vehicleInfo = MutableStateFlow<Op<VehicleInfo>>(Op.Idle)
     val monitorTests = MutableStateFlow<Op<List<TestResult>>>(Op.Idle)
+    val moduleScan = MutableStateFlow<Op<List<ModuleScanResult>>>(Op.Idle)
+    val discovery = MutableStateFlow<Op<List<EcuModule>>>(Op.Idle)
+
+    private val _brand = MutableStateFlow<Brand?>(null)
+    /** The selected brand, or the one detected from the VIN when none was chosen. */
+    val brand: StateFlow<Brand?> = _brand
+    private val _brandDetected = MutableStateFlow(false)
+    val brandAutoDetected: StateFlow<Boolean> = _brandDetected
 
     private val _alerts = MutableSharedFlow<AlertEvent>(extraBufferCapacity = 8)
     val alerts: SharedFlow<AlertEvent> = _alerts
@@ -129,6 +147,8 @@ class ObdSession(
             settingsRepo.settings.collectLatest { s ->
                 live.params = fuelParams(s, vehicle)
                 updateAlertSubscriptions(s)
+                CustomSensors.update(s.customPids)
+                updateBrand()
             }
         }
     }
@@ -180,6 +200,7 @@ class ObdSession(
         val voltage = e.readVoltage()
         val snapshot = VehicleSnapshot(t.description, info, supported, c.ecus, vin, voltage, t is DemoTransport)
         _state.value = ConnectionState.Connected(snapshot)
+        updateBrand()
         live.params = fuelParams(s, snapshot)
         live.start(c, supported)
         live.subscribe("trip", listOf("010D", "010C", "CALC_FUEL"))
@@ -239,6 +260,7 @@ class ObdSession(
         client = null
         dtcScan.value = Op.Idle; readiness.value = Op.Idle; freezeFrame.value = Op.Idle
         vehicleInfo.value = Op.Idle; monitorTests.value = Op.Idle; clearResult.value = Op.Idle
+        moduleScan.value = Op.Idle; discovery.value = Op.Idle
     }
 
     private fun logConsole(dir: Char, text: String) {
@@ -280,7 +302,7 @@ class ObdSession(
             dtcScan.value = Op.Done(scan)
             if (record) {
                 history.add(ScanRecord(System.currentTimeMillis(), vehicle?.vin, readinessStatus?.milOn ?: false,
-                    scan.codes.map { StoredDtc(it.code, it.type.name, it.ecu, dtcDatabase.lookup(it.code).description) }))
+                    scan.codes.map { StoredDtc(it.code, it.type.name, it.ecu, describe(it.code).description) }))
             }
             return scan
         } catch (e: Exception) {
@@ -328,6 +350,100 @@ class ObdSession(
                 logConsole('!', ex.message ?: "error")
             } finally {
                 live.resume()
+            }
+        }
+    }
+
+    // ------------------------------------------------------------------ brand features
+
+    private fun updateBrand() {
+        val chosen = settingsRepo.settings.value.brandId?.let { Brands.byId[it] }
+        val detected = Brands.detect(vehicle?.vin)
+        _brand.value = chosen ?: detected
+        _brandDetected.value = chosen == null && detected != null
+    }
+
+    /** Modules to scan for the current brand: the family's known modules plus saved / discovered ones. */
+    fun modulesForBrand(): List<EcuModule> {
+        val family = (brand.value?.family ?: com.openobd.core.brand.Families.GENERIC)
+        val saved = settingsRepo.settings.value.customModules
+        return (family.modules + saved).distinctBy { it.id }
+    }
+
+    /** Describes a code using the brand's manufacturer table first, then the generic database. */
+    fun describe(code: String): DtcDescription {
+        val base = dtcDatabase.lookup(code.substringBefore('-'))
+        val b = brand.value
+        val mfr = ManufacturerCodes.lookup(b?.family, code) ?: return base
+        return base.copy(description = mfr, known = true, category = "Manufacturer-specific (${b?.family?.label}). " + base.category)
+    }
+
+    private fun moduleClient(): ModuleClient {
+        val e = elm ?: throw IllegalStateException("Not connected to a vehicle")
+        val mc = ModuleClient(e)
+        if (!mc.supported) throw IllegalStateException("Module access needs a CAN vehicle (most cars from 2008 onwards). This car uses ${e.protocol.label}.")
+        return mc
+    }
+
+    /** Runs [block] in the app scope with live data paused, so leaving a screen never interrupts a module operation. */
+    private suspend fun <T> moduleOp(block: suspend (ModuleClient) -> T): T {
+        val mc = moduleClient()
+        return scope.async {
+            live.pause()
+            try { block(mc) } finally { live.resume() }
+        }.await()
+    }
+
+    fun scanAllModules() {
+        if (moduleScan.value is Op.Loading) return
+        val list = modulesForBrand()
+        moduleScan.value = Op.Loading("Starting")
+        scope.launch {
+            try {
+                val results = moduleOp { mc ->
+                    list.mapIndexed { i, m ->
+                        moduleScan.value = Op.Loading("Scanning ${m.name} (${i + 1}/${list.size})")
+                        mc.scan(m)
+                    }
+                }
+                moduleScan.value = Op.Done(results)
+                val codes = results.flatMap { r -> r.dtcs.map { StoredDtc(it.fullCode, "MODULE", r.module.shortName, describe(it.code).description) } }
+                history.add(ScanRecord(System.currentTimeMillis(), vehicle?.vin, false, codes,
+                    note = "Module scan: ${results.count { it.online }} of ${results.size} modules answered"))
+            } catch (e: Exception) {
+                moduleScan.value = Op.Error(e.message ?: "Scan failed")
+            }
+        }
+    }
+
+    suspend fun scanModule(m: EcuModule): ModuleScanResult = moduleOp { it.scan(m) }.also { r ->
+        (moduleScan.value as? Op.Done)?.let { d -> moduleScan.value = Op.Done(d.value.map { if (it.module.id == m.id) r else it }) }
+    }
+
+    suspend fun clearModule(m: EcuModule): ClearOutcome = moduleOp { it.clear(m) }.also { r ->
+        if (r.success) history.add(ScanRecord(System.currentTimeMillis(), vehicle?.vin, false, emptyList(), cleared = true, note = "${m.name}: ${r.message}"))
+    }
+
+    suspend fun identifyModule(m: EcuModule): List<Pair<String, String>> = moduleOp { it.readIdentification(m) }
+
+    suspend fun readDid(m: EcuModule, did: Int): IntArray = moduleOp { it.readDid(m, did) }
+
+    fun findModule(id: String): EcuModule? =
+        modulesForBrand().firstOrNull { it.id == id } ?: (discovery.value as? Op.Done)?.value?.firstOrNull { it.id == id }
+
+    /** Reads one custom PID once, for the editor's "Test" button. */
+    suspend fun testCustomPid(p: com.openobd.core.brand.CustomPid): IntArray? = moduleOp { it.readCustom(listOf(p))[p.key] }
+
+    fun discoverModules() {
+        if (discovery.value is Op.Loading) return
+        discovery.value = Op.Loading("Probing CAN addresses")
+        scope.launch {
+            try {
+                val found = moduleOp { mc -> mc.discover { i, n -> discovery.value = Op.Loading("Probing address %03X … %d%%".format(0x700 + i, i * 100 / n)) } }
+                val known = modulesForBrand()
+                discovery.value = Op.Done(found.map { f -> known.firstOrNull { it.tx == f.tx && !it.is29Bit } ?: f })
+            } catch (e: Exception) {
+                discovery.value = Op.Error(e.message ?: "Discovery failed")
             }
         }
     }
@@ -381,6 +497,7 @@ class ObdSession(
         sb.appendLine("=".repeat(48))
         if (v != null) {
             sb.appendLine("VIN: ${v.vin ?: "not available"}")
+            brand.value?.let { sb.appendLine("Brand: ${it.name}") }
             sb.appendLine("Protocol: ${v.elm.protocol.label}")
             sb.appendLine("Adapter: ${v.elm.version} via ${v.transport}")
             v.voltage?.let { sb.appendLine("Battery: %.1f V".format(it)) }
@@ -394,11 +511,23 @@ class ObdSession(
             sb.appendLine()
             sb.appendLine("Trouble codes:")
             if (scan.codes.isEmpty()) sb.appendLine("  none")
-            for (d in scan.codes) sb.appendLine("  ${d.code} [${d.type.label}, ECU ${d.ecu}] ${dtcDatabase.lookup(d.code).description}")
+            for (d in scan.codes) sb.appendLine("  ${d.code} [${d.type.label}, ECU ${d.ecu}] ${describe(d.code).description}")
             scan.readiness?.let { r ->
                 sb.appendLine()
                 sb.appendLine("Readiness monitors:")
                 for (m in r.monitors) sb.appendLine("  ${m.name}: ${m.state.label}")
+            }
+        }
+        (moduleScan.value as? Op.Done)?.value?.let { results ->
+            sb.appendLine()
+            sb.appendLine("Control modules (${brand.value?.family?.label ?: "generic"}):")
+            for (r in results) {
+                sb.appendLine("  ${r.module.name} [${r.module.addressLabel}]: " + when {
+                    !r.online -> "no answer"
+                    r.dtcs.isEmpty() -> "OK, no codes"
+                    else -> "${r.dtcs.size} code(s)"
+                })
+                for (d in r.dtcs) sb.appendLine("    ${d.fullCode} ${describe(d.code).description} (${d.failureTypeText ?: d.statusText})")
             }
         }
         (freezeFrame.value as? Op.Done)?.value?.let { ff ->

@@ -21,6 +21,19 @@ with no ads, subscriptions or paywalls.
 - **Vehicle info** (service 09): VIN with decoder (make, model year, country, check digit), calibration IDs, CVNs, ECU names, in-use performance counters
 - Shareable text report, plus a local **scan history** that shows when codes come back
 
+**Brand-specific features**
+- **Brand selector** with automatic detection from the VIN (50 brands, grouped into families that share diagnostic architecture)
+- **Module scanner**: read and clear codes in ABS, airbag, body, cluster, steering, climate, parking, EV battery/charger and other modules
+  over UDS (ISO 14229) with automatic KWP2000 / OBD fallback. Known addresses for Ford/Lincoln, Mazda, the VW group (VW/Audi/Škoda/SEAT/Cupra/Porsche),
+  Hyundai/Kia/Genesis, Toyota/Lexus, Nissan/Infiniti, Renault/Dacia and GM
+- **Discover modules**: probes every diagnostic CAN address, so it finds the modules on any brand
+- UDS codes with **failure type** ("C0035-31: left front wheel speed sensor, no signal") and status (active, confirmed, pending, warning lamp)
+- **Module identification**: part number, software and hardware versions, serial and VIN, plus a raw data-identifier reader
+- **Manufacturer-specific code descriptions** for Ford, Toyota, Honda, Nissan, GM, Chrysler and Hyundai/Kia
+- **Custom / brand PIDs** with a full equation engine and **Torque CSV import/export**, so community PID packs (EV battery health,
+  transmission temperature, DPF soot …) show up in live data, gauges, charts and logs
+- Read-only by design: no coding or adaptations, which could disable a module. Code clearing is the only write
+
 **Live data**
 - The **full SAE J1979 service 01 PID table** (0x01–0xA6+), 217 sensors including diesel (DPF, boost, EGT, NOx, DEF), hybrid and wide-band O2
 - Calculated sensors: **fuel flow, instant L/100 km / mpg, boost, power, torque, AFR**, and speed-density airflow for cars without a MAF sensor
@@ -68,6 +81,8 @@ app/src/main/java/com/openobd/
 ├── core/                 Pure Kotlin, unit-tested, no Android dependencies
 │   ├── transport/        ObdTransport abstraction + DemoTransport (simulated ELM327 + car)
 │   ├── elm/              ELM327 driver, protocol detection, ISO-TP / legacy frame parsing
+│   ├── brand/            Brand catalog, module addresses, UDS/KWP module client, manufacturer codes,
+│   │                     equation engine, custom PIDs and Torque CSV
 │   ├── obd/              PID table, DTC decoding, readiness, freeze frame, Mode 06/09, VIN decoder,
 │   │                     calculated sensors, ObdClient (high-level services)
 │   └── dtc/              Trouble code description database
@@ -86,6 +101,8 @@ app/src/main/java/com/openobd/
 
 - Protocol tests cover frame parsing (CAN 11/29-bit, multi-frame, headers on/off, spaces off, J1850), PID formulas, DTC encoding, readiness, VIN decoding and Mode 06.
 - `DemoClientTest` runs a full session against the simulated car: discovery, batched PIDs, DTCs, freeze frame, VIN, Mode 06, clearing.
+- `ModuleClientTest` scans, clears, identifies and discovers simulated ABS/airbag/body modules and reads custom PIDs, checking OBD polling still works afterwards.
+- `BrandTest` covers VIN brand detection, catalog consistency, the equation engine and Torque CSV round-trips.
 - `DtcDatabaseTest` pins well-known code descriptions so a bad data import can't ship.
 - `UiSmokeTest` (Robolectric) drives the real app through every main screen in demo mode and saves screenshots to `app/build/screenshots`.
 

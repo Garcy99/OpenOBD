@@ -8,6 +8,8 @@ import androidx.datastore.preferences.core.floatPreferencesKey
 import androidx.datastore.preferences.core.intPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
+import com.openobd.core.brand.CustomPid
+import com.openobd.core.brand.EcuModule
 import com.openobd.core.elm.ObdProtocol
 import com.openobd.core.obd.UnitSystem
 import kotlinx.coroutines.CoroutineScope
@@ -62,6 +64,11 @@ data class AppSettings(
     val alerts: List<AlertRule> = emptyList(),
     val shiftLightRpm: Int = 0,
     val fuelPricePerL: Float = 0f,
+    /** Manually chosen brand id; null = auto-detect from the VIN. */
+    val brandId: String? = null,
+    val customPids: List<CustomPid> = emptyList(),
+    /** Modules found with "Discover modules" or added by hand. */
+    val customModules: List<EcuModule> = emptyList(),
 ) {
     companion object {
         val DEFAULT_DASHBOARD = listOf("010C", "010D", "0105", "0104", "0111", "CALC_FUEL", "0142", "CALC_BOOST")
@@ -92,6 +99,9 @@ class SettingsRepository(private val context: Context, scope: CoroutineScope) {
         val alerts = stringPreferencesKey("alerts")
         val shiftLight = intPreferencesKey("shift_light")
         val fuelPrice = floatPreferencesKey("fuel_price")
+        val brand = stringPreferencesKey("brand")
+        val customPids = stringPreferencesKey("custom_pids")
+        val customModules = stringPreferencesKey("custom_modules")
     }
 
     private val json = Json { ignoreUnknownKeys = true }
@@ -121,6 +131,9 @@ class SettingsRepository(private val context: Context, scope: CoroutineScope) {
             alerts = p[K.alerts]?.let { runCatching { json.decodeFromString<List<AlertRule>>(it) }.getOrNull() } ?: d.alerts,
             shiftLightRpm = p[K.shiftLight] ?: d.shiftLightRpm,
             fuelPricePerL = p[K.fuelPrice] ?: d.fuelPricePerL,
+            brandId = p[K.brand],
+            customPids = p[K.customPids]?.let { runCatching { json.decodeFromString<List<CustomPid>>(it) }.getOrNull() } ?: d.customPids,
+            customModules = p[K.customModules]?.let { runCatching { json.decodeFromString<List<EcuModule>>(it) }.getOrNull() } ?: d.customModules,
         )
     }
 
@@ -150,6 +163,9 @@ class SettingsRepository(private val context: Context, scope: CoroutineScope) {
             p[K.alerts] = json.encodeToString(s.alerts)
             p[K.shiftLight] = s.shiftLightRpm
             p[K.fuelPrice] = s.fuelPricePerL
+            s.brandId?.let { p[K.brand] = it } ?: p.remove(K.brand)
+            p[K.customPids] = json.encodeToString(s.customPids)
+            p[K.customModules] = json.encodeToString(s.customModules)
         }
     }
 }

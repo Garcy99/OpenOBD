@@ -99,6 +99,30 @@ class Elm327(
         return lines
     }
 
+    /**
+     * Runs several commands without any other caller interleaving (used when temporarily changing the
+     * CAN header / receive filter to talk to a specific module). Do not call [command] or [query] on
+     * this instance from inside [block] - use the provided [Locked] channel.
+     */
+    suspend fun <T> exclusive(block: suspend Locked.() -> T): T = mutex.withLock { Locked().block() }
+
+    inner class Locked {
+        suspend fun command(cmd: String, timeoutMs: Long = 3000): List<String> = commandLocked(cmd, timeoutMs)
+
+        suspend fun query(request: String, timeoutMs: Long = 5000): ObdResult = try {
+            interpret(commandLocked(request, timeoutMs))
+        } catch (e: ElmException) {
+            ObdResult.Failure(e.error ?: ElmError.ERROR, e.message ?: "")
+        }
+
+        /** Sends an AT command and reports whether the adapter accepted it. */
+        suspend fun at(cmd: String): Boolean = runCatching { commandLocked(cmd, 2000).any { it.contains("OK", true) } }.getOrDefault(false)
+    }
+
+    /** The ATST value (in 4 ms units) configured at initialisation, used to restore after module work. */
+    var configuredTimeout: Int? = null
+        private set
+
     /** Sends an OBD request (hex string such as "010C") and parses the reply. */
     suspend fun query(request: String, timeoutMs: Long = 5000): ObdResult {
         val lines = try {
@@ -144,7 +168,8 @@ class Elm327(
         headersOn = config.headersOn && runCatching { expectOk(if (config.headersOn) "ATH1" else "ATH0") }.isSuccess
         if (!config.headersOn) runCatching { expectOk("ATH0") }
         runCatching { expectOk("ATAT${config.adaptiveTiming.coerceIn(0, 2)}") }
-        config.timeoutMs?.let { ms -> runCatching { expectOk("ATST%02X".format((ms / 4).coerceIn(1, 255))) } }
+        configuredTimeout = config.timeoutMs?.let { ms -> (ms / 4).coerceIn(1, 255) }
+        configuredTimeout?.let { t -> runCatching { expectOk("ATST%02X".format(t)) } }
         expectOk("ATSP${config.protocol.code}")
 
         val description = runCatching { command("AT@1").firstOrNull() }.getOrNull()?.takeIf { it != "?" }

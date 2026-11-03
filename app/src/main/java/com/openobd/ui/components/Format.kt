@@ -10,6 +10,7 @@ data class Formatted(val value: String, val unit: String)
 fun formatSensor(def: SensorDef, value: Double?, units: UnitSystem): Formatted {
     if (value == null) return Formatted("—", unitLabel(def, units))
     def.labeler?.let { return Formatted(it(value), "") }
+    def.customUnit?.let { return Formatted(formatNumber(value, def.decimals), it) }
     val d = def.unit.display(value, units)
     val decimals = when {
         d.unit == ObdUnit.MPG -> 1
@@ -19,7 +20,7 @@ fun formatSensor(def: SensorDef, value: Double?, units: UnitSystem): Formatted {
     return Formatted(formatNumber(d.value, decimals), d.unit.symbol)
 }
 
-fun unitLabel(def: SensorDef, units: UnitSystem): String = def.unit.display(0.0, units).unit.symbol
+fun unitLabel(def: SensorDef, units: UnitSystem): String = def.customUnit ?: def.unit.display(0.0, units).unit.symbol
 
 fun formatNumber(v: Double, decimals: Int): String = if (decimals <= 0) "%.0f".format(v) else "%.${decimals}f".format(v)
 

@@ -1,5 +1,7 @@
 package com.openobd.session
 
+import com.openobd.core.brand.CustomSensors
+import com.openobd.core.brand.ModuleClient
 import com.openobd.core.elm.ElmError
 import com.openobd.core.elm.ElmException
 import com.openobd.core.obd.DerivedSensors
@@ -120,6 +122,7 @@ class LiveDataManager(private val scope: CoroutineScope) {
     }
 
     private suspend fun CoroutineScope.loop(client: ObdClient, supported: Set<Int>) {
+        val modules = ModuleClient(client.elm)
         var cycle = 0L
         var failures = 0
         var windowStart = System.currentTimeMillis()
@@ -133,13 +136,17 @@ class LiveDataManager(private val scope: CoroutineScope) {
                 else sensorKeys += k
             }
             val pids = sensorKeys.mapNotNull { k -> Pids.sensors[k]?.pid }.filter { it in supported }.distinct()
-            if (pids.isEmpty()) { delay(250); continue }
+            val customs = sensorKeys.filter { it.startsWith("X_") }.mapNotNull { CustomSensors.pid(it) }
+            if (pids.isEmpty() && customs.isEmpty()) { delay(250); continue }
             val slowPids = pids.filter { p -> Pids.all[p]?.sensors?.all { it.slow } == true }
             val fastPids = pids - slowPids.toSet()
             val toRead = if (cycle % 8 == 0L || fastPids.isEmpty()) pids else fastPids
             cycle++
 
-            val data = try {
+            val customData = if (customs.isNotEmpty() && (cycle % 2 == 1L || pids.isEmpty())) {
+                try { modules.readCustom(customs) } catch (e: Exception) { emptyMap() }
+            } else emptyMap()
+            val data = if (toRead.isEmpty()) emptyMap() else try {
                 client.readPids(toRead)
             } catch (e: ElmException) {
                 if (e.error == ElmError.TIMEOUT && ++failures >= 4) { onAdapterLost?.invoke(); return }
@@ -148,8 +155,8 @@ class LiveDataManager(private val scope: CoroutineScope) {
                 if (++failures >= 4) { onAdapterLost?.invoke(); return }
                 delay(200); continue
             }
-            if (data.isEmpty() && ++failures >= 25) { onAdapterLost?.invoke(); return }
-            if (data.isNotEmpty()) failures = 0
+            if (data.isEmpty() && customData.isEmpty() && ++failures >= 25) { onAdapterLost?.invoke(); return }
+            if (data.isNotEmpty() || customData.isNotEmpty()) failures = 0
 
             val now = System.currentTimeMillis()
             val fresh = HashSet<String>()
@@ -159,6 +166,11 @@ class LiveDataManager(private val scope: CoroutineScope) {
                     latest[s.key] = v
                     fresh += s.key
                 }
+            }
+            for ((key, bytes) in customData) {
+                val v = CustomSensors.get(key)?.decodeSafe(bytes) ?: continue
+                latest[key] = v
+                fresh += key
             }
             val calc = DerivedSensors.compute(latest, params)
             for ((k, v) in calc) { latest[k] = v; fresh += k }

@@ -3,7 +3,10 @@ package com.openobd.ui
 import android.graphics.Bitmap
 import android.graphics.Canvas
 import androidx.compose.ui.test.hasScrollAction
+import androidx.compose.ui.test.hasClickAction
 import androidx.compose.ui.test.hasText
+import androidx.compose.ui.test.isSelectable
+import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.performScrollToNode
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.onAllNodesWithText
@@ -65,13 +68,21 @@ class UiSmokeTest {
             }
             rule.waitForIdle()
         }
+        val clickable = rule.onAllNodes(hasText(text) and hasClickAction())
         val merged = rule.onAllNodesWithText(text)
-        if (merged.fetchSemanticsNodes().isNotEmpty()) merged.onFirst().performClick()
+        if (clickable.fetchSemanticsNodes().isNotEmpty()) clickable.onFirst().also { runCatching { it.performScrollTo() } }.performClick()
+        else if (merged.fetchSemanticsNodes().isNotEmpty()) merged.onFirst().performClick()
         else rule.onAllNodesWithText(text, useUnmergedTree = true).onFirst().performClick()
         rule.waitForIdle()
     }
 
     private fun androidx.compose.ui.test.SemanticsNodeInteractionCollection.onFirst() = this[0]
+
+    /** Bottom navigation tabs are selectable; this avoids hitting same-named buttons elsewhere. */
+    private fun tab(text: String) {
+        rule.onAllNodes(hasText(text) and isSelectable())[0].performClick()
+        rule.waitForIdle()
+    }
 
     @Test
     fun demoTourDark() = tour(ThemeMode.DARK, "dark")
@@ -87,12 +98,12 @@ class UiSmokeTest {
         waitFor { c.session.dtcScan.value is Op.Done }
         shot("02_home_connected_$suffix")
 
-        tap("Dashboard")
+        tab("Dashboard")
         waitFor { c.session.live.readings.value.containsKey("010C") && c.session.live.readings.value.containsKey("0105") }
         Thread.sleep(1500)
         shot("03_dashboard_$suffix")
 
-        tap("Live data")
+        tab("Live data")
         waitFor { c.session.live.readings.value.size > 15 }
         Thread.sleep(1000)
         shot("04_live_$suffix")
@@ -102,7 +113,7 @@ class UiSmokeTest {
         shot("05_chart_$suffix")
         rule.activityRule.scenario.onActivity { it.onBackPressedDispatcher.onBackPressed() }
 
-        tap("Codes")
+        tab("Codes")
         tap("Scan")
         waitFor { c.session.dtcScan.value is Op.Done }
         shot("06_codes_$suffix")
@@ -112,7 +123,7 @@ class UiSmokeTest {
         shot("07_code_detail_$suffix")
         tap("Close")
 
-        tap("More")
+        tab("More")
         shot("08_more_$suffix")
 
         tap("Emission readiness (I/M)")
@@ -149,13 +160,41 @@ class UiSmokeTest {
         rule.activityRule.scenario.onActivity { it.onBackPressedDispatcher.onBackPressed() }
 
         // Clear codes end to end
-        tap("Codes")
+        tab("Codes")
         tap("Clear codes")
         rule.onAllNodesWithText("Clear codes").fetchSemanticsNodes() // dialog shown
         rule.onAllNodes(hasText("Clear codes"))[1].performClick()
         waitFor { c.session.clearResult.value is Op.Done }
         waitFor { (c.session.dtcScan.value as? Op.Done)?.value?.codes?.none { it.code == "P0301" } == true }
         shot("16_codes_cleared_$suffix")
+
+        // Brand features: pick Ford, scan modules, open ABS, discover, custom PIDs
+        tab("More")
+        tap("Brand features & modules")
+        shot("17_brand_$suffix")
+        runBlocking {
+            c.settings.update {
+                it.copy(brandId = "ford", customPids = listOf(com.openobd.core.brand.CustomPid("demo", "Transmission temperature", "TFT", "221E1C",
+                    "((A*256)+B)/16", -40.0, 150.0, "°C", "7E1")))
+            }
+        }
+        waitFor { c.session.brand.value?.id == "ford" }
+        tap("Scan all ${c.session.modulesForBrand().size} modules")
+        waitFor(30_000) { c.session.moduleScan.value is Op.Done }
+        shot("18_modules_$suffix")
+        tap("Anti-lock brake system")
+        waitFor { rule.onAllNodesWithText("C0035-31").fetchSemanticsNodes().isNotEmpty() }
+        shot("19_module_abs_$suffix")
+        rule.activityRule.scenario.onActivity { it.onBackPressedDispatcher.onBackPressed() }
+        tap("Discover modules")
+        waitFor(60_000) { c.session.discovery.value is Op.Done }
+        assertTrue((c.session.discovery.value as Op.Done).value.size == 6)
+        shot("20_discovery_$suffix")
+        tap("Manage custom PIDs")
+        waitFor { c.session.live.readings.value.containsKey("X_demo") }
+        shot("21_custom_pids_$suffix")
+        rule.activityRule.scenario.onActivity { it.onBackPressedDispatcher.onBackPressed() }
+        rule.activityRule.scenario.onActivity { it.onBackPressedDispatcher.onBackPressed() }
 
         c.session.disconnect()
         waitFor { c.session.state.value is ConnectionState.Disconnected }

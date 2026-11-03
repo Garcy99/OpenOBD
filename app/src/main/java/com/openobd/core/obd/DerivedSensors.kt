@@ -65,12 +65,12 @@ object DerivedSensors {
 
 /** Unified lookup over PID sensors and calculated sensors. */
 object SensorCatalog {
-    fun get(key: String): SensorDef? = Pids.sensors[key] ?: DerivedSensors.byKey[key]
+    fun get(key: String): SensorDef? = Pids.sensors[key] ?: DerivedSensors.byKey[key] ?: com.openobd.core.brand.CustomSensors.get(key)
 
     /** All sensors (PID based + calculated) available for the given supported PID set. */
     fun available(supported: Set<Int>): List<SensorDef> {
         val base = Pids.all.values.filter { it.pid in supported }.flatMap { it.sensors }
         val calc = DerivedSensors.all.filter { DerivedSensors.isAvailable(it.key, supported) }
-        return calc + base
+        return calc + com.openobd.core.brand.CustomSensors.sensors + base
     }
 }

@@ -1,0 +1,253 @@
+package com.openobd.ui.screens
+
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
+import androidx.compose.material.icons.filled.Search
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Button
+import androidx.compose.material3.FilledTonalButton
+import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.Icon
+import androidx.compose.material3.LinearProgressIndicator
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.dp
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.openobd.core.brand.Brand
+import com.openobd.core.brand.Brands
+import com.openobd.core.brand.EcuModule
+import com.openobd.core.brand.ManufacturerCodes
+import com.openobd.core.brand.ModuleScanResult
+import com.openobd.session.Op
+import com.openobd.ui.LocalApp
+import com.openobd.ui.Routes
+import com.openobd.ui.appSettings
+import com.openobd.ui.components.ErrorText
+import com.openobd.ui.components.Pill
+import com.openobd.ui.components.ScreenTopBar
+import com.openobd.ui.components.SectionCard
+import com.openobd.ui.components.StatusDot
+import com.openobd.ui.connectedVehicle
+import com.openobd.ui.theme.Bad
+import com.openobd.ui.theme.Good
+import com.openobd.ui.theme.Warn
+import kotlinx.coroutines.launch
+
+@Composable
+fun BrandScreen(onBack: () -> Unit, onNavigate: (String) -> Unit) {
+    val app = LocalApp.current
+    val session = app.session
+    val scope = rememberCoroutineScope()
+    val vehicle = connectedVehicle()
+    val settings = appSettings()
+    val brand by session.brand.collectAsStateWithLifecycle()
+    val detected by session.brandAutoDetected.collectAsStateWithLifecycle()
+    val scan by session.moduleScan.collectAsStateWithLifecycle()
+    val discovery by session.discovery.collectAsStateWithLifecycle()
+    var picking by remember { mutableStateOf(false) }
+    var showCodes by remember { mutableStateOf(false) }
+    val family = brand?.family ?: com.openobd.core.brand.Families.GENERIC
+    val canUseModules = vehicle?.elm?.protocol?.isCan == true
+
+    Column(Modifier.fillMaxSize()) {
+        ScreenTopBar("Brand features", onBack)
+        Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
+            SectionCard {
+                Text(brand?.name ?: "No brand selected", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
+                Text(
+                    when {
+                        brand == null -> "Connect to detect it from the VIN, or choose it manually."
+                        detected -> "Detected from the VIN · ${family.label}"
+                        else -> "Chosen manually · ${family.label}"
+                    },
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                Spacer(Modifier.height(10.dp))
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    FilledTonalButton(onClick = { picking = true }) { Text("Choose brand") }
+                    if (settings.brandId != null) OutlinedButton(onClick = { scope.launch { app.settings.update { it.copy(brandId = null) } } }) { Text("Auto-detect") }
+                }
+                Spacer(Modifier.height(10.dp))
+                Text(family.notes, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+
+            SectionCard(title = "Control modules") {
+                Text("Reads and clears trouble codes in ABS, airbag, body, cluster, steering, EV battery and other modules (UDS / KWP2000 on CAN).",
+                    style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Spacer(Modifier.height(10.dp))
+                if (vehicle == null) Text("Connect to your car to scan modules.", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                else if (!canUseModules) ErrorText("Module access needs a CAN vehicle (most cars from 2008 onwards). This car uses ${vehicle.elm.protocol.label}.")
+                else Button(onClick = session::scanAllModules, enabled = scan !is Op.Loading && discovery !is Op.Loading, modifier = Modifier.fillMaxWidth()) {
+                    Text("Scan all ${session.modulesForBrand().size} modules")
+                }
+                when (val s = scan) {
+                    is Op.Loading -> { Spacer(Modifier.height(8.dp)); LinearProgressIndicator(Modifier.fillMaxWidth()); Text(s.progress ?: "", style = MaterialTheme.typography.bodySmall) }
+                    is Op.Error -> ErrorText(s.message)
+                    else -> Unit
+                }
+                val results = (scan as? Op.Done)?.value
+                Spacer(Modifier.height(6.dp))
+                if (results != null) {
+                    val online = results.count { it.online }
+                    val codes = results.sumOf { it.dtcs.size }
+                    Text("$online of ${results.size} modules answered · $codes code(s)", fontWeight = FontWeight.SemiBold, modifier = Modifier.padding(vertical = 6.dp))
+                    results.sortedWith(compareByDescending<ModuleScanResult> { it.dtcs.size }.thenByDescending { it.online }).forEach { r ->
+                        ModuleRow(r.module, r) { onNavigate(Routes.module(r.module.id)) }
+                    }
+                } else {
+                    session.modulesForBrand().forEach { m -> ModuleRow(m, null) { onNavigate(Routes.module(m.id)) } }
+                }
+            }
+
+            SectionCard(title = "Discover modules") {
+                Text("Probes every diagnostic address (700-7F7) to find all modules on your car, whatever the brand. Takes about 30-60 seconds.",
+                    style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Spacer(Modifier.height(10.dp))
+                OutlinedButton(onClick = session::discoverModules, enabled = canUseModules && discovery !is Op.Loading && scan !is Op.Loading,
+                    modifier = Modifier.fillMaxWidth()) { Text("Discover modules") }
+                when (val d = discovery) {
+                    is Op.Loading -> { Spacer(Modifier.height(8.dp)); LinearProgressIndicator(Modifier.fillMaxWidth()); Text(d.progress ?: "", style = MaterialTheme.typography.bodySmall) }
+                    is Op.Error -> ErrorText(d.message)
+                    is Op.Done -> {
+                        val known = session.modulesForBrand().map { it.id }.toSet()
+                        val new = d.value.filter { it.id !in known }
+                        Text("${d.value.size} module(s) answered" + if (new.isNotEmpty()) ", ${new.size} not in the list yet" else "",
+                            fontWeight = FontWeight.SemiBold, modifier = Modifier.padding(vertical = 6.dp))
+                        d.value.forEach { m -> ModuleRow(m, null) { onNavigate(Routes.module(m.id)) } }
+                        if (new.isNotEmpty()) TextButton(onClick = {
+                            scope.launch { app.settings.update { it.copy(customModules = (it.customModules + new).distinctBy { m -> m.id }) } }
+                        }) { Text("Add ${new.size} new module(s) to my list") }
+                    }
+                    Op.Idle -> Unit
+                }
+                if (settings.customModules.isNotEmpty()) TextButton(onClick = { scope.launch { app.settings.update { it.copy(customModules = emptyList()) } } }) {
+                    Text("Forget ${settings.customModules.size} saved module(s)")
+                }
+            }
+
+            SectionCard(title = "Manufacturer-specific codes") {
+                val n = ManufacturerCodes.count(family)
+                Text(if (n > 0) "$n ${family.label} codes are decoded automatically in every scan." else "No manufacturer code table for ${family.label} yet; generic descriptions and web search are used.",
+                    style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                if (n > 0) TextButton(onClick = { showCodes = true }) { Text("View ${family.label} codes") }
+            }
+
+            SectionCard(title = "Brand & custom PIDs") {
+                Text("${settings.customPids.size} custom PID(s). Add manufacturer data (transmission temperature, EV battery health, tire pressures, DPF soot …) " +
+                    "by hand or import Torque-format CSV packs shared by owner communities.",
+                    style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                TextButton(onClick = { onNavigate(Routes.PIDS) }) { Text("Manage custom PIDs") }
+            }
+
+            SectionCard(title = "Safety") {
+                Text("OpenOBD only reads data and clears trouble codes. It never writes coding, adaptations or software, which could disable a module. " +
+                    "Some 2018+ vehicles (notably Stellantis) have a secure gateway that blocks clearing codes without an authorised unlock.",
+                    style = MaterialTheme.typography.bodySmall)
+            }
+        }
+    }
+
+    if (picking) BrandPickerDialog(onDismiss = { picking = false }) { b ->
+        picking = false
+        scope.launch { app.settings.update { it.copy(brandId = b.id) } }
+    }
+    if (showCodes) {
+        AlertDialog(
+            onDismissRequest = { showCodes = false },
+            title = { Text("${family.label} codes") },
+            text = {
+                LazyColumn(Modifier.heightIn(max = 460.dp)) {
+                    items(ManufacturerCodes.all(family).entries.sortedBy { it.key }.toList()) { (c, d) ->
+                        Row(Modifier.padding(vertical = 6.dp)) {
+                            Text(c, fontFamily = FontFamily.Monospace, fontWeight = FontWeight.Bold, modifier = Modifier.width(64.dp))
+                            Text(d, style = MaterialTheme.typography.bodySmall)
+                        }
+                    }
+                }
+            },
+            confirmButton = { TextButton(onClick = { showCodes = false }) { Text("Close") } },
+        )
+    }
+}
+
+@Composable
+private fun ModuleRow(m: EcuModule, r: ModuleScanResult?, onClick: () -> Unit) {
+    Row(Modifier.fillMaxWidth().clickable(onClick = onClick).padding(vertical = 9.dp), verticalAlignment = Alignment.CenterVertically) {
+        StatusDot(when {
+            r == null -> MaterialTheme.colorScheme.outline
+            !r.online -> MaterialTheme.colorScheme.outlineVariant
+            r.dtcs.any { it.isActive || it.warningLamp } -> Bad
+            r.dtcs.isNotEmpty() -> Warn
+            else -> Good
+        })
+        Spacer(Modifier.width(12.dp))
+        Column(Modifier.weight(1f)) {
+            Text(m.name, fontWeight = FontWeight.Medium, color = if (r != null && !r.online) MaterialTheme.colorScheme.onSurfaceVariant else MaterialTheme.colorScheme.onSurface)
+            Text(m.addressLabel + " · " + m.category.label + (if (m.secondaryBus) " · MS-CAN" else "") + (r?.protocol?.let { " · " + it.name } ?: ""),
+                style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
+        when {
+            r == null -> Unit
+            !r.online -> Text("no answer", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            r.dtcs.isEmpty() -> Pill("OK", Good)
+            else -> Pill("${r.dtcs.size} code(s)", if (r.dtcs.any { it.isActive || it.warningLamp }) Bad else Warn)
+        }
+        Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, null, tint = MaterialTheme.colorScheme.onSurfaceVariant)
+    }
+    HorizontalDivider()
+}
+
+@Composable
+fun BrandPickerDialog(onDismiss: () -> Unit, onPick: (Brand) -> Unit) {
+    var query by remember { mutableStateOf("") }
+    val list = Brands.all.filter { query.isBlank() || it.name.contains(query, true) || it.family.label.contains(query, true) }
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Choose brand") },
+        text = {
+            Column {
+                OutlinedTextField(query, { query = it }, leadingIcon = { Icon(Icons.Default.Search, null) }, singleLine = true,
+                    placeholder = { Text("Search") }, modifier = Modifier.fillMaxWidth())
+                LazyColumn(Modifier.heightIn(max = 420.dp)) {
+                    items(list, key = { it.id }) { b ->
+                        Column(Modifier.fillMaxWidth().clickable { onPick(b) }.padding(vertical = 10.dp)) {
+                            Text(b.name, fontWeight = FontWeight.Medium)
+                            Text(b.family.label + " · ${b.family.modules.size} known modules", style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        }
+                        HorizontalDivider()
+                    }
+                }
+            }
+        },
+        confirmButton = { TextButton(onClick = onDismiss) { Text("Cancel") } },
+    )
+}

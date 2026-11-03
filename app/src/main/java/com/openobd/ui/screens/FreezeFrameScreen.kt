@@ -59,7 +59,7 @@ fun FreezeFrameScreen(onBack: () -> Unit, onConnect: () -> Unit) {
                     } else {
                         SectionCard(title = "Triggered by") {
                             Text(ff.dtc ?: "Unknown", fontFamily = FontFamily.Monospace, fontWeight = FontWeight.Bold, style = MaterialTheme.typography.headlineSmall)
-                            ff.dtc?.let { Text(session.dtcDatabase.lookup(it).description) }
+                            ff.dtc?.let { Text(session.describe(it).description) }
                         }
                         SectionCard(title = "Conditions at the time of the fault") {
                             if (ff.values.isEmpty()) Text("The ECU did not provide sensor values.")

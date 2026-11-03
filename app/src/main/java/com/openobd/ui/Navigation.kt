@@ -30,7 +30,10 @@ import androidx.navigation.compose.rememberNavController
 import com.openobd.AppContainer
 import com.openobd.ui.components.formatNumber
 import com.openobd.ui.screens.AboutScreen
+import com.openobd.ui.screens.BrandScreen
 import com.openobd.ui.screens.ChartScreen
+import com.openobd.ui.screens.CustomPidsScreen
+import com.openobd.ui.screens.ModuleScreen
 import com.openobd.ui.screens.DashboardScreen
 import com.openobd.ui.screens.DiagnosticsScreen
 import com.openobd.ui.screens.DtcLookupScreen
@@ -71,6 +74,10 @@ object Routes {
     const val LOOKUP = "lookup"
     const val HISTORY = "history"
     const val ABOUT = "about"
+    const val BRAND = "brand"
+    const val PIDS = "pids"
+    const val MODULE = "module/{id}"
+    fun module(id: String) = "module/" + android.net.Uri.encode(id)
 }
 
 private data class Tab(val route: String, val label: String, val icon: ImageVector)
@@ -142,6 +149,9 @@ fun OpenObdNavHost() {
             composable(Routes.LOOKUP) { DtcLookupScreen(onBack = back) }
             composable(Routes.HISTORY) { HistoryScreen(onBack = back) }
             composable(Routes.ABOUT) { AboutScreen(onBack = back) }
+            composable(Routes.BRAND) { BrandScreen(onBack = back, onNavigate = { nav.navigate(it) }) }
+            composable(Routes.PIDS) { CustomPidsScreen(onBack = back) }
+            composable(Routes.MODULE) { e -> ModuleScreen(e.arguments?.getString("id").orEmpty(), onBack = back, onConnect = toHome) }
         }
     }
 }

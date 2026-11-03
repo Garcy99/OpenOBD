@@ -3,7 +3,7 @@ package com.openobd.core.obd
 enum class SensorCategory(val label: String) {
     ENGINE("Engine"), FUEL("Fuel"), AIR("Air & Boost"), OXYGEN("Oxygen sensors"), EMISSIONS("Emissions"),
     TEMPERATURE("Temperatures"), VEHICLE("Vehicle"), ELECTRICAL("Electrical & Hybrid"), DIESEL("Diesel"),
-    STATUS("Status"), CALCULATED("Calculated");
+    STATUS("Status"), CALCULATED("Calculated"), BRAND("Brand / custom");
 }
 
 /** A single numeric channel. One PID may yield several sensors (e.g. O2 voltage and trim). */
@@ -21,6 +21,8 @@ class SensorDef(
     val slow: Boolean = false,
     /** For enumerated values: renders a text label instead of a number. */
     val labeler: ((Double) -> String)? = null,
+    /** Free-text unit for custom PIDs whose unit is not a known [ObdUnit]. */
+    val customUnit: String? = null,
     val decode: (IntArray) -> Double?,
 ) {
     fun decodeSafe(data: IntArray): Double? = try {
@@ -86,7 +88,7 @@ private class PidTableBuilder {
         cat: SensorCategory, decimals: Int = 0, slow: Boolean = false, labeler: ((Double) -> String)? = null,
         decode: (IntArray) -> Double?,
     ) {
-        current!! += SensorDef(Pids.key(pid, suffix), pid, name, short, unit, min, max, cat, decimals, slow, labeler, decode)
+        current!! += SensorDef(Pids.key(pid, suffix), pid, name, short, unit, min, max, cat, decimals, slow, labeler, decode = decode)
     }
 
     /** One-sensor PID. */

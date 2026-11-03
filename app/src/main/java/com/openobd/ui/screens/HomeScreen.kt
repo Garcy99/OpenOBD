@@ -30,6 +30,8 @@ import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.DirectionsCar
 import androidx.compose.material.icons.filled.Error
 import androidx.compose.material.icons.filled.Flag
+import androidx.compose.material.icons.filled.Hub
+import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.filled.Route
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.ShowChart
@@ -145,6 +147,7 @@ fun HomeScreen(onNavigate: (String) -> Unit, onTab: (String) -> Unit) {
             when (val s = state) {
                 is ConnectionState.Connected -> {
                     VehicleCard(s)
+                    BrandCard { onNavigate(Routes.BRAND) }
                     HealthCard(onCodes = { onTab(Routes.DIAGNOSTICS) }, onReadiness = { onNavigate(Routes.READINESS) })
                     QuickActions(onNavigate, onTab)
                 }
@@ -287,6 +290,29 @@ private fun VehicleCard(s: ConnectionState.Connected) {
             KeyValueRow("Battery", "%.1f V".format(volts), valueColor = when { volts < 11.8 -> Bad; volts < 12.3 -> Warn; else -> Good })
         }
         if (rate > 0) KeyValueRow("Live data rate", "%.1f updates/s".format(rate))
+    }
+}
+
+@Composable
+private fun BrandCard(onOpen: () -> Unit) {
+    val session = LocalApp.current.session
+    val brand by session.brand.collectAsStateWithLifecycle()
+    val scan by session.moduleScan.collectAsStateWithLifecycle()
+    SectionCard(Modifier.clickable(onClick = onOpen)) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Icon(Icons.Default.Hub, null, tint = MaterialTheme.colorScheme.primary)
+            Spacer(Modifier.width(12.dp))
+            Column(Modifier.weight(1f)) {
+                Text(brand?.let { "${it.name} features" } ?: "Choose your brand", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+                val done = (scan as? Op.Done)?.value
+                Text(
+                    if (done != null) "${done.count { it.online }} modules answered · ${done.sumOf { it.dtcs.size }} module code(s)"
+                    else "Scan ABS, airbag, body and other modules",
+                    style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+            Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, null)
+        }
     }
 }
 
