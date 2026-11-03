@@ -7,6 +7,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
@@ -80,8 +81,10 @@ fun SettingsScreen(onBack: () -> Unit) {
                 NumberField("Adapter response timeout in ms (0 = default)", s.elmTimeoutMs.toString()) { v -> v.toIntOrNull()?.let { n -> update { it.copy(elmTimeoutMs = n) } } }
                 SwitchRow("Multi-PID requests (faster on CAN)", s.batching) { v -> update { it.copy(batching = v) } }
                 SwitchRow("Fast responses (response count hint)", s.fastMode) { v -> update { it.copy(fastMode = v) } }
-                Text("If your adapter is a cheap clone and data looks wrong, turn off the two options above. Changes apply on the next connection.",
+                SwitchRow("Adapter has an HS/MS-CAN switch (Ford / Mazda)", s.msCanSwitch) { v -> update { it.copy(msCanSwitch = v) } }
+                Text("If your adapter is a cheap clone and data looks wrong, turn off multi-PID and fast responses. Changes apply on the next connection.",
                     style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                AdapterCheck()
             }
             SectionCard(title = "Vehicle") {
                 Label("Fuel type (for consumption)")
@@ -187,5 +190,48 @@ private fun <T> Dropdown(options: List<T>, selected: T, label: (T) -> String, on
         DropdownMenu(open, { open = false }) {
             options.forEach { o -> DropdownMenuItem(text = { Text(label(o)) }, onClick = { open = false; onSelect(o) }) }
         }
+    }
+}
+
+@Composable
+private fun AdapterCheck() {
+    val session = LocalApp.current.session
+    val vehicle = connectedVehicle()
+    val scope = rememberCoroutineScope()
+    var running by remember { mutableStateOf(false) }
+    var result by remember { mutableStateOf<List<Pair<String, Boolean>>?>(null) }
+    var error by remember { mutableStateOf<String?>(null) }
+    TextButton(onClick = {
+        running = true; error = null
+        scope.launch {
+            try { result = session.checkAdapter() } catch (e: Exception) { error = e.message }
+            running = false
+        }
+    }, enabled = vehicle != null && !running) { Text(if (running) "Checking adapter…" else "Check adapter capabilities") }
+    if (vehicle == null) Text("Connect to check which features your adapter supports (many \"v1.4/v1.5\" adapters are clones missing commands).",
+        style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+    error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
+    result?.let { list ->
+        val missing = list.count { !it.second }
+        AlertDialog(
+            onDismissRequest = { result = null },
+            title = { Text(if (missing == 0) "Adapter looks complete" else "$missing feature(s) missing") },
+            text = {
+                Column(Modifier.verticalScroll(rememberScrollState())) {
+                    Text("${vehicle?.elm?.version ?: "Adapter"} · ${vehicle?.elm?.deviceDescription ?: ""}", style = MaterialTheme.typography.bodySmall)
+                    Spacer(Modifier.height(8.dp))
+                    list.forEach { (name, ok) ->
+                        Row(Modifier.padding(vertical = 4.dp)) {
+                            Text(if (ok) "✓" else "✗", color = if (ok) com.openobd.ui.theme.Good else com.openobd.ui.theme.Bad, fontWeight = FontWeight.Bold, modifier = Modifier.width(24.dp))
+                            Text(name, style = MaterialTheme.typography.bodyMedium)
+                        }
+                    }
+                    if (missing > 0) Text("\nMissing commands usually mean a low-quality clone. Basic OBD functions still work; the features listed may not. " +
+                        "OpenOBD already falls back to alternatives where possible (e.g. CAN filter/mask instead of ATCRA).",
+                        style = MaterialTheme.typography.bodySmall)
+                }
+            },
+            confirmButton = { TextButton(onClick = { result = null }) { Text("OK") } },
+        )
     }
 }

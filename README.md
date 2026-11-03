@@ -26,6 +26,10 @@ with no ads, subscriptions or paywalls.
 - **Module scanner**: read and clear codes in ABS, airbag, body, cluster, steering, climate, parking, EV battery/charger and other modules
   over UDS (ISO 14229) with automatic KWP2000 / OBD fallback. Known addresses for Ford/Lincoln, Mazda, the VW group (VW/Audi/Škoda/SEAT/Cupra/Porsche),
   Hyundai/Kia/Genesis, Toyota/Lexus, Nissan/Infiniti, Renault/Dacia and GM
+- **HS/MS-CAN switch adapters** (the common "ELM327 switch" for Ford/Lincoln/Mazda): guided switching to the medium-speed bus
+  for climate, door, SYNC and audio modules, with live data paused and safely resumed when you switch back
+- **Adapter check**: tests which commands your adapter really supports (many "v1.4/v1.5" adapters are clones), and the app falls back
+  automatically (e.g. CAN filter/mask when `ATCRA` is missing)
 - **Discover modules**: probes every diagnostic CAN address, so it finds the modules on any brand
 - UDS codes with **failure type** ("C0035-31: left front wheel speed sensor, no signal") and status (active, confirmed, pending, warning lamp)
 - **Module identification**: part number, software and hardware versions, serial and VIN, plus a raw data-identifier reader

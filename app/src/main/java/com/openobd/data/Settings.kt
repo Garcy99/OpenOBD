@@ -69,6 +69,8 @@ data class AppSettings(
     val customPids: List<CustomPid> = emptyList(),
     /** Modules found with "Discover modules" or added by hand. */
     val customModules: List<EcuModule> = emptyList(),
+    /** Adapter has a manual HS-CAN / MS-CAN switch (common "ELM327 switch" adapters for Ford / Mazda). */
+    val msCanSwitch: Boolean = false,
 ) {
     companion object {
         val DEFAULT_DASHBOARD = listOf("010C", "010D", "0105", "0104", "0111", "CALC_FUEL", "0142", "CALC_BOOST")
@@ -102,6 +104,7 @@ class SettingsRepository(private val context: Context, scope: CoroutineScope) {
         val brand = stringPreferencesKey("brand")
         val customPids = stringPreferencesKey("custom_pids")
         val customModules = stringPreferencesKey("custom_modules")
+        val msCanSwitch = booleanPreferencesKey("ms_can_switch")
     }
 
     private val json = Json { ignoreUnknownKeys = true }
@@ -134,6 +137,7 @@ class SettingsRepository(private val context: Context, scope: CoroutineScope) {
             brandId = p[K.brand],
             customPids = p[K.customPids]?.let { runCatching { json.decodeFromString<List<CustomPid>>(it) }.getOrNull() } ?: d.customPids,
             customModules = p[K.customModules]?.let { runCatching { json.decodeFromString<List<EcuModule>>(it) }.getOrNull() } ?: d.customModules,
+            msCanSwitch = p[K.msCanSwitch] ?: d.msCanSwitch,
         )
     }
 
@@ -166,6 +170,7 @@ class SettingsRepository(private val context: Context, scope: CoroutineScope) {
             s.brandId?.let { p[K.brand] = it } ?: p.remove(K.brand)
             p[K.customPids] = json.encodeToString(s.customPids)
             p[K.customModules] = json.encodeToString(s.customModules)
+            p[K.msCanSwitch] = s.msCanSwitch
         }
     }
 }

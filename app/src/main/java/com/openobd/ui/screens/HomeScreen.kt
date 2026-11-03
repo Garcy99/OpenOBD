@@ -248,6 +248,11 @@ private fun ConnectionCard(
                     style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
         }
+        val bus by LocalApp.current.session.bus.collectAsStateWithLifecycle()
+        if (connected && bus != com.openobd.session.Bus.HS) {
+            Text("Adapter is on MS-CAN: live data is paused. Return to HS-CAN in Brand features.", color = Warn,
+                style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(top = 8.dp))
+        }
         when (state) {
             is ConnectionState.Connecting -> {
                 Spacer(Modifier.height(12.dp))

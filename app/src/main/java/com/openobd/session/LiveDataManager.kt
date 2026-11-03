@@ -109,6 +109,7 @@ class LiveDataManager(private val scope: CoroutineScope) {
 
     fun start(client: ObdClient, supported: Set<Int>) {
         stop()
+        pauseCount.set(0) // a pause left over from a previous connection must not freeze this one
         latest.clear()
         _readings.value = emptyMap()
         histories.clear()

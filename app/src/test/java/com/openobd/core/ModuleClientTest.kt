@@ -97,3 +97,56 @@ class ModuleClientTest {
         assertEquals("C0035-31", mc.scan(abs).dtcs.single().fullCode)
     }
 }
+
+class MsCanAndCloneTest {
+    private fun connect(clone: Boolean = false) = runBlocking {
+        val t = DemoTransport(latencyMs = 0, limitedClone = clone)
+        t.open()
+        val elm = Elm327(t)
+        elm.initialize(ElmConfig())
+        Triple(t, elm, ModuleClient(elm))
+    }
+
+    @Test
+    fun switchesToMsCanAndBack() = runBlocking {
+        val (_, elm, mc) = connect()
+        val obd = ObdClient(elm).also { it.discover() }
+        val ms = Families.FORD.modules.filter { it.secondaryBus }
+        // While still on HS-CAN the MS modules don't answer
+        assertTrue(mc.ping(ms).isEmpty())
+
+        assertTrue(elm.setProtocol(com.openobd.core.elm.ObdProtocol.USER1_CAN))
+        assertEquals(listOf("HVAC", "DDM", "APIM"), mc.ping(ms).map { it.shortName })
+        val hvac = mc.scan(ms.first { it.shortName == "HVAC" })
+        assertEquals("B1A4F-12", hvac.dtcs.single().fullCode)
+        val found = mc.discover(secondaryBus = true)
+        assertEquals(listOf(0x733, 0x740, 0x7D0), found.map { it.tx }.sorted())
+        assertTrue(found.all { it.secondaryBus && it.id.startsWith("ms:") })
+        // Engine is not reachable on MS-CAN
+        assertTrue(obd.readPids(listOf(0x0C)).isEmpty())
+
+        assertTrue(elm.setProtocol(elm.baseProtocol))
+        assertEquals(1, obd.readPids(listOf(0x0C)).size)
+    }
+
+    @Test
+    fun limitedCloneStillScansModules() = runBlocking {
+        val (_, elm, mc) = connect(clone = true)
+        val abs = Families.FORD.modules.first { it.shortName == "ABS" }
+        assertEquals("C0035-31", mc.scan(abs).dtcs.single().fullCode)
+        assertEquals(6, mc.discover().size) // falls back to ATCF/ATCM
+        val caps = elm.checkCapabilities().toMap()
+        assertFalse(caps.getValue("Receive filter (ATCRA) - module access"))
+        assertTrue(caps.getValue("CAN filter / mask (ATCF, ATCM) - fallback filter"))
+        assertTrue(caps.getValue("User CAN 125k protocol (ATSP B) - Ford/Mazda MS-CAN"))
+        assertEquals(2, ObdClient(elm).also { it.discover() }.readPids(listOf(0x0C, 0x0D)).size)
+    }
+
+    @Test
+    fun genuineAdapterPassesCapabilityCheck() = runBlocking {
+        val (_, elm, _) = connect()
+        val caps = elm.checkCapabilities()
+        assertTrue(caps.toString(), caps.all { it.second })
+        assertEquals(2, ObdClient(elm).also { it.discover() }.readPids(listOf(0x0C, 0x0D)).size)
+    }
+}

@@ -179,7 +179,7 @@ class UiSmokeTest {
             }
         }
         waitFor { c.session.brand.value?.id == "ford" }
-        tap("Scan all ${c.session.modulesForBrand().size} modules")
+        tap("Scan all ${c.session.modulesOnCurrentBus().size} modules")
         waitFor(30_000) { c.session.moduleScan.value is Op.Done }
         shot("18_modules_$suffix")
         tap("Anti-lock brake system")
@@ -190,6 +190,21 @@ class UiSmokeTest {
         waitFor(60_000) { c.session.discovery.value is Op.Done }
         assertTrue((c.session.discovery.value as Op.Done).value.size == 6)
         shot("20_discovery_$suffix")
+        // Manual HS/MS-CAN switch adapter flow
+        runBlocking { c.settings.update { it.copy(msCanSwitch = true) } }
+        waitFor { c.settings.settings.value.msCanSwitch }
+        tap("Switch to MS-CAN")
+        tap("Continue")
+        waitFor { c.session.bus.value == com.openobd.session.Bus.MS }
+        waitFor { rule.onAllNodesWithText("3 of 6 known modules", substring = true).fetchSemanticsNodes().isNotEmpty() }
+        tap("Scan all 6 modules")
+        waitFor(30_000) { c.session.moduleScan.value is Op.Done }
+        shot("22_ms_can_$suffix")
+        tap("Return to HS-CAN")
+        tap("Continue")
+        waitFor { c.session.bus.value == com.openobd.session.Bus.HS }
+        waitFor { c.session.live.rate.value > 0 || c.session.live.readings.value.isNotEmpty() }
+
         tap("Manage custom PIDs")
         waitFor { c.session.live.readings.value.containsKey("X_demo") }
         shot("21_custom_pids_$suffix")

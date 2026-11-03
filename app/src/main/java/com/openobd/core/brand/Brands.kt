@@ -23,7 +23,7 @@ data class EcuModule(
     /** Modules on a secondary bus (e.g. Ford MS-CAN) need an adapter with a bus switch. */
     val secondaryBus: Boolean = false,
 ) {
-    val id: String get() = (if (is29Bit) "29:" else "") + "%03X".format(tx)
+    val id: String get() = (if (secondaryBus) "ms:" else "") + (if (is29Bit) "29:" else "") + "%03X".format(tx)
     val addressLabel: String get() = if (is29Bit) "18DA%02XF1".format(tx) else "%03X → %03X".format(tx, rx)
 }
 

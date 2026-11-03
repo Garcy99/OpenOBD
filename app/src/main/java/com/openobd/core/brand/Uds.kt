@@ -263,7 +263,11 @@ class ModuleClient(private val elm: Elm327) {
      * Probes every 11-bit diagnostic request ID in [range] with TesterPresent and returns the modules that answer.
      * Takes roughly 15-40 s depending on the adapter.
      */
-    suspend fun discover(range: IntRange = 0x700..0x7F7, progress: (Int, Int) -> Unit = { _, _ -> }): List<EcuModule> = elm.exclusive {
+    suspend fun discover(
+        range: IntRange = 0x700..0x7F7,
+        secondaryBus: Boolean = false,
+        progress: (Int, Int) -> Unit = { _, _ -> },
+    ): List<EcuModule> = elm.exclusive {
         val found = mutableListOf<EcuModule>()
         try {
             at("ATST19") // ~100 ms per absent address
@@ -277,7 +281,7 @@ class ModuleClient(private val elm: Elm327) {
                 val answer = msgs.firstOrNull { it.service == 0x7E || (it.isNegative && it.data.getOrNull(1) == 0x3E) }
                 val rx = answer?.ecu?.toIntOrNull(16)
                 if (answer != null && rx != null && rx != tx && found.none { it.rx == rx }) {
-                    found += EcuModule("Module %03X".format(tx), "%03X".format(tx), tx, rx)
+                    found += EcuModule("Module %03X".format(tx), "%03X".format(tx), tx, rx, secondaryBus = secondaryBus)
                 }
             }
             progress(total, total)
@@ -285,6 +289,15 @@ class ModuleClient(private val elm: Elm327) {
             withContext(NonCancellable) { restore() }
         }
         found
+    }
+
+    /** Sends TesterPresent to each module and returns those that answer (quick bus check). */
+    suspend fun ping(modules: List<EcuModule>): List<EcuModule> = modules.filter { m ->
+        runCatching {
+            withModule(m) {
+                request("3E00", 1500).any { it.service == 0x7E || (it.isNegative && it.data.getOrNull(1) == 0x3E) }
+            }
+        }.getOrDefault(false)
     }
 
     // ------------------------------------------------------------------ custom / manufacturer PIDs

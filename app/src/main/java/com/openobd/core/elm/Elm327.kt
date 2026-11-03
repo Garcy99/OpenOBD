@@ -119,6 +119,45 @@ class Elm327(
         suspend fun at(cmd: String): Boolean = runCatching { commandLocked(cmd, 2000).any { it.contains("OK", true) } }.getOrDefault(false)
     }
 
+    /** Protocol found at connection time (the primary / HS-CAN bus). */
+    var baseProtocol: ObdProtocol = ObdProtocol.AUTO
+        private set
+
+    /**
+     * Switches the adapter to another protocol without searching, e.g. User1 CAN 125 kbaud ([ObdProtocol.USER1_CAN])
+     * for Ford/Mazda MS-CAN through an adapter with an HS/MS-CAN switch. Returns false if the adapter refused.
+     */
+    suspend fun setProtocol(p: ObdProtocol): Boolean = exclusive {
+        val ok = at("ATSP${p.code}")
+        if (ok) protocol = p
+        ok
+    }
+
+    /** Checks which optional ELM327 features this adapter really implements (many clones claim v1.4/v1.5 but lack some). */
+    suspend fun checkCapabilities(): List<Pair<String, Boolean>> = exclusive {
+        val out = mutableListOf<Pair<String, Boolean>>()
+        fun add(name: String, ok: Boolean) { out += name to ok }
+        add("Battery voltage (ATRV)", runCatching { command("ATRV").any { it.contains("V") } }.getOrDefault(false))
+        add("Set header (ATSH) - module access", at("ATSH 7E0"))
+        add("Receive filter (ATCRA) - module access", at("ATCRA 7E8"))
+        add("Wildcard receive filter (ATCRA 7XX) - module discovery", at("ATCRA 7XX"))
+        add("CAN filter / mask (ATCF, ATCM) - fallback filter", at("ATCF 7E8") && at("ATCM 7FF"))
+        add("Flow control header (ATFCSH) - long module replies", at("ATFCSH 7E0"))
+        add("Flow control data / mode (ATFCSD, ATFCSM)", at("ATFCSD 300000") && at("ATFCSM1"))
+        add("Adaptive timing (ATAT)", at("ATAT1"))
+        add("User CAN 125k protocol (ATSP B) - Ford/Mazda MS-CAN", at("ATSPB"))
+        add("Response count hint (fast mode)", runCatching {
+            at("ATSP${baseProtocol.code}")
+            at("ATFCSM0"); at("ATCRA"); at("ATSH 7DF")
+            val r = interpret(command("01001", 3000))
+            r is ObdResult.Data
+        }.getOrDefault(false))
+        // Restore everything to OBD defaults.
+        at("ATSP${baseProtocol.code}"); at("ATFCSM0"); at("ATCRA"); at("ATSH 7DF")
+        if (protocol != baseProtocol) at("ATSP${protocol.code}")
+        out
+    }
+
     /** The ATST value (in 4 ms units) configured at initialisation, used to restore after module work. */
     var configuredTimeout: Int? = null
         private set
@@ -192,6 +231,9 @@ class Elm327(
         if (interpret(lines) !is ObdResult.Data) {
             throw ElmException("The vehicle did not answer the first request: ${joined.ifBlank { "no reply" }}", ElmError.UNABLE_TO_CONNECT)
         }
+        baseProtocol = protocol
+        // Lock the detected protocol so later switches (e.g. to MS-CAN and back) never trigger a slow re-search.
+        if (config.protocol == ObdProtocol.AUTO) runCatching { expectOk("ATSP${protocol.code}") }
         progress("Connected using ${protocol.label}")
         return ElmInfo(version.trim(), description, protocol, stn != null, stn)
     }

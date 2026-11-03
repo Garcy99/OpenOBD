@@ -34,6 +34,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.openobd.core.brand.ModuleClient
 import com.openobd.core.brand.ModuleDtc
 import com.openobd.core.brand.ModuleScanResult
@@ -78,6 +79,14 @@ fun ModuleScreen(moduleId: String, onBack: () -> Unit, onConnect: () -> Unit) {
         ScreenTopBar(module?.shortName ?: "Module", onBack)
         if (module == null) { CenteredMessage(null, "Unknown module."); return@Column }
         if (vehicle == null) { NotConnected(onConnect); return@Column }
+        val bus by session.bus.collectAsStateWithLifecycle()
+        val onMs = bus == com.openobd.session.Bus.MS
+        if (bus == com.openobd.session.Bus.RETURNING || module.secondaryBus != onMs) {
+            CenteredMessage(null, if (module.secondaryBus) "${module.name} is on MS-CAN. In Brand features, enable the HS/MS-CAN switch option, " +
+                "flip your adapter's switch to MS and tap \"Switch to MS-CAN\"."
+            else "${module.name} is on HS-CAN but the adapter is on MS-CAN. Go back to Brand features and tap \"Return to HS-CAN\".")
+            return@Column
+        }
         LaunchedEffect(module.id) { run("Reading codes") { result = session.scanModule(module) } }
 
         Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {

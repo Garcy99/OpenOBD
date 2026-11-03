@@ -85,7 +85,12 @@ data class DtcScan(val codes: List<Dtc>, val errors: Map<DtcType, String>, val r
 
 data class ConsoleLine(val time: Long, val direction: Char, val text: String)
 
+/** Which CAN bus the adapter is currently talking to. */
+enum class Bus { HS, MS, RETURNING }
+
 data class AlertEvent(val rule: AlertRule, val value: Double, val sensorName: String)
+
+const val MS_CAN_BUSY = "The adapter is on MS-CAN. Go to Brand features and switch back to HS-CAN first."
 
 class ObdSession(
     private val context: Context,
@@ -113,6 +118,10 @@ class ObdSession(
     val monitorTests = MutableStateFlow<Op<List<TestResult>>>(Op.Idle)
     val moduleScan = MutableStateFlow<Op<List<ModuleScanResult>>>(Op.Idle)
     val discovery = MutableStateFlow<Op<List<EcuModule>>>(Op.Idle)
+
+    private val _bus = MutableStateFlow(Bus.HS)
+    /** HS = normal OBD bus; MS = Ford/Mazda medium-speed CAN through a switch adapter (live data paused). */
+    val bus: StateFlow<Bus> = _bus
 
     private val _brand = MutableStateFlow<Brand?>(null)
     /** The selected brand, or the one detected from the VIN when none was chosen. */
@@ -261,6 +270,7 @@ class ObdSession(
         dtcScan.value = Op.Idle; readiness.value = Op.Idle; freezeFrame.value = Op.Idle
         vehicleInfo.value = Op.Idle; monitorTests.value = Op.Idle; clearResult.value = Op.Idle
         moduleScan.value = Op.Idle; discovery.value = Op.Idle
+        _bus.value = Bus.HS
     }
 
     private fun logConsole(dir: Char, text: String) {
@@ -275,6 +285,7 @@ class ObdSession(
     private fun <T> runOp(target: MutableStateFlow<Op<T>>, progress: String? = null, block: suspend (ObdClient) -> T) {
         val c = client
         if (c == null) { target.value = Op.Error("Not connected to a vehicle"); return }
+        if (bus.value != Bus.HS) { target.value = Op.Error(MS_CAN_BUSY); return }
         if (target.value is Op.Loading) return
         target.value = Op.Loading(progress)
         scope.launch {
@@ -315,6 +326,7 @@ class ObdSession(
 
     fun scanDtcs() {
         if (client == null) { dtcScan.value = Op.Error("Not connected to a vehicle"); return }
+        if (bus.value != Bus.HS) { dtcScan.value = Op.Error(MS_CAN_BUSY); return }
         scope.launch { runCatching { scanDtcsInternal(record = true) } }
     }
 
@@ -394,9 +406,12 @@ class ObdSession(
         }.await()
     }
 
+    /** Modules reachable on the bus the adapter is currently on. */
+    fun modulesOnCurrentBus(): List<EcuModule> = modulesForBrand().filter { it.secondaryBus == (bus.value == Bus.MS) }
+
     fun scanAllModules() {
         if (moduleScan.value is Op.Loading) return
-        val list = modulesForBrand()
+        val list = modulesOnCurrentBus()
         moduleScan.value = Op.Loading("Starting")
         scope.launch {
             try {
@@ -428,6 +443,48 @@ class ObdSession(
 
     suspend fun readDid(m: EcuModule, did: Int): IntArray = moduleOp { it.readDid(m, did) }
 
+    // ------------------------------------------------------------------ HS / MS-CAN switching
+
+    /**
+     * Moves the adapter to MS-CAN (User1 CAN, 11-bit 125 kbaud). The user must have flipped the adapter's switch first.
+     * Live data is paused until [returnToHsCan] succeeds. Returns the known MS-CAN modules that answered.
+     */
+    suspend fun enterMsCan(): List<EcuModule> {
+        val e = elm ?: throw IllegalStateException("Not connected to a vehicle")
+        if (!e.baseProtocol.isCan || e.baseProtocol.is29Bit) throw IllegalStateException("MS-CAN is only used on 11-bit CAN vehicles (Ford, Lincoln, Mazda).")
+        if (bus.value == Bus.MS) return emptyList()
+        live.pause()
+        if (!e.setProtocol(com.openobd.core.elm.ObdProtocol.USER1_CAN)) {
+            live.resume()
+            throw IllegalStateException("This adapter rejected protocol B (User1 CAN 125k), so it can't talk to MS-CAN.")
+        }
+        _bus.value = Bus.MS
+        moduleScan.value = Op.Idle; discovery.value = Op.Idle
+        val known = modulesForBrand().filter { it.secondaryBus }
+        return if (known.isEmpty()) emptyList() else ModuleClient(e).ping(known)
+    }
+
+    /** Switches back to the vehicle's normal bus. Returns false if the car doesn't answer (switch still on MS?). */
+    suspend fun returnToHsCan(): Boolean {
+        val e = elm ?: return true
+        if (bus.value == Bus.HS) return true
+        _bus.value = Bus.RETURNING
+        e.setProtocol(e.baseProtocol)
+        val ok = e.query("0100", 5000) is com.openobd.core.elm.ObdResult.Data
+        if (ok) {
+            _bus.value = Bus.HS
+            moduleScan.value = Op.Idle; discovery.value = Op.Idle
+            live.resume()
+        }
+        return ok
+    }
+
+    suspend fun checkAdapter(): List<Pair<String, Boolean>> {
+        val e = elm ?: throw IllegalStateException("Connect to the adapter first")
+        live.pause()
+        try { return e.checkCapabilities() } finally { live.resume() }
+    }
+
     fun findModule(id: String): EcuModule? =
         modulesForBrand().firstOrNull { it.id == id } ?: (discovery.value as? Op.Done)?.value?.firstOrNull { it.id == id }
 
@@ -439,9 +496,10 @@ class ObdSession(
         discovery.value = Op.Loading("Probing CAN addresses")
         scope.launch {
             try {
-                val found = moduleOp { mc -> mc.discover { i, n -> discovery.value = Op.Loading("Probing address %03X … %d%%".format(0x700 + i, i * 100 / n)) } }
+                val ms = bus.value == Bus.MS
+                val found = moduleOp { mc -> mc.discover(secondaryBus = ms) { i, n -> discovery.value = Op.Loading("Probing address %03X … %d%%".format(0x700 + i, i * 100 / n)) } }
                 val known = modulesForBrand()
-                discovery.value = Op.Done(found.map { f -> known.firstOrNull { it.tx == f.tx && !it.is29Bit } ?: f })
+                discovery.value = Op.Done(found.map { f -> known.firstOrNull { it.tx == f.tx && !it.is29Bit && it.secondaryBus == ms } ?: f })
             } catch (e: Exception) {
                 discovery.value = Op.Error(e.message ?: "Discovery failed")
             }

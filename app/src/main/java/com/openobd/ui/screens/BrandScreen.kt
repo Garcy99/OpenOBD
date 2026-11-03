@@ -72,6 +72,7 @@ fun BrandScreen(onBack: () -> Unit, onNavigate: (String) -> Unit) {
     val detected by session.brandAutoDetected.collectAsStateWithLifecycle()
     val scan by session.moduleScan.collectAsStateWithLifecycle()
     val discovery by session.discovery.collectAsStateWithLifecycle()
+    val bus by session.bus.collectAsStateWithLifecycle()
     var picking by remember { mutableStateOf(false) }
     var showCodes by remember { mutableStateOf(false) }
     val family = brand?.family ?: com.openobd.core.brand.Families.GENERIC
@@ -99,14 +100,19 @@ fun BrandScreen(onBack: () -> Unit, onNavigate: (String) -> Unit) {
                 Text(family.notes, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
 
-            SectionCard(title = "Control modules") {
+            if (family.modules.any { it.secondaryBus } || settings.msCanSwitch) {
+                BusSwitchCard(canUseModules)
+            }
+
+            SectionCard(title = if (bus == com.openobd.session.Bus.MS) "Control modules on MS-CAN" else "Control modules") {
                 Text("Reads and clears trouble codes in ABS, airbag, body, cluster, steering, EV battery and other modules (UDS / KWP2000 on CAN).",
                     style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 Spacer(Modifier.height(10.dp))
                 if (vehicle == null) Text("Connect to your car to scan modules.", color = MaterialTheme.colorScheme.onSurfaceVariant)
                 else if (!canUseModules) ErrorText("Module access needs a CAN vehicle (most cars from 2008 onwards). This car uses ${vehicle.elm.protocol.label}.")
+                else if (bus == com.openobd.session.Bus.RETURNING) ErrorText("Switching back to HS-CAN - see the switch card above.")
                 else Button(onClick = session::scanAllModules, enabled = scan !is Op.Loading && discovery !is Op.Loading, modifier = Modifier.fillMaxWidth()) {
-                    Text("Scan all ${session.modulesForBrand().size} modules")
+                    Text("Scan all ${session.modulesOnCurrentBus().size} modules")
                 }
                 when (val s = scan) {
                     is Op.Loading -> { Spacer(Modifier.height(8.dp)); LinearProgressIndicator(Modifier.fillMaxWidth()); Text(s.progress ?: "", style = MaterialTheme.typography.bodySmall) }
@@ -123,7 +129,13 @@ fun BrandScreen(onBack: () -> Unit, onNavigate: (String) -> Unit) {
                         ModuleRow(r.module, r) { onNavigate(Routes.module(r.module.id)) }
                     }
                 } else {
-                    session.modulesForBrand().forEach { m -> ModuleRow(m, null) { onNavigate(Routes.module(m.id)) } }
+                    session.modulesOnCurrentBus().forEach { m -> ModuleRow(m, null) { onNavigate(Routes.module(m.id)) } }
+                }
+                val otherBus = session.modulesForBrand().filter { it.secondaryBus != (bus == com.openobd.session.Bus.MS) }
+                if (otherBus.isNotEmpty()) {
+                    Text(if (bus == com.openobd.session.Bus.MS) "On HS-CAN (switch back to reach them)" else "On MS-CAN (needs the adapter switch)",
+                        style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(top = 12.dp, bottom = 2.dp))
+                    otherBus.forEach { m -> ModuleRow(m, null, dimmed = true) { onNavigate(Routes.module(m.id)) } }
                 }
             }
 
@@ -199,7 +211,7 @@ fun BrandScreen(onBack: () -> Unit, onNavigate: (String) -> Unit) {
 }
 
 @Composable
-private fun ModuleRow(m: EcuModule, r: ModuleScanResult?, onClick: () -> Unit) {
+private fun ModuleRow(m: EcuModule, r: ModuleScanResult?, dimmed: Boolean = false, onClick: () -> Unit) {
     Row(Modifier.fillMaxWidth().clickable(onClick = onClick).padding(vertical = 9.dp), verticalAlignment = Alignment.CenterVertically) {
         StatusDot(when {
             r == null -> MaterialTheme.colorScheme.outline
@@ -210,7 +222,7 @@ private fun ModuleRow(m: EcuModule, r: ModuleScanResult?, onClick: () -> Unit) {
         })
         Spacer(Modifier.width(12.dp))
         Column(Modifier.weight(1f)) {
-            Text(m.name, fontWeight = FontWeight.Medium, color = if (r != null && !r.online) MaterialTheme.colorScheme.onSurfaceVariant else MaterialTheme.colorScheme.onSurface)
+            Text(m.name, fontWeight = FontWeight.Medium, color = if (dimmed || (r != null && !r.online)) MaterialTheme.colorScheme.onSurfaceVariant else MaterialTheme.colorScheme.onSurface)
             Text(m.addressLabel + " · " + m.category.label + (if (m.secondaryBus) " · MS-CAN" else "") + (r?.protocol?.let { " · " + it.name } ?: ""),
                 style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
@@ -250,4 +262,78 @@ fun BrandPickerDialog(onDismiss: () -> Unit, onPick: (Brand) -> Unit) {
         },
         confirmButton = { TextButton(onClick = onDismiss) { Text("Cancel") } },
     )
+}
+
+/** Guides the user through flipping a manual HS/MS-CAN switch adapter and moves the app between the two buses. */
+@Composable
+private fun BusSwitchCard(canUseModules: Boolean) {
+    val app = LocalApp.current
+    val session = app.session
+    val scope = rememberCoroutineScope()
+    val settings = appSettings()
+    val bus by session.bus.collectAsStateWithLifecycle()
+    var prompt by remember { mutableStateOf<com.openobd.session.Bus?>(null) }
+    var busy by remember { mutableStateOf(false) }
+    var message by remember { mutableStateOf<Pair<Boolean, String>?>(null) }
+
+    SectionCard(title = "HS / MS-CAN switch") {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text("My adapter has an HS/MS-CAN switch", Modifier.weight(1f))
+            androidx.compose.material3.Switch(settings.msCanSwitch, { v -> scope.launch { app.settings.update { it.copy(msCanSwitch = v) } } })
+        }
+        Text("Ford, Lincoln and Mazda put climate, doors, SYNC/infotainment and some body modules on a second, slower bus (MS-CAN). " +
+            "\"Switch\" adapters reach it when you move their toggle to MS.",
+            style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        if (settings.msCanSwitch && canUseModules) {
+            Spacer(Modifier.height(10.dp))
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                StatusDot(if (bus == com.openobd.session.Bus.HS) Good else Warn)
+                Spacer(Modifier.width(8.dp))
+                Text(when (bus) {
+                    com.openobd.session.Bus.HS -> "On HS-CAN (normal): engine, ABS, airbag …"
+                    com.openobd.session.Bus.MS -> "On MS-CAN: live data and engine features are paused"
+                    com.openobd.session.Bus.RETURNING -> "Waiting for HS-CAN - is the switch back on HS?"
+                }, fontWeight = FontWeight.Medium)
+            }
+            Spacer(Modifier.height(10.dp))
+            if (bus == com.openobd.session.Bus.HS) FilledTonalButton(onClick = { prompt = com.openobd.session.Bus.MS }, enabled = !busy, modifier = Modifier.fillMaxWidth()) { Text("Switch to MS-CAN") }
+            else Button(onClick = { prompt = com.openobd.session.Bus.HS }, enabled = !busy, modifier = Modifier.fillMaxWidth()) { Text("Return to HS-CAN") }
+            if (busy) LinearProgressIndicator(Modifier.fillMaxWidth().padding(top = 8.dp))
+            message?.let { (ok, t) -> if (ok) Text(t, color = Good, style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(top = 6.dp)) else ErrorText(t) }
+        }
+    }
+
+    prompt?.let { target ->
+        val toMs = target == com.openobd.session.Bus.MS
+        AlertDialog(
+            onDismissRequest = { prompt = null },
+            title = { Text(if (toMs) "Move the switch to MS-CAN" else "Move the switch back to HS-CAN") },
+            text = {
+                Text(if (toMs) "Flip the switch on your adapter to the MS-CAN position (often labelled \"MS\" or \"125K\"). Keep the ignition on, then tap Continue."
+                else "Flip the switch on your adapter back to HS-CAN (often labelled \"HS\" or \"500K\"), then tap Continue. Live data resumes once the car answers.")
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    prompt = null
+                    busy = true
+                    scope.launch {
+                        message = try {
+                            if (toMs) {
+                                val answered = session.enterMsCan()
+                                val known = session.modulesForBrand().count { it.secondaryBus }
+                                if (known == 0) true to "Now on MS-CAN. Use Discover modules to find the modules on this bus."
+                                else if (answered.isEmpty()) false to "No known MS-CAN module answered. Check the switch is on MS, then try Discover modules."
+                                else true to "Now on MS-CAN: ${answered.size} of $known known modules answered (${answered.joinToString { it.shortName }})."
+                            } else {
+                                if (session.returnToHsCan()) true to "Back on HS-CAN. Live data resumed."
+                                else false to "The car did not answer on HS-CAN. Make sure the switch is back on HS and tap Return to HS-CAN again."
+                            }
+                        } catch (e: Exception) { false to (e.message ?: "Failed") }
+                        busy = false
+                    }
+                }) { Text("Continue") }
+            },
+            dismissButton = { TextButton(onClick = { prompt = null }) { Text("Cancel") } },
+        )
+    }
 }

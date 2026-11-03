@@ -18,6 +18,8 @@ class DemoTransport(
     private val latencyMs: Long = 35,
     private val clock: () -> Long = { System.currentTimeMillis() },
     private val random: Random = Random.Default,
+    /** Behave like a low-quality clone that lacks ATCRA and the flow-control commands. */
+    private val limitedClone: Boolean = false,
 ) : ObdTransport() {
     override val description: String = "Demo car (simulated)"
 
@@ -30,6 +32,15 @@ class DemoTransport(
     private var headers = false
     private var connectedToCar = false
     private var header = "7DF"
+    /** ATSP value; "B" = User1 CAN 125k, i.e. the MS-CAN side of an HS/MS switch adapter. */
+    private var protocolCode = '0'
+    /** Modules on the simulated medium-speed bus (reached with ATSP B). */
+    val msModules: Map<Int, SimModule> = mapOf(
+        0x733 to SimModule(0x73B, "HVAC", "OB-18C612-DEMO", mutableListOf(Triple("B1A4F", 0x12, 0x09))),
+        0x740 to SimModule(0x748, "DDM", "OB-14B533-DEMO", mutableListOf()),
+        0x7D0 to SimModule(0x7D8, "APIM", "OB-14G371-DEMO", mutableListOf(Triple("U0184", 0x00, 0x28))),
+    )
+    private val onMsCan get() = protocolCode == 'B' 
     private var receiveFilter: String? = null
     private var canFilter: Int? = null
     private var canMask: Int? = null
@@ -103,9 +114,11 @@ class DemoTransport(
     private fun handleAt(c: String): List<String> = when {
         c == "Z" || c == "WS" -> {
             echo = true; spaces = true; headers = false; connectedToCar = false
+            protocolCode = '0'
             header = "7DF"; receiveFilter = null; canFilter = null; canMask = null
             listOf("", "ELM327 v1.5")
         }
+        limitedClone && ((c.startsWith("CRA") && c != "CRA") || c.startsWith("FCS")) -> listOf("?")
         c.startsWith("SH") -> { header = c.substring(2); listOf("OK") }
         c == "CRA" -> { receiveFilter = null; canFilter = null; canMask = null; listOf("OK") }
         c.startsWith("CRA") -> { receiveFilter = c.substring(3); listOf("OK") }
@@ -114,7 +127,8 @@ class DemoTransport(
         c == "I" -> listOf("ELM327 v1.5")
         c == "@1" -> listOf("OpenOBD Demo Adapter")
         c == "RV" -> listOf("%.1fV".format(if (connectedToCar) 14.1 + random.nextDouble(-0.1, 0.1) else 12.6))
-        c == "DPN" -> listOf(if (connectedToCar) "A6" else "0")
+        c == "DPN" -> listOf(if (onMsCan) "B" else if (connectedToCar) "A6" else "0")
+        c.startsWith("SP") || c.startsWith("TP") -> { protocolCode = c.last(); listOf("OK") }
         c == "DP" -> listOf("AUTO, ISO 15765-4 (CAN 11/500)")
         c.startsWith("E") -> { echo = c.endsWith("1"); listOf("OK") }
         c.startsWith("S") && c.length == 2 && (c[1] == '0' || c[1] == '1') -> { spaces = c[1] == '1'; listOf("OK") }
@@ -130,6 +144,13 @@ class DemoTransport(
         val bytes = hex.chunked(2).map { it.toInt(16) }
         val firstContact = !connectedToCar
         connectedToCar = true
+        if (onMsCan) {
+            val tx = header.toIntOrNull(16) ?: return listOf("NO DATA")
+            val module = msModules[tx] ?: return listOf("NO DATA")
+            if (!accepts(module.rx)) return listOf("NO DATA")
+            val payload = moduleReply(tx, module, bytes) ?: return listOf("NO DATA")
+            return format("%03X".format(module.rx), payload)
+        }
         if (header != "7DF") {
             val tx = header.toIntOrNull(16) ?: return listOf("NO DATA")
             val module = modules[tx] ?: return listOf("NO DATA")
