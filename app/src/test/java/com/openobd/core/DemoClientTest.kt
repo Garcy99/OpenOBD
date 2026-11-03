@@ -84,3 +84,31 @@ class DemoClientTest {
         assertEquals(3, data.size)
     }
 }
+
+class StnFastModeTest {
+    @Test
+    fun verifiesAndUsesStpxOnStnAdapters() = runBlocking {
+        val t = DemoTransport(latencyMs = 0, stn = true, withTransmission = false).also { it.open() }
+        val elm = Elm327(t)
+        val info = elm.initialize(ElmConfig())
+        assertTrue(info.isStn)
+        val client = ObdClient(elm).apply { stn = true }
+        client.discover()
+        assertEquals(1, client.ecus.size)
+        val data = client.readPids(listOf(0x0C, 0x0D, 0x05, 0x04))
+        assertEquals(4, data.size)
+        assertEquals(true, client.stnFastVerified)
+        assertTrue(client.stnFastActive)
+        assertEquals(4, client.readPids(listOf(0x0C, 0x0D, 0x05, 0x04)).size) // now via STPX
+        val bench = client.benchmark(setOf(0x0C, 0x0D, 0x04, 0x11, 0x05, 0x0B), rounds = 3)
+        assertTrue(bench.pidsPerSecond > 0)
+        assertEquals(6, bench.batchSize)
+    }
+
+    @Test
+    fun plainElmIsNotStn() = runBlocking {
+        val t = DemoTransport(latencyMs = 0).also { it.open() }
+        val elm = Elm327(t)
+        assertTrue(!elm.initialize(ElmConfig()).isStn)
+    }
+}

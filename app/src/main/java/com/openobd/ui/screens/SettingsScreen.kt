@@ -85,6 +85,7 @@ fun SettingsScreen(onBack: () -> Unit) {
                 Text("If your adapter is a cheap clone and data looks wrong, turn off multi-PID and fast responses. Changes apply on the next connection.",
                     style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 AdapterCheck()
+                SpeedTest()
             }
             SectionCard(title = "Vehicle") {
                 Label("Fuel type (for consumption)")
@@ -230,6 +231,47 @@ private fun AdapterCheck() {
                     if (missing > 0) Text("\nMissing commands usually mean a low-quality clone. Basic OBD functions still work; the features listed may not. " +
                         "OpenOBD already falls back to alternatives where possible (e.g. CAN filter/mask instead of ATCRA).",
                         style = MaterialTheme.typography.bodySmall)
+                }
+            },
+            confirmButton = { TextButton(onClick = { result = null }) { Text("OK") } },
+        )
+    }
+}
+
+@Composable
+private fun SpeedTest() {
+    val session = LocalApp.current.session
+    val vehicle = connectedVehicle()
+    val scope = rememberCoroutineScope()
+    var running by remember { mutableStateOf(false) }
+    var result by remember { mutableStateOf<com.openobd.core.obd.ObdClient.Benchmark?>(null) }
+    var error by remember { mutableStateOf<String?>(null) }
+    TextButton(onClick = {
+        running = true; error = null
+        scope.launch {
+            try { result = session.speedTest() } catch (e: Exception) { error = e.message }
+            running = false
+        }
+    }, enabled = vehicle != null && !running) { Text(if (running) "Measuring…" else "Run live data speed test") }
+    error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
+    result?.let { b ->
+        AlertDialog(
+            onDismissRequest = { result = null },
+            title = { Text("%.0f PIDs per second".format(b.pidsPerSecond)) },
+            text = {
+                Column {
+                    Text("Single request: %.0f ms (%.1f per second)".format(b.singleMs, 1000 / b.singleMs))
+                    b.batchMs?.let { Text("Batch of ${b.batchSize} PIDs: %.0f ms".format(it)) }
+                    Text(if (b.stnFast) "OBDLink/STN fast mode: active" else if (vehicle?.elm?.isStn == true) "OBDLink/STN fast mode: not usable with this car" else "OBDLink/STN fast mode: not available (ELM327 adapter)")
+                    Spacer(Modifier.height(8.dp))
+                    Text(
+                        when {
+                            b.batchMs == null -> "Multi-PID requests are off or not supported by this car; turning them on (CAN cars) is usually the biggest speed-up."
+                            b.singleMs > 150 -> "Responses are slow. Try adaptive timing \"Aggressive\", or a timeout around 60-100 ms. Bluetooth clones are often limited to ~5-10 requests/s."
+                            else -> "Good. Fewer sensors on screen = faster updates for each one."
+                        },
+                        style = MaterialTheme.typography.bodySmall,
+                    )
                 }
             },
             confirmButton = { TextButton(onClick = { result = null }) { Text("OK") } },

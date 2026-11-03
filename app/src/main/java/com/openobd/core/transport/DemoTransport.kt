@@ -20,6 +20,10 @@ class DemoTransport(
     private val random: Random = Random.Default,
     /** Behave like a low-quality clone that lacks ATCRA and the flow-control commands. */
     private val limitedClone: Boolean = false,
+    /** Behave like an OBDLink (STN) adapter: answers STI and supports STPX. */
+    private val stn: Boolean = false,
+    /** Simulate a transmission ECU that also answers OBD requests (two responders). */
+    private val withTransmission: Boolean = true,
 ) : ObdTransport() {
     override val description: String = "Demo car (simulated)"
 
@@ -106,6 +110,11 @@ class DemoTransport(
         val cmd = raw.replace(" ", "").uppercase()
         if (cmd.isEmpty()) return listOf("")
         if (cmd.startsWith("AT")) return handleAt(cmd.substring(2))
+        if (cmd.startsWith("STPX") && stn) {
+            val data = Regex("D:([0-9A-F]+)").find(cmd)?.groupValues?.get(1) ?: return listOf("?")
+            return handleObd(data)
+        }
+        if (cmd == "STI" && stn) return listOf("STN2120 v5.6.19")
         if (cmd.startsWith("ST")) return listOf("?")
         if (!cmd.all { it.isDigit() || it in 'A'..'F' }) return listOf("?")
         return handleObd(cmd)
@@ -174,7 +183,7 @@ class DemoTransport(
             0x01 -> {
                 val pids = bytes.drop(1)
                 if (pids.isEmpty() || pids.size > 6) return listOf("?")
-                for ((ecu, supported) in listOf("7E8" to enginePids, "7E9" to transmissionPids)) {
+                for ((ecu, supported) in listOf("7E8" to enginePids, "7E9" to transmissionPids).filter { withTransmission || it.first == "7E8" }) {
                     val payload = mutableListOf(0x41)
                     for (p in pids) {
                         val d = if (p % 0x20 == 0) supportBitmap(p, supported) else if (p in supported) pidValue(p, ecu) else null

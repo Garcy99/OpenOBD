@@ -37,6 +37,13 @@ class ObdClient(val elm: Elm327) {
     var fastResponses = true
     private var batchFailures = 0
 
+    /** Adapter is an OBDLink / STN chip: batched requests use STPX with an explicit response count. */
+    var stn = false
+    /** null = not verified yet; STPX batches are compared once against plain requests before being trusted. */
+    var stnFastVerified: Boolean? = null
+        private set
+    val stnFastActive: Boolean get() = stn && fastResponses && ecus.size <= 1 && stnFastVerified == true
+
     /** ECU addresses that answered 0100 during discovery; the first one is treated as the engine ECU. */
     var ecus: List<EcuInfo> = emptyList()
         private set
@@ -99,8 +106,20 @@ class ObdClient(val elm: Elm327) {
         if (isCan && batchingEnabled && pids.size > 1) {
             val batchable = pids.filter { it <= 0x64 && Pids.all[it] != null }
             for (chunk in batchable.chunked(6)) {
-                val r = elm.query("01" + chunk.joinToString("") { "%02X".format(it) }, 3000)
-                if (r is ObdResult.Data) parseMultiPid(r, out)
+                val req = "01" + chunk.joinToString("") { "%02X".format(it) }
+                val useStpx = stn && fastResponses && ecus.size <= 1 && stnFastVerified != false
+                if (useStpx && stnFastVerified == null && chunk.size > 1) {
+                    // One-time check: does STPX with r:1 return the complete (possibly multi-frame) answer?
+                    val fast = HashMap<Int, IntArray>()
+                    (elm.query("STPX D:$req, R:1", 3000) as? ObdResult.Data)?.let { parseMultiPid(it, fast) }
+                    val normal = HashMap<Int, IntArray>()
+                    (elm.query(req, 3000) as? ObdResult.Data)?.let { parseMultiPid(it, normal) }
+                    stnFastVerified = normal.isNotEmpty() && fast.keys == normal.keys
+                    out.putAll(normal)
+                } else {
+                    val r = elm.query(if (useStpx && stnFastVerified == true) "STPX D:$req, R:1" else req, 3000)
+                    if (r is ObdResult.Data) parseMultiPid(r, out)
+                }
                 val missing = chunk.filter { it !in out }
                 if (missing.isNotEmpty() && chunk.size > 1) {
                     if (missing.size == chunk.size) batchFailures++
@@ -140,6 +159,27 @@ class ObdClient(val elm: Elm327) {
                 i += 1 + len
             }
         }
+    }
+
+    data class Benchmark(val singleMs: Double, val batchMs: Double?, val batchSize: Int, val pidsPerSecond: Double, val stnFast: Boolean)
+
+    /** Measures request latency with the current settings (single PID and 6-PID batches). */
+    suspend fun benchmark(supported: Set<Int>, rounds: Int = 10): Benchmark {
+        val candidates = listOf(0x0C, 0x0D, 0x04, 0x11, 0x05, 0x0B, 0x0F, 0x10, 0x0E).filter { it in supported }
+        val single = candidates.firstOrNull() ?: 0x0C
+        var t = System.nanoTime()
+        repeat(rounds) { readPids(listOf(single)) }
+        val singleMs = (System.nanoTime() - t) / 1e6 / rounds
+        val batch = candidates.take(6)
+        var batchMs: Double? = null
+        if (batch.size > 1 && isCan && batchingEnabled) {
+            readPids(batch) // warm-up (also runs the STN verification once)
+            t = System.nanoTime()
+            repeat(rounds) { readPids(batch) }
+            batchMs = (System.nanoTime() - t) / 1e6 / rounds
+        }
+        val pps = if (batchMs != null) batch.size * 1000.0 / batchMs else 1000.0 / singleMs
+        return Benchmark(singleMs, batchMs, batch.size, pps, stnFastActive)
     }
 
     suspend fun readReadiness(pid: Int = 0x01): ReadinessStatus? =

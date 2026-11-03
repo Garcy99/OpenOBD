@@ -211,6 +211,7 @@ class ObdSession(
         val c = ObdClient(e).apply {
             batchingEnabled = s.batching
             fastResponses = s.fastMode
+            stn = info.isStn
         }
         client = c
         _state.value = ConnectionState.Connecting("Reading supported sensors")
@@ -556,6 +557,13 @@ class ObdSession(
             live.resume()
         }
         return ok
+    }
+
+    suspend fun speedTest(): ObdClient.Benchmark {
+        val c = client ?: throw IllegalStateException("Connect to the car first")
+        if (bus.value != Bus.HS) throw IllegalStateException(MS_CAN_BUSY)
+        live.pause()
+        try { return c.benchmark(vehicle?.supportedPids ?: emptySet()) } finally { live.resume() }
     }
 
     suspend fun checkAdapter(): List<Pair<String, Boolean>> {
