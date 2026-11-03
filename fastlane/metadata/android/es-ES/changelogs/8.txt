@@ -1,0 +1,5 @@
+• Identifica testigos del cuadro con una foto (asistente IA opcional)
+• Paquetes de PIDs: comparte los tuyos o descarga los de la comunidad
+• Comprobación con otra fuente: VIN, centralita y catálogo de la UE
+• Los PIDs personalizados solo pueden leer, nunca borrar ni escribir
+• Código interno reorganizado para más estabilidad

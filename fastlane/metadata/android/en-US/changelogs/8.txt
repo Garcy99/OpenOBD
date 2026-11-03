@@ -1,0 +1,5 @@
+• Identify dashboard warning lights from a photo (optional AI assistant)
+• PID packs: share yours or download community packs
+• Second source check: VIN, engine computer and EU catalog
+• Custom PIDs can only read, never clear or write
+• Internal restructuring for more stability

@@ -21,7 +21,10 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.CheckCircle
+import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.Search
+import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.DatePicker
@@ -61,6 +64,8 @@ import com.openobd.core.garage.MaintenanceItem
 import com.openobd.core.garage.Vehicle
 import com.openobd.core.obd.VinDecoder
 import com.openobd.core.specs.CatalogEntry
+import com.openobd.core.specs.CrossCheck
+import com.openobd.core.specs.CrossLevel
 import com.openobd.core.specs.DgtLabel
 import com.openobd.core.specs.DvlaClient
 import com.openobd.core.specs.EeaCatalog
@@ -84,7 +89,10 @@ import com.openobd.ui.components.Pill
 import com.openobd.ui.components.ScreenTopBar
 import com.openobd.ui.components.SectionCard
 import com.openobd.ui.tr
+import com.openobd.ui.theme.Bad
 import com.openobd.ui.theme.Good
+import com.openobd.ui.theme.Warn
+import com.openobd.session.Op
 import kotlinx.coroutines.launch
 import java.text.DateFormat
 import java.util.Calendar
@@ -119,6 +127,7 @@ fun FindCarScreen(vehicleId: String, onBack: () -> Unit) {
                 })
                 !searching && v.specs != null -> {
                     SpecsSummary(v.specs, settings.units)
+                    CrossCheckCard(v, v.specs, isActive = v.id == g.activeVehicleId)
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         FilledTonalButton(onClick = { draft = v.specs }, modifier = Modifier.weight(1f)) { Text(tr("Edit")) }
                         OutlinedButton(onClick = { searching = true }, modifier = Modifier.weight(1f)) { Text(tr("Search again")) }
@@ -143,6 +152,61 @@ private suspend fun saveSpecs(garage: com.openobd.data.GarageRepository, v: Vehi
         val age = specs.firstRegistration?.let { (now - it) / (365.25 * 86_400_000) } ?: 0.0
         val months = if (specs.country == "ES" && age < 10) 24 else 12
         garage.upsertMaintenance((existing ?: MaintenanceItem(id, v.id, tr(Maintenance.presets.last().first))).copy(dueDate = due, intervalMonths = months))
+    }
+}
+
+// ---------------------------------------------------------------- second source
+
+/** Versions of the saved model in the EU catalog; the model name is matched loosely ("Astra Sports Tourer" -> "ASTRA"). */
+private suspend fun eeaVersionsFor(eea: EeaCatalog, s: VehicleSpecs): List<EeaVersion> {
+    val year = s.year ?: return emptyList()
+    val country = s.country.takeIf { it in SpecCountries.eea }
+    val make = s.make.uppercase()
+    val direct = eea.versions(country, year, make, s.model.uppercase())
+    if (direct.isNotEmpty()) return direct
+    val wanted = s.model.uppercase()
+    val model = eea.models(country, year, make).filter { wanted.contains(it.name) || it.name.contains(wanted) }.maxByOrNull { it.name.length } ?: return emptyList()
+    return eea.versions(country, year, make, model.name)
+}
+
+/** Compares the saved model with the VIN, what the engine computer reports and the EU registration catalog. */
+@Composable
+private fun CrossCheckCard(v: Vehicle, specs: VehicleSpecs, isActive: Boolean) {
+    val app = LocalApp.current
+    val session = app.session
+    val state by session.state.collectAsStateWithLifecycle()
+    val observedOp by session.specsCheck.observed.collectAsStateWithLifecycle()
+    val connected = isActive && session.vehicle != null
+    LaunchedEffect(connected, state) { if (connected && session.specsCheck.observed.value is Op.Idle) session.specsCheck.read() }
+    val eea = remember { EeaCatalog(app.http) }
+    var catalog by remember(specs) { mutableStateOf<List<EeaVersion>?>(null) }
+    var catalogLoading by remember(specs) { mutableStateOf(false) }
+    val useCatalog = !specs.source.startsWith("EEA") && specs.year != null && specs.make.isNotBlank() && specs.model.isNotBlank() &&
+        (specs.country.isBlank() || specs.country in SpecCountries.eea || specs.country == "GB")
+    LaunchedEffect(specs, useCatalog) {
+        if (!useCatalog) return@LaunchedEffect
+        catalogLoading = true
+        catalog = runCatching { eeaVersionsFor(eea, specs) }.getOrNull()
+        catalogLoading = false
+    }
+    val observed = (observedOp as? Op.Done)?.value?.takeIf { connected }
+    val findings = remember(specs, v.vin, observed, catalog) { CrossCheck.check(specs, v.vin, observed, catalog) }
+    SectionCard(title = tr("Second source check")) {
+        Text(tr("The saved data is compared with the VIN, what the engine computer reports and the EU registration catalog."),
+            style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        Spacer(Modifier.height(6.dp))
+        if (observedOp is Op.Loading || catalogLoading) LinearProgressIndicator(Modifier.fillMaxWidth().padding(vertical = 4.dp))
+        findings.forEach { f ->
+            Row(Modifier.fillMaxWidth().padding(vertical = 4.dp), verticalAlignment = Alignment.Top) {
+                Icon(
+                    when (f.level) { CrossLevel.MATCH -> Icons.Default.CheckCircle; CrossLevel.INFO -> Icons.Default.Info; CrossLevel.MISMATCH -> Icons.Default.Warning },
+                    null, tint = when (f.level) { CrossLevel.MATCH -> Good; CrossLevel.INFO -> Warn; CrossLevel.MISMATCH -> Bad }, modifier = Modifier.padding(top = 2.dp),
+                )
+                Spacer(Modifier.width(10.dp))
+                Text(tr(f.text, *f.args.map { tr(it) }.toTypedArray()), style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1f))
+            }
+        }
+        if (connected && observedOp !is Op.Loading) TextButton(onClick = { session.specsCheck.observed.value = Op.Idle; session.specsCheck.read() }) { Text(tr("Read from the car again")) }
     }
 }
 

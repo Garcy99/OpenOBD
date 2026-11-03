@@ -121,6 +121,7 @@ class ObdSession(
     val modules = ModuleFeatures(this)
     val diagnosis = DiagnosisFeatures(this)
     val check = VehicleCheckFeature(this)
+    val specsCheck = SpecsCheckFeature(this)
     val health = HealthFeature(this)
     val diesel = DieselFeature(this)
     val reports = SessionReports(this)
@@ -327,6 +328,7 @@ class ObdSession(
         dtcScan.value = Op.Idle; readiness.value = Op.Idle; freezeFrame.value = Op.Idle
         vehicleInfo.value = Op.Idle; monitorTests.value = Op.Idle; clearResult.value = Op.Idle
         modules.reset()
+        specsCheck.observed.value = Op.Idle
     }
 
     private fun logConsole(dir: Char, text: String) {

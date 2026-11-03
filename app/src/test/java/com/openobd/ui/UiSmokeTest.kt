@@ -400,6 +400,9 @@ class FindCarUiTest {
         assertTrue(specs.make == "SEAT" && specs.model == "Leon" && specs.engineCc == 1498)
         assertTrue(c.garage.data.value.active!!.name == "2019 SEAT Leon")
         shot("es_13_specs")
+        // Second-source check: specs came from the EU catalog and the car is not connected, so it asks for the car or its VIN
+        waitFor { rule.onAllNodesWithText("Comprobación con otra fuente").fetchSemanticsNodes().isNotEmpty() }
+        waitFor { rule.onAllNodesWithText("Conecta el coche o guarda su VIN", substring = true).fetchSemanticsNodes().isNotEmpty() }
         // The fuel model now uses the car's engine size
         assertTrue(c.session.live.params.displacementL == 1.498)
         // No first-registration date yet, so no ITV reminder; adding it creates one
