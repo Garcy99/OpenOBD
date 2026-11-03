@@ -33,7 +33,11 @@ class MainActivity : ComponentActivity() {
             }
             // Reload translations when the language changes and rebuild the UI so every screen picks them up.
             val language = settings.language
-            androidx.compose.runtime.remember(language) { com.openobd.ui.I18n.load(this, language); language }
+            androidx.compose.runtime.remember(language) {
+                com.openobd.ui.I18n.load(this, language)
+                (application as OpenObdApp).container.dtcDatabase.useLocalized = com.openobd.ui.I18n.language == "es"
+                language
+            }
             androidx.compose.runtime.key(language) {
                 CompositionLocalProvider(LocalApp provides container) {
                     OpenObdTheme(settings.theme) { OpenObdNavHost() }

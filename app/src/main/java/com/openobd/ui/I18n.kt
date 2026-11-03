@@ -36,3 +36,12 @@ object I18n {
 
 /** Translates [text] (English source) to the current language, formatting %1$s-style arguments. */
 fun tr(text: String, vararg args: Any?): String = I18n.translate(text, args)
+
+/** Translates a code category such as "Manufacturer-specific code. Powertrain - Ignition system or misfire". */
+fun trCategory(category: String): String {
+    var rest = category
+    val prefix = StringBuilder()
+    Regex("^Manufacturer-specific \\((.+?)\\)\\. ").find(rest)?.let { m -> prefix.append(tr("Manufacturer-specific (%1\$s). ", m.groupValues[1])); rest = rest.substring(m.range.last + 1) }
+    if (rest.startsWith("Manufacturer-specific code. ")) { prefix.append(tr("Manufacturer-specific code. ")); rest = rest.removePrefix("Manufacturer-specific code. ") }
+    return prefix.toString() + rest.split(" - ").joinToString(" - ") { tr(it) }
+}

@@ -64,6 +64,7 @@ import com.openobd.ui.theme.Bad
 import com.openobd.ui.theme.Good
 import com.openobd.ui.theme.Warn
 import com.openobd.ui.tr
+import com.openobd.ui.trCategory
 import kotlinx.coroutines.launch
 
 private fun adviceColor(a: DriveAdvice) = when (a) { DriveAdvice.OK -> Good; DriveAdvice.CAUTION -> Warn; DriveAdvice.STOP -> Bad }
@@ -87,8 +88,8 @@ fun CodeScreen(code: String, onBack: () -> Unit, onAssistant: () -> Unit) {
         ScreenTopBar(code, onBack)
         Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
             Column {
-                Text(desc.description, style = MaterialTheme.typography.titleLarge)
-                Text(desc.category, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Text(if (desc.known) desc.description else trCategory(desc.description), style = MaterialTheme.typography.titleLarge)
+                Text(trCategory(desc.category), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 if (!desc.known) Text(tr("This code is not in the generic database. Manufacturer-specific meanings vary by brand; use the web search below."),
                     style = MaterialTheme.typography.bodySmall, color = Warn, modifier = Modifier.padding(top = 6.dp))
             }

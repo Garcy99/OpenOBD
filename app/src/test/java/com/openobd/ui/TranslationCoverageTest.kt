@@ -79,6 +79,16 @@ class TranslationCoverageTest {
         keys += com.openobd.core.diagnosis.Diagnosis.texts
         keys += com.openobd.core.health.HealthTrends.texts
         keys += com.openobd.core.service.Procedures.texts
+        // Causes and advice of the code database (shown translated in the code screen)
+        File(root, "assets/dtc/causes.tsv").readLines().filter { !it.startsWith("#") && it.contains('\t') }.forEach { l ->
+            val p = l.split('\t'); keys += p[2].split(';').map { it.trim() }; keys += p[3].trim()
+        }
+        // Code categories, translated part by part
+        for (sys in "PCBU") for (c in "0123456789ABCDEF") {
+            val cat = com.openobd.core.obd.DtcDecoder.genericCategory("${sys}0${c}00").removePrefix("Manufacturer-specific code. ")
+            cat.split(" - ").forEach { keys += it }
+        }
+        keys += listOf("Manufacturer-specific (%1\$s). ", "Manufacturer-specific code. ", "Unknown code")
         com.openobd.core.health.HealthMetric.entries.forEach { keys += it.label }
         com.openobd.core.diagnosis.DriveAdvice.entries.forEach { keys += it.label }
         keys += listOf("The Claude API key was rejected. Check it in Settings.", "This API key is not allowed to use the model.",

@@ -19,12 +19,18 @@ data class DtcDescription(
 }
 
 /** In-memory DTC description database loaded from TSV assets. */
-class DtcDatabase(descriptions: InputStream?, causes: InputStream?) {
-    private val descs: Map<String, String> = descriptions?.bufferedReader()?.useLines { lines ->
+class DtcDatabase(descriptions: InputStream?, causes: InputStream?, localizedDescriptions: InputStream? = null) {
+    private fun readDescs(input: InputStream?): Map<String, String> = input?.bufferedReader()?.useLines { lines ->
         lines.filter { it.isNotBlank() && !it.startsWith("#") }
             .mapNotNull { l -> l.split('\t', limit = 2).takeIf { it.size == 2 }?.let { it[0].trim().uppercase() to it[1].trim() } }
             .toMap()
     } ?: emptyMap()
+
+    private val descs: Map<String, String> = readDescs(descriptions)
+    /** Descriptions in the app language (Spanish), used when [useLocalized] is on. */
+    private val localized: Map<String, String> = readDescs(localizedDescriptions)
+
+    @Volatile var useLocalized: Boolean = false
 
     private val knowledge: Map<String, DtcKnowledge> = causes?.bufferedReader()?.useLines { lines ->
         lines.filter { it.isNotBlank() && !it.startsWith("#") }
@@ -39,7 +45,7 @@ class DtcDatabase(descriptions: InputStream?, causes: InputStream?) {
 
     fun lookup(code: String): DtcDescription {
         val c = code.uppercase()
-        val d = descs[c]
+        val d = (if (useLocalized) localized[c] else null) ?: descs[c]
         return DtcDescription(
             code = c,
             description = d ?: DtcDecoder.genericCategory(c),
@@ -53,7 +59,7 @@ class DtcDatabase(descriptions: InputStream?, causes: InputStream?) {
         val q = query.trim().uppercase()
         if (q.isEmpty()) return emptyList()
         return descs.asSequence()
-            .filter { (k, v) -> k.startsWith(q) || v.uppercase().contains(q) }
+            .filter { (k, v) -> k.startsWith(q) || v.uppercase().contains(q) || localized[k]?.uppercase()?.contains(q) == true }
             .take(limit)
             .map { lookup(it.key) }
             .toList()

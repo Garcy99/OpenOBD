@@ -195,7 +195,7 @@ fun DtcDetailDialog(code: String, desc: DtcDescription, subtitle: String?, onDis
                 Text(desc.description, style = MaterialTheme.typography.titleMedium)
                 subtitle?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant) }
                 Spacer(Modifier.height(10.dp))
-                Text(desc.category, style = MaterialTheme.typography.bodySmall)
+                Text(com.openobd.ui.trCategory(desc.category), style = MaterialTheme.typography.bodySmall)
                 if (!desc.known) {
                     Text(tr("This code is not in the generic database. Manufacturer-specific meanings vary by brand; use the web search below."),
                         style = MaterialTheme.typography.bodySmall, color = Warn, modifier = Modifier.padding(top = 6.dp))
@@ -205,10 +205,10 @@ fun DtcDetailDialog(code: String, desc: DtcDescription, subtitle: String?, onDis
                     Text(tr("Severity: %1\$s", tr(desc.severityLabel)), fontWeight = FontWeight.SemiBold, color = when (k.severity) { 3 -> Bad; 2 -> Warn; else -> Good })
                     Spacer(Modifier.height(8.dp))
                     Text(tr("Common causes"), fontWeight = FontWeight.SemiBold)
-                    k.causes.forEach { Text("• $it", style = MaterialTheme.typography.bodyMedium) }
+                    k.causes.forEach { Text("• " + tr(it), style = MaterialTheme.typography.bodyMedium) }
                     Spacer(Modifier.height(8.dp))
                     Text(tr("Tip"), fontWeight = FontWeight.SemiBold)
-                    Text(k.advice, style = MaterialTheme.typography.bodyMedium)
+                    Text(tr(k.advice), style = MaterialTheme.typography.bodyMedium)
                 }
             }
         },

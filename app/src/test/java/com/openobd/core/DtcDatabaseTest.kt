@@ -54,4 +54,18 @@ class DtcDatabaseTest {
         assertTrue(unknown.description.contains("Manufacturer-specific"))
         assertTrue(db.search("catalyst").any { it.code == "P0420" })
     }
+
+    @Test
+    fun spanishDescriptionsCoverEveryCode() {
+        val en = File(assets, "generic.tsv").readLines().filter { !it.startsWith("#") && it.contains('\t') }.map { it.substringBefore('\t') }
+        val es = File(assets, "generic.es.tsv").readLines().filter { !it.startsWith("#") && it.contains('\t') }.associate { it.substringBefore('\t') to it.substringAfter('\t') }
+        assertEquals(en.toSet(), es.keys)
+        es.forEach { (code, d) -> assertTrue("$code: $d", d.isNotBlank() && !d.contains("#") || code == "C0060") }
+        val localized = DtcDatabase(File(assets, "generic.tsv").inputStream(), File(assets, "causes.tsv").inputStream(), File(assets, "generic.es.tsv").inputStream())
+        assertEquals("Cylinder 1 Misfire Detected", localized.lookup("P0301").description)
+        localized.useLocalized = true
+        assertEquals("Fallo de encendido en el cilindro 1", localized.lookup("P0301").description)
+        assertEquals("Filtro de partículas - acumulación de hollín", localized.lookup("P2463").description)
+        assertTrue(localized.search("hollín").any { it.code == "P2463" })
+    }
 }

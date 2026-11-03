@@ -32,7 +32,8 @@ class AppContainer(private val app: Application) {
         DtcDatabase(
             runCatching { app.assets.open("dtc/generic.tsv") }.getOrNull(),
             runCatching { app.assets.open("dtc/causes.tsv") }.getOrNull(),
-        )
+            runCatching { app.assets.open("dtc/generic.es.tsv") }.getOrNull(),
+        ).also { it.useLocalized = com.openobd.ui.I18n.language == "es" }
     }
     private val backupJson = kotlinx.serialization.json.Json { ignoreUnknownKeys = true; encodeDefaults = true }
 
