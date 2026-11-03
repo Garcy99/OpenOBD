@@ -10,6 +10,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Checklist
 import androidx.compose.material.icons.filled.FactCheck
 import androidx.compose.material.icons.filled.MonitorHeart
+import androidx.compose.material.icons.filled.Inventory2
 import androidx.compose.material.icons.filled.PhotoCamera
 import androidx.compose.material.icons.filled.LocalFireDepartment
 import androidx.compose.material.icons.filled.MenuBook
@@ -68,6 +69,7 @@ private val items = listOf(
     MenuItem(Routes.LOGS, "Data logs", tr("Recorded CSV sessions, share or export"), Icons.Default.Storage),
     MenuItem(Routes.HISTORY, "Scan history", tr("Every scan and clear, so you know when codes came back"), Icons.Default.History),
     MenuItem(Routes.PIDS, "Custom PIDs", tr("Add or import (Torque CSV) manufacturer-specific PIDs"), Icons.Default.Tune),
+    MenuItem(Routes.PACKS, "PID packs", tr("Share your PIDs or download packs for your car from the community"), Icons.Default.Inventory2),
     MenuItem(Routes.LOOKUP, "Trouble code lookup", tr("Offline database of 1300+ generic codes"), Icons.Default.ManageSearch),
     MenuItem(Routes.TERMINAL, "Terminal", tr("Send raw AT / OBD commands to the adapter"), Icons.Default.Terminal),
     MenuItem(Routes.SETTINGS, "Settings", tr("Units, adapter options, alerts, theme"), Icons.Default.Settings),

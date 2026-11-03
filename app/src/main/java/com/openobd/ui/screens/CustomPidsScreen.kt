@@ -25,6 +25,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.ContentPaste
 import androidx.compose.material.icons.filled.FileOpen
+import androidx.compose.material.icons.filled.Inventory2
 import androidx.compose.material.icons.filled.Share
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.ExtendedFloatingActionButton
@@ -64,7 +65,7 @@ import com.openobd.ui.shareText
 import kotlinx.coroutines.launch
 
 @Composable
-fun CustomPidsScreen(onBack: () -> Unit) {
+fun CustomPidsScreen(onBack: () -> Unit, onPacks: () -> Unit = {}) {
     val app = LocalApp.current
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
@@ -93,6 +94,7 @@ fun CustomPidsScreen(onBack: () -> Unit) {
     Scaffold(
         topBar = {
             ScreenTopBar(tr("Custom PIDs"), onBack, actions = {
+                IconButton(onClick = onPacks) { Icon(Icons.Default.Inventory2, tr("PID packs")) }
                 IconButton(onClick = { fileLauncher.launch(arrayOf("text/*", "application/octet-stream", "*/*")) }) { Icon(Icons.Default.FileOpen, tr("Import CSV file")) }
                 IconButton(onClick = { pasting = true }) { Icon(Icons.Default.ContentPaste, tr("Paste CSV")) }
                 if (pids.isNotEmpty()) IconButton(onClick = { shareText(context, tr("OpenOBD custom PIDs"), TorqueCsv.export(pids)) }) { Icon(Icons.Default.Share, tr("Export")) }
@@ -213,7 +215,7 @@ private fun PidEditor(initial: CustomPid, isNew: Boolean, onDismiss: () -> Unit,
                 OutlinedTextField(receive, { receive = it.uppercase() }, label = { Text(tr("Response ID (optional, default header+8)")) }, singleLine = true, modifier = Modifier.fillMaxWidth())
                 Text(tr("Functions: Signed(A), Int16(A,B), {A:7} for bit 7, Min, Max, Abs. Example: ((A*256)+B)/16"),
                     style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                error?.let { ErrorText(it) }
+                error?.let { ErrorText(tr(it)) }
                 if (vehicle != null && error == null) {
                     TextButton(onClick = {
                         testResult = tr("Reading…")

@@ -1,0 +1,12 @@
+{
+    "format": 1,
+    "name": "OpenOBD demo car",
+    "description": "Values of the built-in simulator, to try packs in demo mode. Not for real cars.",
+    "author": "OpenOBD",
+    "makes": ["Demo"],
+    "verified": true,
+    "pids": [
+        {"id": "demo1", "name": "Demo transmission temperature", "shortName": "Demo TFT", "request": "221E1C", "equation": "((A*256)+B)/16", "min": 0.0, "max": 150.0, "unit": "°C", "header": "7E1", "receive": "7E9"},
+        {"id": "demo2", "name": "Demo counter", "shortName": "Demo cnt", "request": "220D10", "equation": "(A*256)+B", "min": 0.0, "max": 65535.0, "header": "7E0", "receive": "7E8"}
+    ]
+}

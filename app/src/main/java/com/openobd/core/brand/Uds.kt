@@ -494,7 +494,8 @@ class ModuleClient(private val elm: Elm327) {
     /** Reads custom PIDs, switching headers as needed. Returns raw data bytes by sensor key. */
     suspend fun readCustom(pids: List<CustomPid>): Map<String, IntArray> {
         val out = HashMap<String, IntArray>()
-        for ((_, group) in pids.groupBy { it.header.trim().uppercase() to it.receive.trim().uppercase() }) {
+        val readable = pids.filter { p -> runCatching { p.service in CustomPid.READ_ONLY_SERVICES }.getOrDefault(false) }
+        for ((_, group) in readable.groupBy { it.header.trim().uppercase() to it.receive.trim().uppercase() }) {
             val module = moduleFor(group.first())
             if (module == null || !elm.protocol.isCan) {
                 for (p in group) {

@@ -1,0 +1,6 @@
+{
+    "format": 1,
+    "packs": [
+        {"id": "demo-car", "name": "OpenOBD demo car", "description": "Simulator values to try packs in demo mode. Not for real cars.", "makes": ["Demo"], "verified": true, "pids": 2, "author": "OpenOBD", "file": "demo-car.json"}
+    ]
+}
