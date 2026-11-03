@@ -1,3 +1,17 @@
 <resources>
     <string name="app_name">OpenOBD</string>
+    <string name="widget_description">Your car at a glance: trouble codes, next service and last trip</string>
+    <string name="widget_connected">Connected</string>
+    <string name="widget_not_connected">Not connected</string>
+    <string name="widget_mil_on">Check engine light ON · %1$d code(s)</string>
+    <string name="widget_codes">%1$d trouble code(s)</string>
+    <string name="widget_no_codes">No trouble codes</string>
+    <string name="widget_last_scan">Last scan %1$s: %2$s</string>
+    <string name="widget_never_scanned">Not scanned yet · tap to connect</string>
+    <string name="widget_service_overdue">Overdue: %1$s</string>
+    <string name="widget_service_due">Due soon: %1$s</string>
+    <string name="widget_service_ok">Maintenance up to date</string>
+    <string name="widget_service_none">No maintenance reminders</string>
+    <string name="widget_trip">Last trip %1$s · %2$s</string>
+    <string name="widget_no_trip">No trips recorded yet</string>
 </resources>

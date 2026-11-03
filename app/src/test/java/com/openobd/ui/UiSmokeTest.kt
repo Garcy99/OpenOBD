@@ -245,3 +245,38 @@ class UiSmokeTest {
         shot("27_trip_detail_$suffix")
     }
 }
+
+@RunWith(AndroidJUnit4::class)
+@GraphicsMode(GraphicsMode.Mode.NATIVE)
+@Config(sdk = [34])
+class WidgetTest {
+    @Test
+    fun rendersWidget() {
+        val app = androidx.test.core.app.ApplicationProvider.getApplicationContext<OpenObdApp>()
+        val c = app.container
+        runBlocking {
+            c.garage.load(null)
+            val id = c.garage.data.value.active!!.id
+            c.garage.updateActive { it.copy(name = "Widget test car", odometerKm = 50_000.0) }
+            c.garage.upsertMaintenance(com.openobd.core.garage.MaintenanceItem("w", id, "Engine oil", 10_000, null, lastKm = 40_500.0))
+        }
+        val views = com.openobd.widget.CarWidget.build(app, c)
+        val root = views.apply(app, android.widget.FrameLayout(app))
+        root.measure(android.view.View.MeasureSpec.makeMeasureSpec(1000, android.view.View.MeasureSpec.EXACTLY),
+            android.view.View.MeasureSpec.makeMeasureSpec(400, android.view.View.MeasureSpec.EXACTLY))
+        root.layout(0, 0, 1000, 400)
+        val text = (0 until (root as android.view.ViewGroup).childCount).flatMap { i -> collectText(root.getChildAt(i)) }
+        assertTrue(text.toString(), text.contains("Widget test car"))
+        assertTrue(text.toString(), text.any { it.startsWith("Due soon: Engine oil") }) // due at 50,500 km
+        val dir = File(System.getProperty("screenshot.dir") ?: "build/screenshots").apply { mkdirs() }
+        val bmp = Bitmap.createBitmap(1000, 400, Bitmap.Config.ARGB_8888)
+        root.draw(Canvas(bmp))
+        File(dir, "28_widget.png").outputStream().use { bmp.compress(Bitmap.CompressFormat.PNG, 100, it) }
+    }
+
+    private fun collectText(v: android.view.View): List<String> = when (v) {
+        is android.widget.TextView -> listOf(v.text.toString())
+        is android.view.ViewGroup -> (0 until v.childCount).flatMap { collectText(v.getChildAt(it)) }
+        else -> emptyList()
+    }
+}
