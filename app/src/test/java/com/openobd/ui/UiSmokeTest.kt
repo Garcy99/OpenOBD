@@ -403,3 +403,34 @@ class FindCarUiTest {
         assertTrue(com.openobd.core.specs.Spain.dgtLabel(specs.fuel, 2019) == com.openobd.core.specs.DgtLabel.C)
     }
 }
+
+/** An uncaught exception is written to disk, offered on the next start, shared and then forgotten. */
+@RunWith(AndroidJUnit4::class)
+@GraphicsMode(GraphicsMode.Mode.NATIVE)
+@Config(sdk = [34], qualifiers = "w411dp-h891dp-xxhdpi")
+class CrashReportUiTest {
+    @get:Rule
+    val rule = createAndroidComposeRule<MainActivity>()
+
+    @Test
+    fun crashIsOfferedOnceAndShared() {
+        val app = rule.activity.application as OpenObdApp
+        runBlocking { app.container.settings.update { it.copy(language = "en", connectionType = ConnectionType.DEMO) } }
+        val d = app.container.diagnostics
+        d.log.add('>', "010C")
+        d.log.add('<', "7E8 04 41 0C 1A F8")
+        d.recordCrash(Thread.currentThread(), IllegalStateException("simulated crash for the test"))
+        d.reload()
+        rule.waitForIdle()
+        assertTrue(rule.onAllNodesWithText("OpenOBD closed unexpectedly").fetchSemanticsNodes().isNotEmpty())
+        rule.onAllNodes(hasText("Share report") and hasClickAction())[0].performClick()
+        val end = System.currentTimeMillis() + 10_000
+        while (d.pendingCrash.value != null && System.currentTimeMillis() < end) { Thread.sleep(50); rule.waitForIdle() }
+        rule.waitForIdle()
+        assertTrue(rule.onAllNodesWithText("OpenOBD closed unexpectedly").fetchSemanticsNodes().isEmpty())
+        val report = File(app.cacheDir, "reports").listFiles()!!.single { it.name.startsWith("openobd-debug-") }.readText()
+        assertTrue(report, report.contains("IllegalStateException: simulated crash for the test"))
+        assertTrue(report, report.contains("> 010C") && report.contains("App: OpenOBD"))
+        assertTrue(report, report.contains("## Settings") && report.contains("Connection: DEMO"))
+    }
+}

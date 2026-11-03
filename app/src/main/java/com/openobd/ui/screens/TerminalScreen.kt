@@ -20,6 +20,8 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.Send
 import androidx.compose.material.icons.filled.DeleteSweep
+import androidx.compose.material.icons.filled.Share
+import kotlinx.coroutines.launch
 import androidx.compose.material3.AssistChip
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -48,7 +50,10 @@ import java.util.Locale
 
 @Composable
 fun TerminalScreen(onBack: () -> Unit) {
-    val session = LocalApp.current.session
+    val app = LocalApp.current
+    val session = app.session
+    val context = androidx.compose.ui.platform.LocalContext.current
+    val scope = androidx.compose.runtime.rememberCoroutineScope()
     val lines by session.console.collectAsStateWithLifecycle()
     var input by remember { mutableStateOf("") }
     val listState = rememberLazyListState()
@@ -59,6 +64,12 @@ fun TerminalScreen(onBack: () -> Unit) {
 
     Column(Modifier.fillMaxSize().imePadding()) {
         ScreenTopBar(tr("Terminal"), onBack, actions = {
+            IconButton(onClick = {
+                scope.launch {
+                    val f = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) { app.diagnostics.writeReport(session.debugSections(), includeCrash = false) }
+                    com.openobd.ui.shareFile(context, f, "text/plain")
+                }
+            }) { Icon(Icons.Default.Share, tr("Share debug report")) }
             IconButton(onClick = session::clearConsole) { Icon(Icons.Default.DeleteSweep, tr("Clear")) }
         })
         LazyColumn(Modifier.weight(1f).fillMaxWidth(), state = listState, contentPadding = PaddingValues(12.dp)) {

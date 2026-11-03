@@ -1,6 +1,8 @@
 package com.openobd.ui.screens
 
 import com.openobd.ui.tr
+import com.openobd.ui.shareFile
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -111,6 +113,7 @@ fun SettingsScreen(onBack: () -> Unit) {
                 Dropdown(AppSettings.DEMO_PROTOCOLS, s.demoProtocol, { it.label }) { p -> update { it.copy(demoProtocol = p) } }
                 SwitchRow(tr("Unreliable adapter (fragmented replies, noise, errors, lost prompts)"), s.demoFaults) { v -> update { it.copy(demoFaults = v) } }
             }
+            SectionCard(title = tr("Troubleshooting")) { DebugReportSection() }
             SectionCard(title = tr("Alerts")) {
                 Text(tr("Vibrate and show a warning when a sensor crosses a threshold (values in metric units)."),
                     style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
@@ -248,6 +251,33 @@ private fun AdapterCheck() {
             },
             confirmButton = { TextButton(onClick = { result = null }) { Text("OK") } },
         )
+    }
+}
+
+@Composable
+fun DebugReportSection() {
+    val app = LocalApp.current
+    val context = androidx.compose.ui.platform.LocalContext.current
+    val scope = rememberCoroutineScope()
+    val crash by app.diagnostics.pendingCrash.collectAsStateWithLifecycle()
+    var entries by remember { mutableStateOf(app.diagnostics.log.size) }
+    Text(tr("If something does not work with your car or adapter, share a debug report. It contains the adapter traffic of this session and app/phone details. Bluetooth addresses and the VIN serial number are removed."),
+        style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+    Text(tr("%1\$s log entries", entries), style = MaterialTheme.typography.bodySmall)
+    Row {
+        TextButton(onClick = {
+            scope.launch {
+                val f = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+                    app.diagnostics.writeReport(app.session.debugSections(), includeCrash = true)
+                }
+                shareFile(context, f, "text/plain")
+            }
+        }) { Text(tr("Share debug report")) }
+        TextButton(onClick = { app.diagnostics.log.clear(); entries = 0 }) { Text(tr("Clear log")) }
+    }
+    if (crash != null) {
+        Text(tr("A crash report from the last run is included."), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
+        TextButton(onClick = { app.diagnostics.dismissCrash() }) { Text(tr("Delete crash report")) }
     }
 }
 

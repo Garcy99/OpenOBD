@@ -102,6 +102,8 @@ class ObdSession(
     val logs: LogRepository,
     val dtcDatabase: DtcDatabase,
     val garage: com.openobd.data.GarageRepository,
+    /** Bounded record of adapter traffic and session events for debug reports. */
+    val debug: com.openobd.core.debug.DebugLog = com.openobd.core.debug.DebugLog(),
 ) {
     private val location = LocationTracker(context)
     @Volatile private var tripActive = false
@@ -174,6 +176,20 @@ class ObdSession(
         }
         location.speedProvider = { live.latestValue("010D") }
         live.addListener(demoGpsListener())
+        scope.launch {
+            var last: String? = null
+            _state.collect { s ->
+                val text = when (s) {
+                    ConnectionState.Disconnected -> "Disconnected"
+                    is ConnectionState.Connecting -> "Connecting: ${s.step}"
+                    is ConnectionState.Connected -> "Connected: ${s.vehicle.transport}, ${s.vehicle.elm.version}, ${s.vehicle.elm.protocol.label}, " +
+                        "${s.vehicle.supportedPids.size} PIDs, ECUs ${s.vehicle.ecus.joinToString { it.address }}"
+                    is ConnectionState.Failed -> "Failed: ${s.message}"
+                }
+                if (text != last) debug.event(text)
+                last = text
+            }
+        }
     }
 
     // ------------------------------------------------------------------ connection
@@ -188,6 +204,7 @@ class ObdSession(
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
+                debug.error("Connection failed", e)
                 cleanup()
                 _state.value = ConnectionState.Failed(e.message ?: e.javaClass.simpleName)
             }
@@ -309,6 +326,7 @@ class ObdSession(
     }
 
     private fun logConsole(dir: Char, text: String) {
+        debug.add(dir, text)
         val list = _console.value
         _console.value = (if (list.size > 600) list.drop(100) else list) + ConsoleLine(System.currentTimeMillis(), dir, text)
     }
@@ -330,6 +348,7 @@ class ObdSession(
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
+                debug.error("Operation failed", e)
                 target.value = Op.Error(e.message ?: "Failed")
             } finally {
                 live.resume()
@@ -581,13 +600,52 @@ class ObdSession(
         val c = client ?: throw IllegalStateException("Connect to the car first")
         if (bus.value != Bus.HS) throw IllegalStateException(MS_CAN_BUSY)
         live.pause()
-        try { return c.benchmark(vehicle?.supportedPids ?: emptySet()) } finally { live.resume() }
+        try {
+            return c.benchmark(vehicle?.supportedPids ?: emptySet()).also { b -> debug.event("Speed test: $b") }
+        } finally { live.resume() }
+    }
+
+    /** Session details for a debug report (no personal data beyond a masked VIN). */
+    fun debugSections(): List<Pair<String, List<Pair<String, String?>>>> {
+        val s = settingsRepo.settings.value
+        val v = (state.value as? ConnectionState.Connected)?.vehicle
+        val c = client
+        val settings = "Settings" to listOf(
+            "Connection" to s.connectionType.name,
+            "Adapter" to s.deviceName,
+            "Protocol setting" to s.protocol.label,
+            "Adaptive timing" to s.adaptiveTiming.toString(),
+            "Timeout ms" to s.elmTimeoutMs.toString(),
+            "Multi-PID / fast responses" to "${s.batching} / ${s.fastMode}",
+            "HS/MS-CAN switch" to s.msCanSwitch.toString(),
+            "Brand" to (s.brandId ?: "auto (${brand.value?.name ?: "-"})"),
+            "Custom PIDs" to s.customPids.size.toString(),
+            "Demo simulator" to if (s.connectionType == ConnectionType.DEMO) "${s.demoProtocol.label}, faults ${s.demoFaults}" else null,
+        )
+        val conn = "Connection" to listOf(
+            "State" to state.value.let { it::class.simpleName + ((it as? ConnectionState.Failed)?.let { f -> ": " + f.message } ?: "") },
+            "Transport" to v?.transport,
+            "ELM version" to v?.elm?.version,
+            "Device description" to v?.elm?.deviceDescription,
+            "STN" to v?.elm?.let { if (it.isStn) it.stnVersion else "no" },
+            "Protocol" to v?.elm?.protocol?.label,
+            "Bus" to bus.value.name,
+            "ECUs" to v?.ecus?.joinToString { "${it.address} ${it.name}" },
+            "Supported PIDs" to v?.supportedPids?.joinToString(" ") { "%02X".format(it) },
+            "VIN" to com.openobd.core.debug.DebugReport.maskVin(v?.vin),
+            "Battery" to v?.voltage?.let { "%.1f V".format(java.util.Locale.US, it) },
+            "Multi-PID active / fast active" to c?.let { "${it.batchingEnabled} / ${it.fastResponses}" },
+            "STN fast mode verified" to c?.stnFastVerified?.toString(),
+        )
+        return listOf(conn, settings)
     }
 
     suspend fun checkAdapter(): List<Pair<String, Boolean>> {
         val e = elm ?: throw IllegalStateException("Connect to the adapter first")
         live.pause()
-        try { return e.checkCapabilities() } finally { live.resume() }
+        try {
+            return e.checkCapabilities().also { r -> debug.event("Adapter check: " + r.joinToString { "${it.first}=${if (it.second) "ok" else "MISSING"}" }) }
+        } finally { live.resume() }
     }
 
     fun findModule(id: String): EcuModule? =

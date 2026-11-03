@@ -90,6 +90,32 @@ import com.openobd.ui.theme.Good
 import com.openobd.ui.theme.Warn
 import kotlinx.coroutines.launch
 
+/** Shown after the app closed unexpectedly, so the report can be shared once. */
+@Composable
+private fun CrashCard() {
+    val app = LocalApp.current
+    val context = LocalContext.current
+    val scope = rememberCoroutineScope()
+    val crash by app.diagnostics.pendingCrash.collectAsStateWithLifecycle()
+    if (crash == null) return
+    SectionCard(title = tr("OpenOBD closed unexpectedly")) {
+        Text(tr("Sharing the crash report helps fix the problem. It includes the error and the recent adapter traffic."),
+            style = MaterialTheme.typography.bodySmall)
+        Row {
+            TextButton(onClick = {
+                scope.launch {
+                    val f = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+                        app.diagnostics.writeReport(app.session.debugSections(), includeCrash = true)
+                    }
+                    com.openobd.ui.shareFile(context, f, "text/plain")
+                    app.diagnostics.dismissCrash()
+                }
+            }) { Text(tr("Share report")) }
+            TextButton(onClick = { app.diagnostics.dismissCrash() }) { Text(tr("Dismiss")) }
+        }
+    }
+}
+
 @Composable
 fun HomeScreen(onNavigate: (String) -> Unit, onTab: (String) -> Unit) {
     val app = LocalApp.current
@@ -148,6 +174,7 @@ fun HomeScreen(onNavigate: (String) -> Unit, onTab: (String) -> Unit) {
                 onConnect = ::connect,
                 onDisconnect = session::disconnect,
             )
+            CrashCard()
             MyCarCard(onNavigate)
             when (val s = state) {
                 is ConnectionState.Connected -> {

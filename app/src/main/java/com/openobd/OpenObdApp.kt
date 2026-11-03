@@ -23,6 +23,7 @@ class AppContainer(app: Application) {
     val history = HistoryRepository(app)
     val logs = LogRepository(app)
     val garage = GarageRepository(app)
+    val diagnostics = com.openobd.data.Diagnostics(app)
     /** Network client for vehicle lookups; replaceable in tests. */
     var http: com.openobd.core.specs.Http = com.openobd.core.specs.UrlHttp("OpenOBD/${com.openobd.BuildConfig.VERSION_NAME} (Android; open source)")
     val dtcDatabase: DtcDatabase by lazy {
@@ -31,7 +32,7 @@ class AppContainer(app: Application) {
             runCatching { app.assets.open("dtc/causes.tsv") }.getOrNull(),
         )
     }
-    val session by lazy { ObdSession(app, scope, settings, history, logs, dtcDatabase, garage) }
+    val session by lazy { ObdSession(app, scope, settings, history, logs, dtcDatabase, garage, diagnostics.log) }
 }
 
 class OpenObdApp : Application() {
@@ -41,6 +42,7 @@ class OpenObdApp : Application() {
     override fun onCreate() {
         super.onCreate()
         container = AppContainer(this)
+        container.diagnostics.installCrashHandler()
         com.openobd.ui.I18n.load(this, "system")
         container.scope.launch {
             container.garage.load(container.settings.readOnce())
