@@ -8,14 +8,16 @@ import com.anthropic.errors.AnthropicServiceException
 import com.anthropic.errors.PermissionDeniedException
 import com.anthropic.errors.RateLimitException
 import com.anthropic.errors.UnauthorizedException
+import com.anthropic.models.beta.messages.BetaBase64ImageSource
+import com.anthropic.models.beta.messages.BetaContentBlockParam
 import com.anthropic.models.beta.messages.BetaOutputConfig
 import com.anthropic.models.beta.messages.BetaStopReason
 import com.anthropic.models.beta.messages.MessageCreateParams
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
-/** One turn of the assistant conversation. */
-data class ChatTurn(val fromUser: Boolean, val text: String)
+/** One turn of the assistant conversation; user turns may carry a JPEG photo. */
+class ChatTurn(val fromUser: Boolean, val text: String, val imageJpeg: ByteArray? = null)
 
 class AssistantException(message: String) : Exception(message)
 
@@ -41,7 +43,23 @@ class ClaudeBackend(apiKey: String, private val model: String = MODEL) : ChatBac
             // If a safety classifier declines, let the API retry on a suitable model instead of stopping.
             .addBeta("server-side-fallback-2026-07-01")
             .putAdditionalBodyProperty("fallbacks", JsonValue.from("default"))
-            .apply { turns.forEach { if (it.fromUser) addUserMessage(it.text) else addAssistantMessage(it.text) } }
+            .apply {
+                turns.forEach { t ->
+                    when {
+                        !t.fromUser -> addAssistantMessage(t.text)
+                        t.imageJpeg != null -> addUserMessageOfContentBlockParams(listOf(
+                            BetaContentBlockParam.ofImage(
+                                BetaBase64ImageSource.builder()
+                                    .data(java.util.Base64.getEncoder().encodeToString(t.imageJpeg))
+                                    .mediaType(BetaBase64ImageSource.MediaType.IMAGE_JPEG)
+                                    .build(),
+                            ),
+                            BetaContentBlockParam.ofText(t.text),
+                        ))
+                        else -> addUserMessage(t.text)
+                    }
+                }
+            }
             .build()
         val response = try {
             client.beta().messages().create(params)
@@ -65,6 +83,50 @@ class ClaudeBackend(apiKey: String, private val model: String = MODEL) : ChatBac
 
     companion object {
         const val MODEL = "claude-opus-5-5"
+    }
+}
+
+/** Keeps one conversation with the assistant, so a failed question can be retried with a clean history. */
+open class AssistantConversation(private val backend: ChatBackend, val system: String) {
+    protected val turns = mutableListOf<ChatTurn>()
+
+    suspend fun ask(question: String): String {
+        turns += ChatTurn(true, question)
+        return answer()
+    }
+
+    protected suspend fun answer(): String {
+        val reply = try {
+            backend.reply(system, turns.toList())
+        } catch (e: Exception) {
+            turns.removeAt(turns.lastIndex)
+            throw e
+        }
+        turns += ChatTurn(false, reply)
+        return reply
+    }
+}
+
+private fun languageName(language: String) = if (language == "es") "Spanish (Spain)" else "the user's language"
+
+/**
+ * Identifies dashboard warning lights from a photo. The car model and the codes stored right now are given as
+ * context, so the answer can connect a light to an actual fault.
+ */
+class WarningLightAssistant(backend: ChatBackend, language: String) : AssistantConversation(backend, """
+    You are the diagnostic assistant inside OpenOBD, a car diagnostics app. The user sends a photo of their instrument
+    cluster. Identify every warning or indicator light that is lit, by symbol and colour. For each one say, in ${languageName(language)}:
+    its name, what it means, how urgent it is (red: stop safely as soon as possible; amber / yellow: get it checked soon;
+    green / blue / white: information only), and what to do now. If a light flashes in the photo or the user says so, say what
+    that changes (a flashing engine light means misfires that damage the catalyst). If the photo is unclear, say which symbols
+    you cannot read and ask for a closer photo instead of guessing. Use the car data in the message to link a light to the
+    trouble codes stored right now, and never invent codes or readings that are not there. Be short and practical.
+""".trimIndent().replace("\n", " ")) {
+    /** Starts with the photo, the car data and an optional note from the user. */
+    suspend fun start(photoJpeg: ByteArray, carContext: String, note: String): String {
+        turns.clear()
+        turns += ChatTurn(true, carContext + "\n\n" + note.ifBlank { "Which warning lights are on and what should I do?" }, photoJpeg)
+        return answer()
     }
 }
 
