@@ -437,3 +437,60 @@ class CrashReportUiTest {
         assertTrue(report, report.contains("## Settings") && report.contains("Connection: DEMO"))
     }
 }
+
+/** Used car / pre-ITV check against the demo car, including the PDF export. */
+@RunWith(AndroidJUnit4::class)
+@GraphicsMode(GraphicsMode.Mode.NATIVE)
+@Config(sdk = [34], qualifiers = "w411dp-h891dp-xxhdpi")
+class VehicleCheckUiTest {
+    @get:Rule
+    val rule = createAndroidComposeRule<MainActivity>()
+
+    private fun waitFor(timeoutMs: Long = 30_000, condition: () -> Boolean) {
+        val end = System.currentTimeMillis() + timeoutMs
+        while (!condition()) {
+            check(System.currentTimeMillis() < end) { "Timed out waiting" }
+            Thread.sleep(50)
+            rule.mainClock.advanceTimeBy(50)
+        }
+        rule.waitForIdle()
+    }
+
+    private fun shot(name: String) {
+        rule.waitForIdle()
+        val dir = File(System.getProperty("screenshot.dir") ?: "build/screenshots").apply { mkdirs() }
+        rule.activityRule.scenario.onActivity { act ->
+            val v = act.window.decorView
+            val bmp = Bitmap.createBitmap(v.width, v.height, Bitmap.Config.ARGB_8888)
+            v.draw(Canvas(bmp))
+            File(dir, "$name.png").outputStream().use { bmp.compress(Bitmap.CompressFormat.PNG, 100, it) }
+        }
+    }
+
+    @Test
+    fun checkAndPdf() {
+        val app = rule.activity.application as OpenObdApp
+        val c = app.container
+        runBlocking { c.settings.update { it.copy(connectionType = ConnectionType.DEMO, language = "en", tripGps = false, theme = ThemeMode.DARK) } }
+        waitFor { c.settings.settings.value.connectionType == ConnectionType.DEMO && I18n.language == "en" }
+        c.session.connect()
+        waitFor { c.session.state.value is ConnectionState.Connected }
+        waitFor { c.session.dtcScan.value is Op.Done }
+        rule.onAllNodes(hasText("More") and isSelectable())[0].performClick()
+        rule.waitForIdle()
+        rule.onAllNodes(hasScrollAction())[0].performScrollToNode(hasText("Used car & pre-ITV check"))
+        rule.onAllNodesWithText("Used car & pre-ITV check")[0].performClick()
+        rule.waitForIdle()
+        rule.onAllNodes(hasText("Run the check") and hasClickAction())[0].performClick()
+        waitFor { c.session.vehicleCheck.value is Op.Done }
+        val report = (c.session.vehicleCheck.value as Op.Done).value
+        // Demo car: MIL on with P0301/P0420 stored and ABS / airbag / body codes -> serious warning, would fail the ITV.
+        assertTrue(report.items.joinToString("\n"), report.verdict == com.openobd.core.report.Verdict.BAD)
+        assertTrue(report.itv == com.openobd.core.report.ItvVerdict.FAIL)
+        assertTrue(rule.onAllNodesWithText("Serious warning signs").fetchSemanticsNodes().isNotEmpty())
+        shot("30_vehicle_check_dark")
+
+        // The PDF itself is generated on real Android in the device tests (Robolectric has no native PDF engine).
+        c.session.disconnect()
+    }
+}

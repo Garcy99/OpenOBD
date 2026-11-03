@@ -375,6 +375,14 @@ class ModuleClient(private val elm: Elm327) {
         out
     }
 
+    /** VIN stored in the module (UDS DID F190, or GMLAN identifier \$90). Null when it does not report one. */
+    suspend fun readVin(m: EcuModule): String? = withModule(m) {
+        fun text(bytes: IntArray) = bytes.filter { it in 0x30..0x5A }.map { it.toChar() }.joinToString("").takeLast(17).takeIf { it.length == 17 }
+        positive(request("22F190", 3000), 0x22)?.let { p -> text(p.data.copyOfRange(3, p.data.size))?.let { return@withModule it } }
+        if (gmlan) positive(request("1A90", 3000), 0x1A)?.let { p -> if (p.data.getOrNull(1) == 0x90) return@withModule text(p.data.copyOfRange(2, p.data.size)) }
+        null
+    }
+
     /** Reads any data identifier. Returns the raw bytes after the DID echo, or throws with the NRC text. */
     suspend fun readDid(m: EcuModule, did: Int): IntArray = withModule(m) {
         val msgs = request("22%04X".format(did), 4000)

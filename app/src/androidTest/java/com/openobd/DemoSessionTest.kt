@@ -154,6 +154,22 @@ class DemoSessionTest {
     }
 
     @Test
+    fun usedCarCheckAndPdf() {
+        configure()
+        tap("Connect")
+        waitFor("connection") { c.session.state.value is ConnectionState.Connected }
+        c.session.runVehicleCheck()
+        waitFor("vehicle check", 90_000) { c.session.vehicleCheck.value is Op.Done || c.session.vehicleCheck.value is Op.Error }
+        val report = (c.session.vehicleCheck.value as Op.Done).value
+        assertEquals(com.openobd.core.report.Verdict.BAD, report.verdict)
+        val vehicle = (c.session.state.value as ConnectionState.Connected).vehicle
+        val pdf = com.openobd.ui.screens.writeVehicleCheckPdf(app, report, vehicle, "Demo")
+        val bytes = pdf.readBytes()
+        assertEquals("%PDF-", String(bytes.copyOfRange(0, 5), Charsets.US_ASCII))
+        assertTrue("PDF size ${bytes.size}", bytes.size > 2000)
+    }
+
+    @Test
     fun olderCarOnKLine() {
         configure(ObdProtocol.ISO_9141_2)
         tap("Connect")

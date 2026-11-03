@@ -84,6 +84,7 @@ object Routes {
     const val TRIP = "trip/{id}"
     fun trip(id: String) = "trip/$id"
     const val PIDS = "pids"
+    const val CHECK = "check"
     const val MODULE = "module/{id}"
     fun module(id: String) = "module/" + android.net.Uri.encode(id)
 }
@@ -145,6 +146,7 @@ fun OpenObdNavHost() {
             composable(Routes.DIAGNOSTICS) { DiagnosticsScreen(onConnect = toHome, onNavigate = { nav.navigate(it) }) }
             composable(Routes.MORE) { MoreScreen(onNavigate = { nav.navigate(it) }) }
             composable(Routes.READINESS) { ReadinessScreen(onBack = back, onConnect = toHome) }
+            composable(Routes.CHECK) { com.openobd.ui.screens.VehicleCheckScreen(onBack = back, onConnect = toHome) }
             composable(Routes.VEHICLE) { VehicleInfoScreen(onBack = back, onConnect = toHome) }
             composable(Routes.FREEZE) { FreezeFrameScreen(onBack = back, onConnect = toHome) }
             composable(Routes.TESTS) { MonitorTestsScreen(onBack = back, onConnect = toHome) }

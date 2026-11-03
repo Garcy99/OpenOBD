@@ -124,6 +124,7 @@ class ObdSession(
     val freezeFrame = MutableStateFlow<Op<FreezeFrame?>>(Op.Idle)
     val vehicleInfo = MutableStateFlow<Op<VehicleInfo>>(Op.Idle)
     val monitorTests = MutableStateFlow<Op<List<TestResult>>>(Op.Idle)
+    val vehicleCheck = MutableStateFlow<Op<com.openobd.core.report.VehicleCheckReport>>(Op.Idle)
     val moduleScan = MutableStateFlow<Op<List<ModuleScanResult>>>(Op.Idle)
     val discovery = MutableStateFlow<Op<List<EcuModule>>>(Op.Idle)
 
@@ -398,6 +399,46 @@ class ObdSession(
     }
 
     fun loadFreezeFrame() = runOp(freezeFrame, "Reading freeze frame") { c -> c.readFreezeFrame(0) }
+
+    /** Used car / pre-inspection check: everything the car reports about hidden or recent faults. */
+    fun runVehicleCheck() = runOp(vehicleCheck, "Reading monitors") { c -> buildVehicleCheck(c) }
+
+    private suspend fun buildVehicleCheck(c: ObdClient): com.openobd.core.report.VehicleCheckReport {
+        fun step(s: String) { vehicleCheck.value = Op.Loading(s) }
+        val readiness = runCatching { c.readReadiness() }.getOrNull()
+        step("Reading trouble codes")
+        val all = c.readAllDtcs()
+        fun codes(t: DtcType) = all[t]?.takeIf { it.error == null }?.codes?.map { it.code }?.distinct()
+        val supported = vehicle?.supportedPids ?: emptySet()
+        val wanted = listOf(0x21, 0x30, 0x31, 0x0C, 0xA6).filter { it in supported }
+        val p = if (wanted.isEmpty()) emptyMap() else c.readPids(wanted)
+        fun word(pid: Int) = p[pid]?.takeIf { it.size >= 2 }?.let { ((it[0] shl 8) or it[1]).toDouble() }
+        val odo = p[0xA6]?.takeIf { it.size >= 4 }?.let { b -> b.fold(0L) { acc, x -> (acc shl 8) or x.toLong() } / 10.0 }
+        val running = word(0x0C)?.let { it / 4 > 300 }
+        val voltage = elm?.readVoltage()
+        var results = emptyList<com.openobd.core.brand.ModuleScanResult>()
+        val vins = linkedMapOf<String, String>()
+        val mc = runCatching { moduleClient() }.getOrNull()
+        if (mc != null) {
+            step("Scanning control modules")
+            results = modulesForBrand().filter { !it.secondaryBus }.map { mc.scan(it) }
+            step("Reading VIN from modules")
+            for (r in results.filter { it.online && it.module.tx != 0x7E0 }.take(6)) {
+                runCatching { mc.readVin(r.module) }.getOrNull()?.let { vins[r.module.shortName] = it }
+            }
+        }
+        val active = garage.data.value.active
+        val input = com.openobd.core.report.CheckInput(
+            vin = vehicle?.vin, readiness = readiness,
+            stored = codes(DtcType.STORED), pending = codes(DtcType.PENDING), permanent = codes(DtcType.PERMANENT),
+            modules = results,
+            distanceSinceClearKm = word(0x31), warmupsSinceClear = p[0x30]?.firstOrNull(), distanceWithMilKm = word(0x21),
+            obdOdometerKm = odo, recordedOdometerKm = active?.odometerKm?.takeIf { !active.odometerFromCar },
+            moduleVins = vins, batteryV = voltage, engineRunning = running,
+        )
+        debug.event("Vehicle check: $input")
+        return com.openobd.core.report.VehicleCheck.evaluate(input)
+    }
 
     fun loadVehicleInfo() = runOp(vehicleInfo, "Reading vehicle information") { c -> c.readVehicleInfo() }
 

@@ -70,6 +70,11 @@ class TranslationCoverageTest {
         keys += listOf("Resetting adapter", "Configuring adapter", "Connecting to vehicle (protocol search can take ~15s)", "Reading supported sensors", "Reading VIN",
             "Reading trouble codes", "Clearing trouble codes", "Reading monitors", "Reading freeze frame", "Reading vehicle information",
             "Reading on-board test results", "Starting", "Probing CAN addresses", "Not connected to a vehicle", "The adapter stopped responding.")
+        keys += com.openobd.core.report.VehicleCheck.texts + com.openobd.core.report.VehicleCheck.DISCLAIMER
+        com.openobd.core.report.CheckSection.entries.forEach { keys += it.label }
+        com.openobd.core.report.Verdict.entries.forEach { keys += it.label; keys += it.detail }
+        com.openobd.core.report.ItvVerdict.entries.forEach { keys += it.label; keys += it.detail }
+        keys += listOf("Scanning control modules", "Reading VIN from modules")
         return keys
     }
 

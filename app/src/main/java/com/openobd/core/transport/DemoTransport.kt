@@ -80,7 +80,10 @@ class DemoTransport(
     private var canMask: Int? = null
 
     /** Simulated non-OBD control modules: request ID -> module. Mutable so tests can inspect / clear. */
-    class SimModule(val rx: Int, val name: String, val partNumber: String, val dtcs: MutableList<Triple<String, Int, Int>>, val gmlan: Boolean = false)
+    class SimModule(val rx: Int, val name: String, val partNumber: String, val dtcs: MutableList<Triple<String, Int, Int>>, val gmlan: Boolean = false) {
+        /** VIN stored in this module; null = the car's VIN. Tests set it to simulate a module from another car. */
+        var vin: String? = null
+    }
     val modules: Map<Int, SimModule> = mapOf(
         0x7E0 to SimModule(0x7E8, "ECM", "OB-12A650-DEMO", mutableListOf()),
         0x7E1 to SimModule(0x7E9, "TCM", "OB-7C150-DEMO", mutableListOf()),
@@ -312,6 +315,8 @@ class DemoTransport(
             0x19, 0x18, 0x14 -> usdt(0x7F, b[0], 0x11)
             0x3E -> usdt(0x7E)
             0x04 -> { m.dtcs.clear(); usdt(0x44) }
+            0x22 -> usdt(0x7F, 0x22, 0x11)
+            0x1A -> if (b.getOrNull(1) == 0x90) usdt(0x5A, 0x90, *(m.vin ?: vin).map { it.code }.toIntArray()) else usdt(0x7F, 0x1A, 0x31)
             0xA9 -> {
                 val uudt = m.rx - 0x100
                 if (!accepts(uudt)) return listOf("NO DATA")
@@ -366,7 +371,7 @@ class DemoTransport(
                 fun ascii(s: String) = listOf(0x62, b[1], b[2]) + s.map { it.code }
                 when (did) {
                     0xF187 -> ascii(m.partNumber)
-                    0xF190 -> ascii(vin)
+                    0xF190 -> ascii(m.vin ?: vin)
                     0xF195 -> ascii("SW 2.4.1")
                     0xF197 -> ascii(m.name)
                     0xF18C -> ascii("SN%06d".format(tx * 37))

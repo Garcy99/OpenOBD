@@ -8,6 +8,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Checklist
+import androidx.compose.material.icons.filled.FactCheck
 import androidx.compose.material.icons.filled.DirectionsCar
 import androidx.compose.material.icons.filled.Flag
 import androidx.compose.material.icons.filled.Fullscreen
@@ -45,6 +46,7 @@ private val items = listOf(
     MenuItem(Routes.MAINTENANCE, "Maintenance", tr("Service reminders by distance and time"), Icons.Default.Build),
     MenuItem(Routes.FUEL, "Fuel log", tr("Fill-ups, real consumption and costs"), Icons.Default.LocalGasStation),
     MenuItem(Routes.TRIPS, "Trip history", tr("Saved trips with GPS map, fuel and speed"), Icons.Default.Map),
+    MenuItem(Routes.CHECK, "Used car & pre-ITV check", tr("Hidden or recently cleared faults, VIN and odometer, readiness · PDF report"), Icons.Default.FactCheck),
     MenuItem(Routes.BRAND, "Brand features & modules", tr("ABS, airbag, body, EV battery modules · manufacturer codes · brand PIDs"), Icons.Default.Hub),
     MenuItem(Routes.READINESS, "Emission readiness (I/M)", tr("Smog check monitors, since clear and this drive cycle"), Icons.Default.Checklist),
     MenuItem(Routes.FREEZE, "Freeze frame", tr("Sensor snapshot captured when a fault was stored"), Icons.Default.Flag),
