@@ -32,3 +32,33 @@ jobs:
         with:
           name: screenshots
           path: app/build/screenshots
+
+  # Drives the real driver (Wi-Fi transport, ELM327, OBD and module clients) against the independent
+  # Python ELM327-emulator, written by other people from the data sheet and real car captures.
+  external-emulator:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - uses: gradle/actions/setup-gradle@v4
+      - name: Start ELM327-emulator
+        run: |
+          pip install ELM327-emulator==4.0.0
+          elm -n 35000 -s car -d
+          for i in $(seq 1 30); do (echo > /dev/tcp/127.0.0.1/35000) 2>/dev/null && exit 0; sleep 1; done
+          echo "emulator did not start"; exit 1
+      - name: Session against the emulator
+        run: ./gradlew testDebugUnitTest --tests '*ExternalEmulatorTest' -PelmEmulator=127.0.0.1:35000
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: elm-emulator-log
+          path: |
+            app/build/elm-emulator.log
+            app/build/reports/tests/testDebugUnitTest

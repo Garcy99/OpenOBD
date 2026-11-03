@@ -113,14 +113,15 @@ class ObdClient(val elm: Elm327) {
                 if (useStpx && stnFastVerified == null && chunk.size > 1) {
                     // One-time check: does STPX with r:1 return the complete (possibly multi-frame) answer?
                     val fast = HashMap<Int, IntArray>()
-                    (elm.query("STPX D:$req, R:1", 3000) as? ObdResult.Data)?.let { parseMultiPid(it, fast) }
+                    // Short timeout: some adapters claim to be STN chips but never answer STPX.
+                    (elm.query("STPX D:$req, R:1", 1200) as? ObdResult.Data)?.let { parseMultiPid(it, chunk, fast) }
                     val normal = HashMap<Int, IntArray>()
-                    (elm.query(req, 3000) as? ObdResult.Data)?.let { parseMultiPid(it, normal) }
+                    (elm.query(req, 3000) as? ObdResult.Data)?.let { parseMultiPid(it, chunk, normal) }
                     stnFastVerified = normal.isNotEmpty() && fast.keys == normal.keys
                     out.putAll(normal)
                 } else {
                     val r = elm.query(if (useStpx && stnFastVerified == true) "STPX D:$req, R:1" else req, 3000)
-                    if (r is ObdResult.Data) parseMultiPid(r, out)
+                    if (r is ObdResult.Data) parseMultiPid(r, chunk, out)
                     answered = r is ObdResult.Data || (r as ObdResult.Failure).error == ElmError.NO_DATA
                 }
                 val missing = chunk.filter { it !in out }
@@ -150,12 +151,15 @@ class ObdClient(val elm: Elm327) {
         return msg.data.copyOfRange(2, msg.data.size)
     }
 
-    private fun parseMultiPid(r: ObdResult.Data, out: MutableMap<Int, IntArray>) {
+    private fun parseMultiPid(r: ObdResult.Data, requested: List<Int>, out: MutableMap<Int, IntArray>) {
         val msgs = r.positive(1).sortedBy { if (it.ecu == primaryEcu) 0 else 1 }
         for (m in msgs) {
             var i = 1
             while (i < m.data.size) {
                 val pid = m.data[i]
+                // A PID we did not ask for means the reply is out of step (corrupt or a buggy ECU): stop
+                // rather than read the wrong bytes as values.
+                if (pid !in requested) break
                 val len = Pids.all[pid]?.bytes ?: break
                 if (i + 1 + len > m.data.size) break
                 if (pid !in out) out[pid] = m.data.copyOfRange(i + 1, i + 1 + len)

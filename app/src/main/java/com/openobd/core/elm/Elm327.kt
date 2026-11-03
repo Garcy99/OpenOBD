@@ -100,6 +100,20 @@ class Elm327(
         return lines
     }
 
+    private suspend fun wakeUp() = mutex.withLock {
+        while (transport.incoming.tryReceive().isSuccess) { /* drain */ }
+        log('>', "(CR)")
+        runCatching { sendRaw("\r") }
+        val sb = StringBuilder()
+        kotlinx.coroutines.withTimeoutOrNull(600) {
+            while (true) {
+                sb.append(String(transport.incoming.receive(), Charsets.ISO_8859_1))
+                if (sb.indexOf(">") >= 0) break
+            }
+        }
+        if (sb.isNotBlank()) log('<', sb.toString().replace("\r", " ").trim())
+    }
+
     private suspend fun sendRaw(text: String) {
         try {
             transport.send(text.toByteArray(Charsets.US_ASCII))
@@ -119,7 +133,7 @@ class Elm327(
         if (!transport.isOpen) return
         runCatching { transport.send("\r".toByteArray()) }
         val sb = StringBuilder()
-        val gotPrompt = kotlinx.coroutines.withTimeoutOrNull(1500) {
+        val gotPrompt = kotlinx.coroutines.withTimeoutOrNull(1000) {
             while (true) {
                 sb.append(String(transport.incoming.receive(), Charsets.ISO_8859_1))
                 if (sb.indexOf(">") >= 0) break
@@ -219,8 +233,9 @@ class Elm327(
      */
     suspend fun initialize(config: ElmConfig, progress: (String) -> Unit = {}): ElmInfo {
         progress("Resetting adapter")
-        // Some clones need a bare CR to wake up / flush.
-        runCatching { command("", 1000) }
+        // Some clones need a bare CR to wake up / flush. Many adapters do not answer it at all, so
+        // this is not a command with a timeout, just a short listen.
+        wakeUp()
         val reset = try {
             command("ATZ", 5000)
         } catch (e: ElmException) {

@@ -122,7 +122,10 @@ class UiSmokeTest {
         tap("Scan")
         waitFor { c.session.dtcScan.value is Op.Done }
         shot("06_codes_$suffix")
-        assertTrue(rule.onAllNodesWithText("P0301").fetchSemanticsNodes().isNotEmpty())
+        assertTrue(
+            "scan: ${(c.session.dtcScan.value as? Op.Done)?.value}\n" + c.diagnostics.log.format().takeLast(5000),
+            rule.onAllNodesWithText("P0301").fetchSemanticsNodes().isNotEmpty(),
+        )
 
         tap("P0301")
         shot("07_code_detail_$suffix")
