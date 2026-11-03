@@ -1,5 +1,7 @@
 package com.openobd.ui.screens
 
+import com.openobd.ui.tr
+
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
@@ -47,12 +49,12 @@ fun MonitorTestsScreen(onBack: () -> Unit, onConnect: () -> Unit) {
     LaunchedEffect(vehicle != null) { if (vehicle != null && op !is Op.Done) session.loadMonitorTests() }
 
     Column(Modifier.fillMaxSize()) {
-        ScreenTopBar("On-board monitor tests", onBack, actions = {
-            if (vehicle != null) IconButton(onClick = session::loadMonitorTests) { Icon(Icons.Default.Refresh, "Refresh") }
+        ScreenTopBar(tr("On-board monitor tests"), onBack, actions = {
+            if (vehicle != null) IconButton(onClick = session::loadMonitorTests) { Icon(Icons.Default.Refresh, tr("Refresh")) }
         })
         if (vehicle == null) { NotConnected(onConnect); return@Column }
         if (!vehicle.elm.protocol.isCan) {
-            ErrorText("Mode 06 results are only standardised on CAN vehicles (most cars from 2008 onwards).", Modifier.padding(16.dp))
+            ErrorText(tr("Mode 06 results are only standardised on CAN vehicles (most cars from 2008 onwards)."), Modifier.padding(16.dp))
             return@Column
         }
         when (val s = op) {
@@ -63,11 +65,11 @@ fun MonitorTestsScreen(onBack: () -> Unit, onConnect: () -> Unit) {
                 item {
                     val failed = s.value.count { !it.passed }
                     Text(
-                        if (s.value.isEmpty()) "The vehicle did not report any test results."
-                        else "${s.value.size} tests · ${if (failed == 0) "all passed" else "$failed outside limits"}",
+                        if (s.value.isEmpty()) tr("The vehicle did not report any test results.")
+                        else tr("%1\$s tests · %2\$s", s.value.size, (if (failed == 0) tr("all passed") else tr("%1\$s outside limits", failed))),
                         style = MaterialTheme.typography.titleMedium,
                     )
-                    Text("Tests close to their limits hint at parts that are about to fail before a code is set.",
+                    Text(tr("Tests close to their limits hint at parts that are about to fail before a code is set."),
                         style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
                 s.value.groupBy { it.mid to it.ecu }.forEach { (key, tests) ->
@@ -77,7 +79,7 @@ fun MonitorTestsScreen(onBack: () -> Unit, onConnect: () -> Unit) {
                                 Row(Modifier.fillMaxWidth().padding(vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
                                     Column(Modifier.weight(1f)) {
                                         Text(t.testName, style = MaterialTheme.typography.bodyMedium)
-                                        Text("limits ${num(t.min)} … ${num(t.max)} ${t.unit}",
+                                        Text(tr("limits %1\$s … %2\$s %3\$s", (num(t.min)), (num(t.max)), t.unit),
                                             style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                                     }
                                     Spacer(Modifier.width(8.dp))

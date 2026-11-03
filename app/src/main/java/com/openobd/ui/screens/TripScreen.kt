@@ -1,5 +1,7 @@
 package com.openobd.ui.screens
 
+import com.openobd.ui.tr
+
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -41,9 +43,9 @@ fun TripScreen(onBack: () -> Unit, onConnect: () -> Unit, onHistory: () -> Unit 
     val vehicle = connectedVehicle()
     val settings = appSettings()
     Column(Modifier.fillMaxSize()) {
-        ScreenTopBar("Trip computer", onBack, actions = {
-            IconButton(onClick = onHistory) { Icon(Icons.Default.History, "Trip history") }
-            IconButton(onClick = session.trip::reset) { Icon(Icons.Default.RestartAlt, "Reset trip") }
+        ScreenTopBar(tr("Trip computer"), onBack, actions = {
+            IconButton(onClick = onHistory) { Icon(Icons.Default.History, tr("Trip history")) }
+            IconButton(onClick = session.trip::reset) { Icon(Icons.Default.RestartAlt, tr("Reset trip")) }
         })
         if (vehicle == null) { NotConnected(onConnect); return@Column }
         SubscribeSensors("tripscreen", listOf("CALC_CONS", "CALC_FUEL", "010D"))
@@ -54,25 +56,25 @@ fun TripScreen(onBack: () -> Unit, onConnect: () -> Unit, onHistory: () -> Unit 
 
         Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                BigStat("Distance", fmt(t.distanceKm, ObdUnit.KM, 2), Modifier.weight(1f))
-                BigStat("Time", formatDuration(t.durationS), Modifier.weight(1f))
+                BigStat(tr("Distance"), fmt(t.distanceKm, ObdUnit.KM, 2), Modifier.weight(1f))
+                BigStat(tr("Time"), formatDuration(t.durationS), Modifier.weight(1f))
             }
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                 val inst = readings["CALC_CONS"]?.value
-                BigStat("Now", inst?.let { fmt(it, ObdUnit.L_PER_100KM) } ?: readings["CALC_FUEL"]?.value?.let { fmt(it, ObdUnit.LITERS_PER_HOUR, 2) } ?: "—", Modifier.weight(1f))
-                BigStat("Trip average", t.avgConsumption?.let { fmt(it, ObdUnit.L_PER_100KM) } ?: "—", Modifier.weight(1f))
+                BigStat(tr("Now"), inst?.let { fmt(it, ObdUnit.L_PER_100KM) } ?: readings["CALC_FUEL"]?.value?.let { fmt(it, ObdUnit.LITERS_PER_HOUR, 2) } ?: "—", Modifier.weight(1f))
+                BigStat(tr("Trip average"), t.avgConsumption?.let { fmt(it, ObdUnit.L_PER_100KM) } ?: "—", Modifier.weight(1f))
             }
-            SectionCard(title = "Details") {
-                KeyValueRow("Fuel used", if (t.hasFuelData) fmt(t.fuelL, ObdUnit.LITERS, 2) else "Not available")
-                if (settings.fuelPricePerL > 0 && t.hasFuelData) KeyValueRow("Fuel cost", "%.2f".format(t.fuelL * settings.fuelPricePerL))
-                KeyValueRow("Average speed (moving)", fmt(t.avgSpeed, ObdUnit.KMH, 0))
-                KeyValueRow("Max speed", fmt(t.maxSpeed, ObdUnit.KMH, 0))
-                KeyValueRow("Max RPM", "%.0f".format(t.maxRpm))
-                KeyValueRow("Moving time", formatDuration(t.movingS))
-                KeyValueRow("Idle time", formatDuration(t.idleS))
+            SectionCard(title = tr("Details")) {
+                KeyValueRow(tr("Fuel used"), if (t.hasFuelData) fmt(t.fuelL, ObdUnit.LITERS, 2) else tr("Not available"))
+                if (settings.fuelPricePerL > 0 && t.hasFuelData) KeyValueRow(tr("Fuel cost"), "%.2f".format(t.fuelL * settings.fuelPricePerL))
+                KeyValueRow(tr("Average speed (moving)"), fmt(t.avgSpeed, ObdUnit.KMH, 0))
+                KeyValueRow(tr("Max speed"), fmt(t.maxSpeed, ObdUnit.KMH, 0))
+                KeyValueRow(tr("Max RPM"), "%.0f".format(t.maxRpm))
+                KeyValueRow(tr("Moving time"), formatDuration(t.movingS))
+                KeyValueRow(tr("Idle time"), formatDuration(t.idleS))
             }
-            Text("Fuel is calculated from the fuel-rate PID or from mass air flow. Accuracy is typically within 5-10%; " +
-                "set your fuel type and engine size in Settings for best results.",
+            Text(tr("Fuel is calculated from the fuel-rate PID or from mass air flow. Accuracy is typically within 5-10%; ") +
+                tr("set your fuel type and engine size in Settings for best results."),
                 style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
     }

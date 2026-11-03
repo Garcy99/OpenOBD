@@ -1,5 +1,7 @@
 package com.openobd.ui.components
 
+import com.openobd.ui.tr
+
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -43,19 +45,19 @@ fun SensorPickerDialog(
 ) {
     var query by remember { mutableStateOf("") }
     var chosen by remember { mutableStateOf(selected ?: emptySet()) }
-    val filtered = sensors.filter { query.isBlank() || it.name.contains(query, true) || it.shortName.contains(query, true) || it.key.contains(query, true) }
+    val filtered = sensors.filter { query.isBlank() || it.name.contains(query, true) || tr(it.name).contains(query, true) || it.shortName.contains(query, true) || it.key.contains(query, true) }
     AlertDialog(
         onDismissRequest = onDismiss,
         title = { Text(title) },
         text = {
             Column {
                 OutlinedTextField(query, { query = it }, leadingIcon = { Icon(Icons.Default.Search, null) },
-                    placeholder = { Text("Search sensors") }, singleLine = true, modifier = Modifier.fillMaxWidth())
+                    placeholder = { Text(tr("Search sensors")) }, singleLine = true, modifier = Modifier.fillMaxWidth())
                 Spacer(Modifier.padding(4.dp))
                 LazyColumn(Modifier.heightIn(max = 420.dp)) {
                     filtered.groupBy { it.category }.forEach { (cat, list) ->
                         item(key = "h_" + cat.name) {
-                            Text(cat.label, style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.primary,
+                            Text(tr(cat.label), style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.primary,
                                 modifier = Modifier.padding(top = 10.dp, bottom = 4.dp))
                         }
                         items(list, key = { it.key }) { s ->
@@ -71,7 +73,7 @@ fun SensorPickerDialog(
                                     Spacer(Modifier.width(8.dp))
                                 }
                                 Column(Modifier.weight(1f)) {
-                                    Text(s.name, fontWeight = FontWeight.Medium)
+                                    Text(tr(s.name), fontWeight = FontWeight.Medium)
                                     Text(s.unit.symbol.ifEmpty { "status" } + "  ·  " + s.key, style = MaterialTheme.typography.bodySmall,
                                         color = MaterialTheme.colorScheme.onSurfaceVariant)
                                 }
@@ -83,8 +85,8 @@ fun SensorPickerDialog(
         },
         confirmButton = {
             if (selected != null) TextButton(onClick = { onConfirm(chosen) }) { Text("OK (${chosen.size})") }
-            else TextButton(onClick = onDismiss) { Text("Cancel") }
+            else TextButton(onClick = onDismiss) { Text(tr("Cancel")) }
         },
-        dismissButton = { if (selected != null) TextButton(onClick = onDismiss) { Text("Cancel") } },
+        dismissButton = { if (selected != null) TextButton(onClick = onDismiss) { Text(tr("Cancel")) } },
     )
 }

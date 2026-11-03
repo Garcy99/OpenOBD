@@ -1,0 +1,16 @@
+<resources>
+    <string name="widget_description">Tu vehículo de un vistazo: códigos de avería, próximo mantenimiento y último viaje</string>
+    <string name="widget_connected">Conectado</string>
+    <string name="widget_not_connected">No conectado</string>
+    <string name="widget_mil_on">Testigo de avería ENCENDIDO · %1$d código(s)</string>
+    <string name="widget_codes">%1$d código(s) de avería</string>
+    <string name="widget_no_codes">Sin códigos de avería</string>
+    <string name="widget_last_scan">Último escaneo %1$s: %2$s</string>
+    <string name="widget_never_scanned">Aún no escaneado · toca para conectar</string>
+    <string name="widget_service_overdue">Vencido: %1$s</string>
+    <string name="widget_service_due">Próximo: %1$s</string>
+    <string name="widget_service_ok">Mantenimiento al día</string>
+    <string name="widget_service_none">Sin recordatorios de mantenimiento</string>
+    <string name="widget_trip">Último viaje %1$s · %2$s</string>
+    <string name="widget_no_trip">Aún no hay viajes</string>
+</resources>

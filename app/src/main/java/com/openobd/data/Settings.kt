@@ -74,6 +74,8 @@ data class AppSettings(
     val msCanSwitch: Boolean = false,
     /** Record a GPS track for saved trips (needs location permission). */
     val tripGps: Boolean = true,
+    /** "system", "en" or "es". */
+    val language: String = "system",
 ) {
     companion object {
         val DEFAULT_DASHBOARD = listOf("010C", "010D", "0105", "0104", "0111", "CALC_FUEL", "0142", "CALC_BOOST")
@@ -109,6 +111,7 @@ class SettingsRepository(private val context: Context, scope: CoroutineScope) {
         val customModules = stringPreferencesKey("custom_modules")
         val msCanSwitch = booleanPreferencesKey("ms_can_switch")
         val tripGps = booleanPreferencesKey("trip_gps")
+        val language = stringPreferencesKey("language")
     }
 
     private val json = Json { ignoreUnknownKeys = true }
@@ -143,6 +146,7 @@ class SettingsRepository(private val context: Context, scope: CoroutineScope) {
             customModules = p[K.customModules]?.let { runCatching { json.decodeFromString<List<EcuModule>>(it) }.getOrNull() } ?: d.customModules,
             msCanSwitch = p[K.msCanSwitch] ?: d.msCanSwitch,
             tripGps = p[K.tripGps] ?: d.tripGps,
+            language = p[K.language] ?: d.language,
         )
     }
 
@@ -180,6 +184,7 @@ class SettingsRepository(private val context: Context, scope: CoroutineScope) {
             p[K.customModules] = json.encodeToString(s.customModules)
             p[K.msCanSwitch] = s.msCanSwitch
             p[K.tripGps] = s.tripGps
+            p[K.language] = s.language
         }
     }
 }

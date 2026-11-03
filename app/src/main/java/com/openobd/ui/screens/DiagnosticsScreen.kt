@@ -1,5 +1,7 @@
 package com.openobd.ui.screens
 
+import com.openobd.ui.tr
+
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -74,11 +76,11 @@ fun DiagnosticsScreen(onConnect: () -> Unit, onNavigate: (String) -> Unit) {
     var detail by remember { mutableStateOf<Dtc?>(null) }
 
     Column(Modifier.fillMaxSize()) {
-        ScreenTopBar("Trouble codes", actions = {
-            IconButton(onClick = { onNavigate(Routes.LOOKUP) }) { Icon(Icons.Default.Search, "Code lookup") }
-            IconButton(onClick = { onNavigate(Routes.HISTORY) }) { Icon(Icons.Default.History, "Scan history") }
-            if (vehicle != null) IconButton(onClick = { shareText(context, "Vehicle diagnostic report", session.buildReport()) }) {
-                Icon(Icons.Default.Share, "Share report")
+        ScreenTopBar(tr("Trouble codes"), actions = {
+            IconButton(onClick = { onNavigate(Routes.LOOKUP) }) { Icon(Icons.Default.Search, tr("Code lookup")) }
+            IconButton(onClick = { onNavigate(Routes.HISTORY) }) { Icon(Icons.Default.History, tr("Scan history")) }
+            if (vehicle != null) IconButton(onClick = { shareText(context, tr("Vehicle diagnostic report"), session.buildReport()) }) {
+                Icon(Icons.Default.Share, tr("Share report"))
             }
         })
         if (vehicle == null) { NotConnected(onConnect); return@Column }
@@ -87,14 +89,14 @@ fun DiagnosticsScreen(onConnect: () -> Unit, onNavigate: (String) -> Unit) {
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                Button(onClick = session::scanDtcs, enabled = scan !is Op.Loading, modifier = Modifier.weight(1f)) { Text("Scan") }
+                Button(onClick = session::scanDtcs, enabled = scan !is Op.Loading, modifier = Modifier.weight(1f)) { Text(tr("Scan")) }
                 OutlinedButton(
                     onClick = { confirmClear = true },
                     enabled = scan !is Op.Loading && clear !is Op.Loading,
                     modifier = Modifier.weight(1f),
                     colors = ButtonDefaults.outlinedButtonColors(contentColor = MaterialTheme.colorScheme.error),
                 ) {
-                    Icon(Icons.Default.DeleteSweep, null, Modifier.size(18.dp)); Spacer(Modifier.width(6.dp)); Text("Clear codes")
+                    Icon(Icons.Default.DeleteSweep, null, Modifier.size(18.dp)); Spacer(Modifier.width(6.dp)); Text(tr("Clear codes"))
                 }
             }
             when (val c = clear) {
@@ -106,7 +108,7 @@ fun DiagnosticsScreen(onConnect: () -> Unit, onNavigate: (String) -> Unit) {
             when (val s = scan) {
                 is Op.Loading -> LoadingBox(s.progress)
                 is Op.Error -> ErrorText(s.message)
-                Op.Idle -> Text("Press Scan to read stored, pending and permanent codes from every ECU.", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Op.Idle -> Text(tr("Press Scan to read stored, pending and permanent codes from every ECU."), color = MaterialTheme.colorScheme.onSurfaceVariant)
                 is Op.Done -> {
                     val r = s.value.readiness
                     SectionCard {
@@ -115,24 +117,24 @@ fun DiagnosticsScreen(onConnect: () -> Unit, onNavigate: (String) -> Unit) {
                             Icon(if (bad) Icons.Default.Warning else Icons.Default.CheckCircle, null, tint = if (bad) Bad else Good, modifier = Modifier.size(40.dp))
                             Spacer(Modifier.width(12.dp))
                             Column {
-                                Text(if (bad) "Check engine light is ON" else "Check engine light is OFF", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
-                                Text("${s.value.codes.size} code(s) found across ${s.value.codes.map { it.ecu }.distinct().size.coerceAtLeast(if (s.value.codes.isEmpty()) 0 else 1)} ECU(s)",
+                                Text(if (bad) tr("Check engine light is ON") else tr("Check engine light is OFF"), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+                                Text(tr("%1\$s code(s) found across %2\$s ECU(s)", s.value.codes.size, (s.value.codes.map { it.ecu }.distinct().size.coerceAtLeast(if (s.value.codes.isEmpty()) 0 else 1))),
                                     style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                             }
                         }
                         if (s.value.codes.any { it.type == DtcType.STORED }) {
                             Spacer(Modifier.height(8.dp))
-                            TextButton(onClick = { onNavigate(Routes.FREEZE) }) { Text("View freeze frame (conditions when the fault occurred)") }
+                            TextButton(onClick = { onNavigate(Routes.FREEZE) }) { Text(tr("View freeze frame (conditions when the fault occurred)")) }
                         }
                     }
-                    s.value.errors.forEach { (t, e) -> ErrorText("${t.label}: $e") }
+                    s.value.errors.forEach { (t, e) -> ErrorText(tr(t.label) + ": " + tr(e)) }
                     for (type in DtcType.entries) {
                         val codes = s.value.codes.filter { it.type == type }
-                        Text("${type.label} (${codes.size})", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold,
+                        Text("${tr(type.label)} (${codes.size})", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold,
                             modifier = Modifier.padding(top = 4.dp))
-                        Text(type.description, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                        if (codes.isEmpty()) Text("None", style = MaterialTheme.typography.bodyMedium, color = Good)
-                        codes.forEach { d -> DtcCard(d, session.describe(d.code), session.client?.ecuName(d.ecu)) { detail = d } }
+                        Text(tr(type.description), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        if (codes.isEmpty()) Text(tr("None"), style = MaterialTheme.typography.bodyMedium, color = Good)
+                        codes.forEach { d -> DtcCard(d, session.describe(d.code), session.client?.ecuName(d.ecu)?.let { tr(it) }) { detail = d } }
                     }
                     Spacer(Modifier.height(16.dp))
                 }
@@ -144,19 +146,19 @@ fun DiagnosticsScreen(onConnect: () -> Unit, onNavigate: (String) -> Unit) {
         AlertDialog(
             onDismissRequest = { confirmClear = false },
             icon = { Icon(Icons.Default.Warning, null, tint = Warn) },
-            title = { Text("Clear trouble codes?") },
+            title = { Text(tr("Clear trouble codes?")) },
             text = {
-                Text("This erases stored and pending codes, freeze frame data and resets all readiness monitors on every ECU. " +
-                    "The check engine light turns off, but it will come back if the fault is still present.\n\n" +
-                    "For best results: engine OFF, ignition ON. Your car will not pass an emissions inspection until the monitors complete again.")
+                Text(tr("This erases stored and pending codes, freeze frame data and resets all readiness monitors on every ECU. ") +
+                    tr("The check engine light turns off, but it will come back if the fault is still present.\n\n") +
+                    tr("For best results: engine OFF, ignition ON. Your car will not pass an emissions inspection until the monitors complete again."))
             },
             confirmButton = {
-                TextButton(onClick = { confirmClear = false; session.clearDtcs() }) { Text("Clear codes", color = MaterialTheme.colorScheme.error) }
+                TextButton(onClick = { confirmClear = false; session.clearDtcs() }) { Text(tr("Clear codes"), color = MaterialTheme.colorScheme.error) }
             },
-            dismissButton = { TextButton(onClick = { confirmClear = false }) { Text("Cancel") } },
+            dismissButton = { TextButton(onClick = { confirmClear = false }) { Text(tr("Cancel")) } },
         )
     }
-    detail?.let { d -> DtcDetailDialog(d.code, session.describe(d.code), d.type.label + " · ECU " + d.ecu) { detail = null } }
+    detail?.let { d -> DtcDetailDialog(d.code, session.describe(d.code), tr(d.type.label) + " · ECU " + d.ecu) { detail = null } }
 }
 
 @Composable
@@ -171,9 +173,9 @@ fun DtcCard(d: Dtc, desc: DtcDescription, ecuName: String?, onClick: () -> Unit)
                 Text(d.code, fontFamily = FontFamily.Monospace, fontWeight = FontWeight.Bold, style = MaterialTheme.typography.titleLarge,
                     color = if (d.type == DtcType.PENDING) Warn else Bad)
                 Spacer(Modifier.width(10.dp))
-                Pill(d.system.label, MaterialTheme.colorScheme.primary)
+                Pill(tr(d.system.label), MaterialTheme.colorScheme.primary)
                 Spacer(Modifier.weight(1f))
-                desc.knowledge?.let { k -> Pill(desc.severityLabel, when (k.severity) { 3 -> Bad; 2 -> Warn; else -> Good }) }
+                desc.knowledge?.let { k -> Pill(tr(desc.severityLabel), when (k.severity) { 3 -> Bad; 2 -> Warn; else -> Good }) }
             }
             Spacer(Modifier.height(4.dp))
             Text(desc.description, style = MaterialTheme.typography.bodyMedium)
@@ -195,24 +197,24 @@ fun DtcDetailDialog(code: String, desc: DtcDescription, subtitle: String?, onDis
                 Spacer(Modifier.height(10.dp))
                 Text(desc.category, style = MaterialTheme.typography.bodySmall)
                 if (!desc.known) {
-                    Text("This code is not in the generic database. Manufacturer-specific meanings vary by brand; use the web search below.",
+                    Text(tr("This code is not in the generic database. Manufacturer-specific meanings vary by brand; use the web search below."),
                         style = MaterialTheme.typography.bodySmall, color = Warn, modifier = Modifier.padding(top = 6.dp))
                 }
                 desc.knowledge?.let { k ->
                     Spacer(Modifier.height(12.dp))
-                    Text("Severity: ${desc.severityLabel}", fontWeight = FontWeight.SemiBold, color = when (k.severity) { 3 -> Bad; 2 -> Warn; else -> Good })
+                    Text(tr("Severity: %1\$s", tr(desc.severityLabel)), fontWeight = FontWeight.SemiBold, color = when (k.severity) { 3 -> Bad; 2 -> Warn; else -> Good })
                     Spacer(Modifier.height(8.dp))
-                    Text("Common causes", fontWeight = FontWeight.SemiBold)
+                    Text(tr("Common causes"), fontWeight = FontWeight.SemiBold)
                     k.causes.forEach { Text("• $it", style = MaterialTheme.typography.bodyMedium) }
                     Spacer(Modifier.height(8.dp))
-                    Text("Tip", fontWeight = FontWeight.SemiBold)
+                    Text(tr("Tip"), fontWeight = FontWeight.SemiBold)
                     Text(k.advice, style = MaterialTheme.typography.bodyMedium)
                 }
             }
         },
-        confirmButton = { TextButton(onClick = onDismiss) { Text("Close") } },
+        confirmButton = { TextButton(onClick = onDismiss) { Text(tr("Close")) } },
         dismissButton = {
-            TextButton(onClick = { openUrl(context, "https://www.google.com/search?q=" + android.net.Uri.encode("$code ${desc.description}")) }) { Text("Search web") }
+            TextButton(onClick = { openUrl(context, "https://www.google.com/search?q=" + android.net.Uri.encode("$code ${desc.description}")) }) { Text(tr("Search web")) }
         },
     )
 }

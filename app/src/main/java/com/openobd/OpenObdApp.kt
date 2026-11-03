@@ -39,6 +39,7 @@ class OpenObdApp : Application() {
     override fun onCreate() {
         super.onCreate()
         container = AppContainer(this)
+        com.openobd.ui.I18n.load(this, "system")
         container.scope.launch {
             container.garage.load(container.settings.readOnce())
             container.history.load()

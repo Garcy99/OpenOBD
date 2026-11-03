@@ -31,8 +31,13 @@ class MainActivity : ComponentActivity() {
             LaunchedEffect(Unit) {
                 container.session.alerts.collect { vibrate() }
             }
-            CompositionLocalProvider(LocalApp provides container) {
-                OpenObdTheme(settings.theme) { OpenObdNavHost() }
+            // Reload translations when the language changes and rebuild the UI so every screen picks them up.
+            val language = settings.language
+            androidx.compose.runtime.remember(language) { com.openobd.ui.I18n.load(this, language); language }
+            androidx.compose.runtime.key(language) {
+                CompositionLocalProvider(LocalApp provides container) {
+                    OpenObdTheme(settings.theme) { OpenObdNavHost() }
+                }
             }
         }
     }

@@ -1,5 +1,7 @@
 package com.openobd.ui.screens
 
+import com.openobd.ui.tr
+
 import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -82,7 +84,7 @@ fun CustomPidsScreen(onBack: () -> Unit) {
     val fileLauncher = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
         if (uri != null) runCatching {
             context.contentResolver.openInputStream(uri)?.bufferedReader()?.use { it.readText() }
-        }.onSuccess { t -> t?.let(::import) }.onFailure { Toast.makeText(context, "Could not read file: ${it.message}", Toast.LENGTH_LONG).show() }
+        }.onSuccess { t -> t?.let(::import) }.onFailure { Toast.makeText(context, tr("Could not read file: %1\$s", it.message), Toast.LENGTH_LONG).show() }
     }
 
     if (vehicle != null) SubscribeSensors("custompids", pids.map { it.key })
@@ -90,23 +92,23 @@ fun CustomPidsScreen(onBack: () -> Unit) {
 
     Scaffold(
         topBar = {
-            ScreenTopBar("Custom PIDs", onBack, actions = {
-                IconButton(onClick = { fileLauncher.launch(arrayOf("text/*", "application/octet-stream", "*/*")) }) { Icon(Icons.Default.FileOpen, "Import CSV file") }
-                IconButton(onClick = { pasting = true }) { Icon(Icons.Default.ContentPaste, "Paste CSV") }
-                if (pids.isNotEmpty()) IconButton(onClick = { shareText(context, "OpenOBD custom PIDs", TorqueCsv.export(pids)) }) { Icon(Icons.Default.Share, "Export") }
+            ScreenTopBar(tr("Custom PIDs"), onBack, actions = {
+                IconButton(onClick = { fileLauncher.launch(arrayOf("text/*", "application/octet-stream", "*/*")) }) { Icon(Icons.Default.FileOpen, tr("Import CSV file")) }
+                IconButton(onClick = { pasting = true }) { Icon(Icons.Default.ContentPaste, tr("Paste CSV")) }
+                if (pids.isNotEmpty()) IconButton(onClick = { shareText(context, tr("OpenOBD custom PIDs"), TorqueCsv.export(pids)) }) { Icon(Icons.Default.Share, tr("Export")) }
             })
         },
         floatingActionButton = {
-            ExtendedFloatingActionButton(onClick = { editing = newPid() }, icon = { Icon(Icons.Default.Add, null) }, text = { Text("Add PID") })
+            ExtendedFloatingActionButton(onClick = { editing = newPid() }, icon = { Icon(Icons.Default.Add, null) }, text = { Text(tr("Add PID")) })
         },
         contentWindowInsets = androidx.compose.foundation.layout.WindowInsets(0),
     ) { pad ->
         if (pids.isEmpty()) {
-            CenteredMessage(null, "No custom PIDs yet.\n\nAdd one by hand, or import a Torque-format CSV (Name, ShortName, ModeAndPID, Equation, Min, Max, Units, Header) " +
-                "shared by your car's owner community: EV battery health, transmission temperature, DPF soot load and more.", Modifier.padding(pad))
+            CenteredMessage(null, tr("No custom PIDs yet.\n\nAdd one by hand, or import a Torque-format CSV (Name, ShortName, ModeAndPID, Equation, Min, Max, Units, Header) ") +
+                tr("shared by your car's owner community: EV battery health, transmission temperature, DPF soot load and more."), Modifier.padding(pad))
         } else LazyColumn(Modifier.padding(pad), contentPadding = PaddingValues(16.dp, 8.dp, 16.dp, 96.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
             item {
-                Text("Custom PIDs appear in Live data, the dashboard, charts and logs under \"Brand / custom\".",
+                Text(tr("Custom PIDs appear in Live data, the dashboard, charts and logs under \"Brand / custom\"."),
                     style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
             items(pids, key = { it.id }) { p ->
@@ -125,7 +127,7 @@ fun CustomPidsScreen(onBack: () -> Unit) {
             }
             item {
                 TextButton(onClick = { scope.launch { app.garage.updateActive { it.copy(customPids = emptyList()) } } }) {
-                    Text("Delete all custom PIDs", color = MaterialTheme.colorScheme.error)
+                    Text(tr("Delete all custom PIDs"), color = MaterialTheme.colorScheme.error)
                 }
             }
         }
@@ -143,24 +145,24 @@ fun CustomPidsScreen(onBack: () -> Unit) {
         var text by remember { mutableStateOf("") }
         AlertDialog(
             onDismissRequest = { pasting = false },
-            title = { Text("Paste Torque CSV") },
+            title = { Text(tr("Paste Torque CSV")) },
             text = {
                 OutlinedTextField(text, { text = it }, Modifier.fillMaxWidth().heightIn(min = 200.dp),
-                    placeholder = { Text(TorqueCsv.HEADER + "\nTrans temp,TFT,221E1C,((A*256)+B)/16,-40,150,°C,7E1") },
+                    placeholder = { Text(TorqueCsv.HEADER + tr("\nTrans temp,TFT,221E1C,((A*256)+B)/16,-40,150,°C,7E1")) },
                     textStyle = MaterialTheme.typography.bodySmall.copy(fontFamily = FontFamily.Monospace))
             },
-            confirmButton = { TextButton(onClick = { pasting = false; import(text) }, enabled = text.isNotBlank()) { Text("Import") } },
-            dismissButton = { TextButton(onClick = { pasting = false }) { Text("Cancel") } },
+            confirmButton = { TextButton(onClick = { pasting = false; import(text) }, enabled = text.isNotBlank()) { Text(tr("Import")) } },
+            dismissButton = { TextButton(onClick = { pasting = false }) { Text(tr("Cancel")) } },
         )
     }
     importReport?.let { r ->
         AlertDialog(
             onDismissRequest = { importReport = null },
-            title = { Text("Imported ${r.pids.size} PID(s)") },
+            title = { Text(tr("Imported %1\$s PID(s)", r.pids.size)) },
             text = {
                 Column(Modifier.verticalScroll(rememberScrollState())) {
-                    if (r.skipped.isEmpty()) Text("All lines imported.")
-                    else { Text("${r.skipped.size} line(s) skipped:"); r.skipped.take(30).forEach { Text("• $it", style = MaterialTheme.typography.bodySmall) } }
+                    if (r.skipped.isEmpty()) Text(tr("All lines imported."))
+                    else { Text(tr("%1\$s line(s) skipped:", r.skipped.size)); r.skipped.take(30).forEach { Text("• $it", style = MaterialTheme.typography.bodySmall) } }
                 }
             },
             confirmButton = { TextButton(onClick = { importReport = null }) { Text("OK") } },
@@ -192,46 +194,46 @@ private fun PidEditor(initial: CustomPid, isNew: Boolean, onDismiss: () -> Unit,
 
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text(if (isNew) "New PID" else "Edit PID") },
+        title = { Text(if (isNew) tr("New PID") else tr("Edit PID")) },
         text = {
             Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                OutlinedTextField(name, { name = it }, label = { Text("Name") }, singleLine = true, modifier = Modifier.fillMaxWidth())
-                OutlinedTextField(short, { short = it }, label = { Text("Short name") }, singleLine = true, modifier = Modifier.fillMaxWidth())
+                OutlinedTextField(name, { name = it }, label = { Text(tr("Name")) }, singleLine = true, modifier = Modifier.fillMaxWidth())
+                OutlinedTextField(short, { short = it }, label = { Text(tr("Short name")) }, singleLine = true, modifier = Modifier.fillMaxWidth())
                 Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                    OutlinedTextField(request, { request = it.uppercase() }, label = { Text("Mode+PID") }, singleLine = true, modifier = Modifier.weight(1f))
-                    OutlinedTextField(header, { header = it.uppercase() }, label = { Text("Header") }, singleLine = true, modifier = Modifier.weight(1f))
+                    OutlinedTextField(request, { request = it.uppercase() }, label = { Text(tr("Mode+PID")) }, singleLine = true, modifier = Modifier.weight(1f))
+                    OutlinedTextField(header, { header = it.uppercase() }, label = { Text(tr("Header")) }, singleLine = true, modifier = Modifier.weight(1f))
                 }
-                OutlinedTextField(equation, { equation = it }, label = { Text("Equation (A, B, C … = bytes)") }, singleLine = true, modifier = Modifier.fillMaxWidth(),
+                OutlinedTextField(equation, { equation = it }, label = { Text(tr("Equation (A, B, C … = bytes)")) }, singleLine = true, modifier = Modifier.fillMaxWidth(),
                     textStyle = MaterialTheme.typography.bodyLarge.copy(fontFamily = FontFamily.Monospace))
                 Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                    OutlinedTextField(min, { min = it }, label = { Text("Min") }, singleLine = true, modifier = Modifier.weight(1f))
-                    OutlinedTextField(max, { max = it }, label = { Text("Max") }, singleLine = true, modifier = Modifier.weight(1f))
-                    OutlinedTextField(unit, { unit = it }, label = { Text("Unit") }, singleLine = true, modifier = Modifier.weight(1f))
+                    OutlinedTextField(min, { min = it }, label = { Text(tr("Min")) }, singleLine = true, modifier = Modifier.weight(1f))
+                    OutlinedTextField(max, { max = it }, label = { Text(tr("Max")) }, singleLine = true, modifier = Modifier.weight(1f))
+                    OutlinedTextField(unit, { unit = it }, label = { Text(tr("Unit")) }, singleLine = true, modifier = Modifier.weight(1f))
                 }
-                OutlinedTextField(receive, { receive = it.uppercase() }, label = { Text("Response ID (optional, default header+8)") }, singleLine = true, modifier = Modifier.fillMaxWidth())
-                Text("Functions: Signed(A), Int16(A,B), {A:7} for bit 7, Min, Max, Abs. Example: ((A*256)+B)/16",
+                OutlinedTextField(receive, { receive = it.uppercase() }, label = { Text(tr("Response ID (optional, default header+8)")) }, singleLine = true, modifier = Modifier.fillMaxWidth())
+                Text(tr("Functions: Signed(A), Int16(A,B), {A:7} for bit 7, Min, Max, Abs. Example: ((A*256)+B)/16"),
                     style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 error?.let { ErrorText(it) }
                 if (vehicle != null && error == null) {
                     TextButton(onClick = {
-                        testResult = "Reading…"
+                        testResult = tr("Reading…")
                         scope.launch {
                             testResult = try {
                                 val bytes = session.testCustomPid(pid)
-                                if (bytes == null) "No answer (check header and request)"
-                                else "Bytes: " + bytes.joinToString(" ") { "%02X".format(it) } + "\nValue: " + (Equation(pid.equation).evaluate(bytes)?.let { "%.3f %s".format(it, pid.unit) } ?: "equation needs more bytes")
-                            } catch (e: Exception) { "Error: ${e.message}" }
+                                if (bytes == null) tr("No answer (check header and request)")
+                                else tr("Bytes: ") + bytes.joinToString(" ") { "%02X".format(it) } + "\nValue: " + (Equation(pid.equation).evaluate(bytes)?.let { "%.3f %s".format(it, pid.unit) } ?: tr("equation needs more bytes"))
+                            } catch (e: Exception) { tr("Error: %1\$s", e.message) }
                         }
-                    }) { Text("Test on the car") }
+                    }) { Text(tr("Test on the car")) }
                 }
                 testResult?.let { Text(it, fontFamily = FontFamily.Monospace, style = MaterialTheme.typography.bodySmall) }
                 if (!isNew) {
                     Spacer(Modifier.height(4.dp))
-                    TextButton(onClick = onDelete) { Text("Delete", color = MaterialTheme.colorScheme.error) }
+                    TextButton(onClick = onDelete) { Text(tr("Delete"), color = MaterialTheme.colorScheme.error) }
                 }
             }
         },
-        confirmButton = { TextButton(onClick = { onSave(pid) }, enabled = error == null) { Text("Save") } },
-        dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } },
+        confirmButton = { TextButton(onClick = { onSave(pid) }, enabled = error == null) { Text(tr("Save")) } },
+        dismissButton = { TextButton(onClick = onDismiss) { Text(tr("Cancel")) } },
     )
 }

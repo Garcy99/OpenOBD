@@ -1,5 +1,7 @@
 package com.openobd.ui.screens
 
+import com.openobd.ui.tr
+
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
@@ -54,18 +56,18 @@ fun LogsScreen(onBack: () -> Unit) {
     LaunchedEffect(Unit) { app.logs.refresh() }
 
     Column(Modifier.fillMaxSize()) {
-        ScreenTopBar("Data logs", onBack)
+        ScreenTopBar(tr("Data logs"), onBack)
         if (vehicle != null) {
             Button(
                 onClick = { if (recording) session.stopRecording() else picking = true },
                 modifier = Modifier.padding(16.dp),
-            ) { Text(if (recording) "■ Stop recording" else "● Start new recording") }
+            ) { Text(if (recording) tr("■ Stop recording") else tr("● Start new recording")) }
         } else {
-            Text("Connect to record. Recordings continue in the background.", Modifier.padding(16.dp), color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Text(tr("Connect to record. Recordings continue in the background."), Modifier.padding(16.dp), color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
-        if (recording) Text("Recording…", Modifier.padding(horizontal = 16.dp), color = Bad)
+        if (recording) Text(tr("Recording…"), Modifier.padding(horizontal = 16.dp), color = Bad)
         if (files.isEmpty()) {
-            CenteredMessage(Icons.Default.Description, "No logs yet. Recordings are saved as CSV files you can open in any spreadsheet.")
+            CenteredMessage(Icons.Default.Description, tr("No logs yet. Recordings are saved as CSV files you can open in any spreadsheet."))
         } else LazyColumn {
             items(files, key = { it.file.path }) { f ->
                 ListItem(
@@ -74,8 +76,8 @@ fun LogsScreen(onBack: () -> Unit) {
                     leadingContent = { Icon(Icons.Default.Description, null) },
                     trailingContent = {
                         androidx.compose.foundation.layout.Row {
-                            IconButton(onClick = { shareFile(context, f.file) }) { Icon(Icons.Default.Share, "Share") }
-                            IconButton(onClick = { scope.launch { app.logs.delete(f.file) } }) { Icon(Icons.Default.Delete, "Delete") }
+                            IconButton(onClick = { shareFile(context, f.file) }) { Icon(Icons.Default.Share, tr("Share")) }
+                            IconButton(onClick = { scope.launch { app.logs.delete(f.file) } }) { Icon(Icons.Default.Delete, tr("Delete")) }
                         }
                     },
                 )
@@ -87,7 +89,7 @@ fun LogsScreen(onBack: () -> Unit) {
         val available = SensorCatalog.available(vehicle.supportedPids).filter { it.labeler == null }
         SensorPickerDialog(
             sensors = available,
-            title = "Sensors to record",
+            title = tr("Sensors to record"),
             onDismiss = { picking = false },
             selected = settings.dashboard.filter { k -> available.any { it.key == k } }.toSet(),
             onConfirm = { keys -> picking = false; if (keys.isNotEmpty()) session.startRecording(keys.toList()) },

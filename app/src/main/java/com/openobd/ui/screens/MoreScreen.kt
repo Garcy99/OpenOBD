@@ -1,5 +1,7 @@
 package com.openobd.ui.screens
 
+import com.openobd.ui.tr
+
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.lazy.LazyColumn
@@ -39,36 +41,36 @@ import com.openobd.ui.components.ScreenTopBar
 private data class MenuItem(val route: String, val title: String, val subtitle: String, val icon: ImageVector)
 
 private val items = listOf(
-    MenuItem(Routes.GARAGE, "Garage", "Your cars, each with its own history, brand settings and PIDs", Icons.Default.Garage),
-    MenuItem(Routes.MAINTENANCE, "Maintenance", "Service reminders by distance and time", Icons.Default.Build),
-    MenuItem(Routes.FUEL, "Fuel log", "Fill-ups, real consumption and costs", Icons.Default.LocalGasStation),
-    MenuItem(Routes.TRIPS, "Trip history", "Saved trips with GPS map, fuel and speed", Icons.Default.Map),
-    MenuItem(Routes.BRAND, "Brand features & modules", "ABS, airbag, body, EV battery modules · manufacturer codes · brand PIDs", Icons.Default.Hub),
-    MenuItem(Routes.READINESS, "Emission readiness (I/M)", "Smog check monitors, since clear and this drive cycle", Icons.Default.Checklist),
-    MenuItem(Routes.FREEZE, "Freeze frame", "Sensor snapshot captured when a fault was stored", Icons.Default.Flag),
-    MenuItem(Routes.TESTS, "On-board monitor tests (Mode 06)", "Catalyst, O2 sensors, misfire counts per cylinder, EVAP", Icons.Default.Science),
-    MenuItem(Routes.VEHICLE, "Vehicle information", "VIN decoder, calibration IDs, CVN, ECU names, IPT counters", Icons.Default.DirectionsCar),
-    MenuItem(Routes.TRIP_LIVE, "Trip computer", "Distance, fuel used, average consumption, cost", Icons.Default.Route),
-    MenuItem(Routes.PERFORMANCE, "Performance timer", "0-100 km/h, 0-60 mph, 80-120, 1/4 mile", Icons.Default.Timer),
-    MenuItem(Routes.HUD, "Head-up display", "Mirrored display for the windshield", Icons.Default.Fullscreen),
-    MenuItem(Routes.LOGS, "Data logs", "Recorded CSV sessions, share or export", Icons.Default.Storage),
-    MenuItem(Routes.HISTORY, "Scan history", "Every scan and clear, so you know when codes came back", Icons.Default.History),
-    MenuItem(Routes.PIDS, "Custom PIDs", "Add or import (Torque CSV) manufacturer-specific PIDs", Icons.Default.Tune),
-    MenuItem(Routes.LOOKUP, "Trouble code lookup", "Offline database of 1300+ generic codes", Icons.Default.ManageSearch),
-    MenuItem(Routes.TERMINAL, "Terminal", "Send raw AT / OBD commands to the adapter", Icons.Default.Terminal),
-    MenuItem(Routes.SETTINGS, "Settings", "Units, adapter options, alerts, theme", Icons.Default.Settings),
-    MenuItem(Routes.ABOUT, "About", "Version, licenses and supported adapters", Icons.Default.Info),
+    MenuItem(Routes.GARAGE, "Garage", tr("Your cars, each with its own history, brand settings and PIDs"), Icons.Default.Garage),
+    MenuItem(Routes.MAINTENANCE, "Maintenance", tr("Service reminders by distance and time"), Icons.Default.Build),
+    MenuItem(Routes.FUEL, "Fuel log", tr("Fill-ups, real consumption and costs"), Icons.Default.LocalGasStation),
+    MenuItem(Routes.TRIPS, "Trip history", tr("Saved trips with GPS map, fuel and speed"), Icons.Default.Map),
+    MenuItem(Routes.BRAND, "Brand features & modules", tr("ABS, airbag, body, EV battery modules · manufacturer codes · brand PIDs"), Icons.Default.Hub),
+    MenuItem(Routes.READINESS, "Emission readiness (I/M)", tr("Smog check monitors, since clear and this drive cycle"), Icons.Default.Checklist),
+    MenuItem(Routes.FREEZE, "Freeze frame", tr("Sensor snapshot captured when a fault was stored"), Icons.Default.Flag),
+    MenuItem(Routes.TESTS, "On-board monitor tests (Mode 06)", tr("Catalyst, O2 sensors, misfire counts per cylinder, EVAP"), Icons.Default.Science),
+    MenuItem(Routes.VEHICLE, "Vehicle information", tr("VIN decoder, calibration IDs, CVN, ECU names, IPT counters"), Icons.Default.DirectionsCar),
+    MenuItem(Routes.TRIP_LIVE, "Trip computer", tr("Distance, fuel used, average consumption, cost"), Icons.Default.Route),
+    MenuItem(Routes.PERFORMANCE, "Performance timer", tr("0-100 km/h, 0-60 mph, 80-120, 1/4 mile"), Icons.Default.Timer),
+    MenuItem(Routes.HUD, "Head-up display", tr("Mirrored display for the windshield"), Icons.Default.Fullscreen),
+    MenuItem(Routes.LOGS, "Data logs", tr("Recorded CSV sessions, share or export"), Icons.Default.Storage),
+    MenuItem(Routes.HISTORY, "Scan history", tr("Every scan and clear, so you know when codes came back"), Icons.Default.History),
+    MenuItem(Routes.PIDS, "Custom PIDs", tr("Add or import (Torque CSV) manufacturer-specific PIDs"), Icons.Default.Tune),
+    MenuItem(Routes.LOOKUP, "Trouble code lookup", tr("Offline database of 1300+ generic codes"), Icons.Default.ManageSearch),
+    MenuItem(Routes.TERMINAL, "Terminal", tr("Send raw AT / OBD commands to the adapter"), Icons.Default.Terminal),
+    MenuItem(Routes.SETTINGS, "Settings", tr("Units, adapter options, alerts, theme"), Icons.Default.Settings),
+    MenuItem(Routes.ABOUT, "About", tr("Version, licenses and supported adapters"), Icons.Default.Info),
 )
 
 @Composable
 fun MoreScreen(onNavigate: (String) -> Unit) {
     Column(Modifier.fillMaxSize()) {
-        ScreenTopBar("More")
+        ScreenTopBar(tr("More"))
         LazyColumn {
             items(items, key = { it.route }) { m ->
                 ListItem(
-                    headlineContent = { Text(m.title) },
-                    supportingContent = { Text(m.subtitle, style = MaterialTheme.typography.bodySmall) },
+                    headlineContent = { Text(tr(m.title)) },
+                    supportingContent = { Text(tr(m.subtitle), style = MaterialTheme.typography.bodySmall) },
                     leadingContent = { Icon(m.icon, null, tint = MaterialTheme.colorScheme.primary) },
                     modifier = Modifier.clickable { onNavigate(m.route) },
                 )

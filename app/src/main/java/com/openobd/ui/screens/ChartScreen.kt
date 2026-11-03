@@ -1,5 +1,7 @@
 package com.openobd.ui.screens
 
+import com.openobd.ui.tr
+
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -63,11 +65,11 @@ fun ChartScreen(onBack: () -> Unit, onConnect: () -> Unit) {
     var picking by remember { mutableStateOf(false) }
 
     Column(Modifier.fillMaxSize()) {
-        ScreenTopBar("Chart", onBack, actions = {
+        ScreenTopBar(tr("Chart"), onBack, actions = {
             IconButton(onClick = { paused = !paused; frozenAt = System.currentTimeMillis() }) {
-                Icon(if (paused) Icons.Default.PlayArrow else Icons.Default.Pause, if (paused) "Resume" else "Pause")
+                Icon(if (paused) Icons.Default.PlayArrow else Icons.Default.Pause, if (paused) tr("Resume") else tr("Pause"))
             }
-            IconButton(onClick = { picking = true }) { Icon(Icons.Default.Add, "Choose sensors") }
+            IconButton(onClick = { picking = true }) { Icon(Icons.Default.Add, tr("Choose sensors")) }
         })
         if (vehicle == null) { NotConnected(onConnect); return@Column }
         SubscribeSensors("chart", keys)
@@ -78,7 +80,7 @@ fun ChartScreen(onBack: () -> Unit, onConnect: () -> Unit) {
 
         Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(12.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
             Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                listOf(30_000L to "30 s", 60_000L to "1 min", 300_000L to "5 min", 900_000L to "15 min").forEach { (ms, label) ->
+                listOf(30_000L to tr("30 s"), 60_000L to tr("1 min"), 300_000L to tr("5 min"), 900_000L to tr("15 min")).forEach { (ms, label) ->
                     FilterChip(window == ms, { window = ms }, label = { Text(label) })
                 }
             }
@@ -91,7 +93,7 @@ fun ChartScreen(onBack: () -> Unit, onConnect: () -> Unit) {
                     }
                 }
                 LineChart(series, window, now, Modifier.fillMaxWidth().height(260.dp).padding(vertical = 4.dp))
-                Text("Each line uses its own scale. ${if (paused) "Paused." else ""}", style = MaterialTheme.typography.labelSmall,
+                Text(tr("Each line uses its own scale. %1\$s", (if (paused) tr("Paused.") else "")), style = MaterialTheme.typography.labelSmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
             defs.forEachIndexed { i, d ->
@@ -100,8 +102,8 @@ fun ChartScreen(onBack: () -> Unit, onConnect: () -> Unit) {
                     Box(Modifier.size(12.dp).background(SeriesColors[i % SeriesColors.size], CircleShape))
                     Spacer(Modifier.width(10.dp))
                     Column(Modifier.weight(1f)) {
-                        Text(d.name, fontWeight = FontWeight.Medium)
-                        if (r != null) Text("min ${formatSensor(d, r.min, settings.units).value}  max ${formatSensor(d, r.max, settings.units).value}",
+                        Text(tr(d.name), fontWeight = FontWeight.Medium)
+                        if (r != null) Text(tr("min %1\$s  max %2\$s", (formatSensor(d, r.min, settings.units).value), (formatSensor(d, r.max, settings.units).value)),
                             style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
                     val f = formatSensor(d, r?.value, settings.units)
@@ -112,7 +114,7 @@ fun ChartScreen(onBack: () -> Unit, onConnect: () -> Unit) {
         if (picking) {
             SensorPickerDialog(
                 sensors = SensorCatalog.available(vehicle.supportedPids).filter { it.labeler == null },
-                title = "Chart up to 6 sensors",
+                title = tr("Chart up to 6 sensors"),
                 onDismiss = { picking = false },
                 selected = keys.toSet(),
                 maxSelection = 6,

@@ -1,5 +1,7 @@
 package com.openobd.ui.screens
 
+import com.openobd.ui.tr
+
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -81,41 +83,41 @@ fun BrandScreen(onBack: () -> Unit, onNavigate: (String) -> Unit) {
     val canUseModules = vehicle?.elm?.protocol?.isCan == true
 
     Column(Modifier.fillMaxSize()) {
-        ScreenTopBar("Brand features", onBack)
+        ScreenTopBar(tr("Brand features"), onBack)
         Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
             SectionCard {
                 activeVehicle?.let { Text(it.name, style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.primary) }
-                Text(brand?.name ?: "No brand selected", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
+                Text(brand?.name ?: tr("No brand selected"), style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
                 Text(
                     when {
-                        brand == null -> "Connect to detect it from the VIN, or choose it manually."
-                        detected -> "Detected from the VIN · ${family.label}"
-                        else -> "Chosen manually · ${family.label}"
+                        brand == null -> tr("Connect to detect it from the VIN, or choose it manually.")
+                        detected -> tr("Detected from the VIN · %1\$s", family.label)
+                        else -> tr("Chosen manually · %1\$s", family.label)
                     },
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
                 Spacer(Modifier.height(10.dp))
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    FilledTonalButton(onClick = { picking = true }) { Text("Choose brand") }
-                    if (activeVehicle?.brandId != null) OutlinedButton(onClick = { scope.launch { app.garage.updateActive { it.copy(brandId = null) } } }) { Text("Auto-detect") }
+                    FilledTonalButton(onClick = { picking = true }) { Text(tr("Choose brand")) }
+                    if (activeVehicle?.brandId != null) OutlinedButton(onClick = { scope.launch { app.garage.updateActive { it.copy(brandId = null) } } }) { Text(tr("Auto-detect")) }
                 }
                 Spacer(Modifier.height(10.dp))
-                Text(family.notes, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Text(tr(family.notes), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
 
             if (family.modules.any { it.secondaryBus } || settings.msCanSwitch) {
                 BusSwitchCard(canUseModules)
             }
 
-            SectionCard(title = if (bus == com.openobd.session.Bus.MS) "Control modules on MS-CAN" else "Control modules") {
-                Text("Reads and clears trouble codes in ABS, airbag, body, cluster, steering, EV battery and other modules (UDS / KWP2000 on CAN).",
+            SectionCard(title = if (bus == com.openobd.session.Bus.MS) tr("Control modules on MS-CAN") else tr("Control modules")) {
+                Text(tr("Reads and clears trouble codes in ABS, airbag, body, cluster, steering, EV battery and other modules (UDS / KWP2000 on CAN)."),
                     style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 Spacer(Modifier.height(10.dp))
-                if (vehicle == null) Text("Connect to your car to scan modules.", color = MaterialTheme.colorScheme.onSurfaceVariant)
-                else if (!canUseModules) ErrorText("Module access needs a CAN vehicle (most cars from 2008 onwards). This car uses ${vehicle.elm.protocol.label}.")
-                else if (bus == com.openobd.session.Bus.RETURNING) ErrorText("Switching back to HS-CAN - see the switch card above.")
+                if (vehicle == null) Text(tr("Connect to your car to scan modules."), color = MaterialTheme.colorScheme.onSurfaceVariant)
+                else if (!canUseModules) ErrorText(tr("Module access needs a CAN vehicle (most cars from 2008 onwards). This car uses %1\$s.", vehicle.elm.protocol.label))
+                else if (bus == com.openobd.session.Bus.RETURNING) ErrorText(tr("Switching back to HS-CAN - see the switch card above."))
                 else Button(onClick = session::scanAllModules, enabled = scan !is Op.Loading && discovery !is Op.Loading, modifier = Modifier.fillMaxWidth()) {
-                    Text("Scan all ${session.modulesOnCurrentBus().size} modules")
+                    Text(tr("Scan all %1\$s modules", (session.modulesOnCurrentBus().size)))
                 }
                 when (val s = scan) {
                     is Op.Loading -> { Spacer(Modifier.height(8.dp)); LinearProgressIndicator(Modifier.fillMaxWidth()); Text(s.progress ?: "", style = MaterialTheme.typography.bodySmall) }
@@ -127,7 +129,7 @@ fun BrandScreen(onBack: () -> Unit, onNavigate: (String) -> Unit) {
                 if (results != null) {
                     val online = results.count { it.online }
                     val codes = results.sumOf { it.dtcs.size }
-                    Text("$online of ${results.size} modules answered · $codes code(s)", fontWeight = FontWeight.SemiBold, modifier = Modifier.padding(vertical = 6.dp))
+                    Text(tr("%1\$s of %2\$s modules answered · %3\$s code(s)", online, results.size, codes), fontWeight = FontWeight.SemiBold, modifier = Modifier.padding(vertical = 6.dp))
                     results.sortedWith(compareByDescending<ModuleScanResult> { it.dtcs.size }.thenByDescending { it.online }).forEach { r ->
                         ModuleRow(r.module, r) { onNavigate(Routes.module(r.module.id)) }
                     }
@@ -136,56 +138,56 @@ fun BrandScreen(onBack: () -> Unit, onNavigate: (String) -> Unit) {
                 }
                 val otherBus = session.modulesForBrand().filter { it.secondaryBus != (bus == com.openobd.session.Bus.MS) }
                 if (otherBus.isNotEmpty()) {
-                    Text(if (bus == com.openobd.session.Bus.MS) "On HS-CAN (switch back to reach them)" else "On MS-CAN (needs the adapter switch)",
+                    Text(if (bus == com.openobd.session.Bus.MS) tr("On HS-CAN (switch back to reach them)") else tr("On MS-CAN (needs the adapter switch)"),
                         style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(top = 12.dp, bottom = 2.dp))
                     otherBus.forEach { m -> ModuleRow(m, null, dimmed = true) { onNavigate(Routes.module(m.id)) } }
                 }
             }
 
-            SectionCard(title = "Discover modules") {
-                Text("Probes every diagnostic address (700-7F7) to find all modules on your car, whatever the brand. Takes about 30-60 seconds.",
+            SectionCard(title = tr("Discover modules")) {
+                Text(tr("Probes every diagnostic address (700-7F7) to find all modules on your car, whatever the brand. Takes about 30-60 seconds."),
                     style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 Spacer(Modifier.height(10.dp))
                 OutlinedButton(onClick = session::discoverModules, enabled = canUseModules && discovery !is Op.Loading && scan !is Op.Loading,
-                    modifier = Modifier.fillMaxWidth()) { Text("Discover modules") }
+                    modifier = Modifier.fillMaxWidth()) { Text(tr("Discover modules")) }
                 when (val d = discovery) {
                     is Op.Loading -> { Spacer(Modifier.height(8.dp)); LinearProgressIndicator(Modifier.fillMaxWidth()); Text(d.progress ?: "", style = MaterialTheme.typography.bodySmall) }
                     is Op.Error -> ErrorText(d.message)
                     is Op.Done -> {
                         val known = session.modulesForBrand().map { it.id }.toSet()
                         val new = d.value.filter { it.id !in known }
-                        Text("${d.value.size} module(s) answered" + if (new.isNotEmpty()) ", ${new.size} not in the list yet" else "",
+                        Text(tr("%1\$s module(s) answered", d.value.size) + if (new.isNotEmpty()) tr(", %1\$s not in the list yet", new.size) else "",
                             fontWeight = FontWeight.SemiBold, modifier = Modifier.padding(vertical = 6.dp))
                         d.value.forEach { m -> ModuleRow(m, null) { onNavigate(Routes.module(m.id)) } }
                         if (new.isNotEmpty()) TextButton(onClick = {
                             scope.launch { app.garage.updateActive { it.copy(customModules = (it.customModules + new).distinctBy { m -> m.id }) } }
-                        }) { Text("Add ${new.size} new module(s) to my list") }
+                        }) { Text(tr("Add %1\$s new module(s) to my list", new.size)) }
                     }
                     Op.Idle -> Unit
                 }
                 val saved = activeVehicle?.customModules.orEmpty()
                 if (saved.isNotEmpty()) TextButton(onClick = { scope.launch { app.garage.updateActive { it.copy(customModules = emptyList()) } } }) {
-                    Text("Forget ${saved.size} saved module(s)")
+                    Text(tr("Forget %1\$s saved module(s)", saved.size))
                 }
             }
 
-            SectionCard(title = "Manufacturer-specific codes") {
+            SectionCard(title = tr("Manufacturer-specific codes")) {
                 val n = ManufacturerCodes.count(family)
-                Text(if (n > 0) "$n ${family.label} codes are decoded automatically in every scan." else "No manufacturer code table for ${family.label} yet; generic descriptions and web search are used.",
+                Text(if (n > 0) tr("%1\$s %2\$s codes are decoded automatically in every scan.", n, family.label) else tr("No manufacturer code table for %1\$s yet; generic descriptions and web search are used.", family.label),
                     style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                if (n > 0) TextButton(onClick = { showCodes = true }) { Text("View ${family.label} codes") }
+                if (n > 0) TextButton(onClick = { showCodes = true }) { Text(tr("View %1\$s codes", family.label)) }
             }
 
-            SectionCard(title = "Brand & custom PIDs") {
-                Text("${activeVehicle?.customPids.orEmpty().size} custom PID(s). Add manufacturer data (transmission temperature, EV battery health, tire pressures, DPF soot …) " +
-                    "by hand or import Torque-format CSV packs shared by owner communities.",
+            SectionCard(title = tr("Brand & custom PIDs")) {
+                Text(tr("%1\$s custom PID(s). Add manufacturer data (transmission temperature, EV battery health, tire pressures, DPF soot …) ", (activeVehicle?.customPids.orEmpty().size)) +
+                    tr("by hand or import Torque-format CSV packs shared by owner communities."),
                     style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                TextButton(onClick = { onNavigate(Routes.PIDS) }) { Text("Manage custom PIDs") }
+                TextButton(onClick = { onNavigate(Routes.PIDS) }) { Text(tr("Manage custom PIDs")) }
             }
 
-            SectionCard(title = "Safety") {
-                Text("OpenOBD only reads data and clears trouble codes. It never writes coding, adaptations or software, which could disable a module. " +
-                    "Some 2018+ vehicles (notably Stellantis) have a secure gateway that blocks clearing codes without an authorised unlock.",
+            SectionCard(title = tr("Safety")) {
+                Text(tr("OpenOBD only reads data and clears trouble codes. It never writes coding, adaptations or software, which could disable a module. ") +
+                    tr("Some 2018+ vehicles (notably Stellantis) have a secure gateway that blocks clearing codes without an authorised unlock."),
                     style = MaterialTheme.typography.bodySmall)
             }
         }
@@ -198,7 +200,7 @@ fun BrandScreen(onBack: () -> Unit, onNavigate: (String) -> Unit) {
     if (showCodes) {
         AlertDialog(
             onDismissRequest = { showCodes = false },
-            title = { Text("${family.label} codes") },
+            title = { Text(tr("%1\$s codes", family.label)) },
             text = {
                 LazyColumn(Modifier.heightIn(max = 460.dp)) {
                     items(ManufacturerCodes.all(family).entries.sortedBy { it.key }.toList()) { (c, d) ->
@@ -209,7 +211,7 @@ fun BrandScreen(onBack: () -> Unit, onNavigate: (String) -> Unit) {
                     }
                 }
             },
-            confirmButton = { TextButton(onClick = { showCodes = false }) { Text("Close") } },
+            confirmButton = { TextButton(onClick = { showCodes = false }) { Text(tr("Close")) } },
         )
     }
 }
@@ -226,15 +228,15 @@ private fun ModuleRow(m: EcuModule, r: ModuleScanResult?, dimmed: Boolean = fals
         })
         Spacer(Modifier.width(12.dp))
         Column(Modifier.weight(1f)) {
-            Text(m.name, fontWeight = FontWeight.Medium, color = if (dimmed || (r != null && !r.online)) MaterialTheme.colorScheme.onSurfaceVariant else MaterialTheme.colorScheme.onSurface)
-            Text(m.addressLabel + " · " + m.category.label + (if (m.secondaryBus) " · MS-CAN" else "") + (r?.protocol?.let { " · " + it.name } ?: ""),
+            Text(tr(m.name), fontWeight = FontWeight.Medium, color = if (dimmed || (r != null && !r.online)) MaterialTheme.colorScheme.onSurfaceVariant else MaterialTheme.colorScheme.onSurface)
+            Text(m.addressLabel + " · " + tr(m.category.label) + (if (m.secondaryBus) " · MS-CAN" else "") + (r?.protocol?.let { " · " + it.name } ?: ""),
                 style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
         when {
             r == null -> Unit
-            !r.online -> Text("no answer", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            !r.online -> Text(tr("no answer"), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             r.dtcs.isEmpty() -> Pill("OK", Good)
-            else -> Pill("${r.dtcs.size} code(s)", if (r.dtcs.any { it.isActive || it.warningLamp }) Bad else Warn)
+            else -> Pill(tr("%1\$s code(s)", r.dtcs.size), if (r.dtcs.any { it.isActive || it.warningLamp }) Bad else Warn)
         }
         Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, null, tint = MaterialTheme.colorScheme.onSurfaceVariant)
     }
@@ -247,16 +249,16 @@ fun BrandPickerDialog(onDismiss: () -> Unit, onPick: (Brand) -> Unit) {
     val list = Brands.all.filter { query.isBlank() || it.name.contains(query, true) || it.family.label.contains(query, true) }
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("Choose brand") },
+        title = { Text(tr("Choose brand")) },
         text = {
             Column {
                 OutlinedTextField(query, { query = it }, leadingIcon = { Icon(Icons.Default.Search, null) }, singleLine = true,
-                    placeholder = { Text("Search") }, modifier = Modifier.fillMaxWidth())
+                    placeholder = { Text(tr("Search")) }, modifier = Modifier.fillMaxWidth())
                 LazyColumn(Modifier.heightIn(max = 420.dp)) {
                     items(list, key = { it.id }) { b ->
                         Column(Modifier.fillMaxWidth().clickable { onPick(b) }.padding(vertical = 10.dp)) {
                             Text(b.name, fontWeight = FontWeight.Medium)
-                            Text(b.family.label + " · ${b.family.modules.size} known modules", style = MaterialTheme.typography.bodySmall,
+                            Text(tr(b.family.label) + tr(" · %1\$s known modules", b.family.modules.size), style = MaterialTheme.typography.bodySmall,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant)
                         }
                         HorizontalDivider()
@@ -264,7 +266,7 @@ fun BrandPickerDialog(onDismiss: () -> Unit, onPick: (Brand) -> Unit) {
                 }
             }
         },
-        confirmButton = { TextButton(onClick = onDismiss) { Text("Cancel") } },
+        confirmButton = { TextButton(onClick = onDismiss) { Text(tr("Cancel")) } },
     )
 }
 
@@ -280,13 +282,13 @@ private fun BusSwitchCard(canUseModules: Boolean) {
     var busy by remember { mutableStateOf(false) }
     var message by remember { mutableStateOf<Pair<Boolean, String>?>(null) }
 
-    SectionCard(title = "HS / MS-CAN switch") {
+    SectionCard(title = tr("HS / MS-CAN switch")) {
         Row(verticalAlignment = Alignment.CenterVertically) {
-            Text("My adapter has an HS/MS-CAN switch", Modifier.weight(1f))
+            Text(tr("My adapter has an HS/MS-CAN switch"), Modifier.weight(1f))
             androidx.compose.material3.Switch(settings.msCanSwitch, { v -> scope.launch { app.settings.update { it.copy(msCanSwitch = v) } } })
         }
-        Text("Ford, Lincoln and Mazda put climate, doors, SYNC/infotainment and some body modules on a second, slower bus (MS-CAN). " +
-            "\"Switch\" adapters reach it when you move their toggle to MS.",
+        Text(tr("Ford, Lincoln and Mazda put climate, doors, SYNC/infotainment and some body modules on a second, slower bus (MS-CAN). ") +
+            tr("\"Switch\" adapters reach it when you move their toggle to MS."),
             style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         if (settings.msCanSwitch && canUseModules) {
             Spacer(Modifier.height(10.dp))
@@ -294,14 +296,14 @@ private fun BusSwitchCard(canUseModules: Boolean) {
                 StatusDot(if (bus == com.openobd.session.Bus.HS) Good else Warn)
                 Spacer(Modifier.width(8.dp))
                 Text(when (bus) {
-                    com.openobd.session.Bus.HS -> "On HS-CAN (normal): engine, ABS, airbag …"
-                    com.openobd.session.Bus.MS -> "On MS-CAN: live data and engine features are paused"
-                    com.openobd.session.Bus.RETURNING -> "Waiting for HS-CAN - is the switch back on HS?"
+                    com.openobd.session.Bus.HS -> tr("On HS-CAN (normal): engine, ABS, airbag …")
+                    com.openobd.session.Bus.MS -> tr("On MS-CAN: live data and engine features are paused")
+                    com.openobd.session.Bus.RETURNING -> tr("Waiting for HS-CAN - is the switch back on HS?")
                 }, fontWeight = FontWeight.Medium)
             }
             Spacer(Modifier.height(10.dp))
-            if (bus == com.openobd.session.Bus.HS) FilledTonalButton(onClick = { prompt = com.openobd.session.Bus.MS }, enabled = !busy, modifier = Modifier.fillMaxWidth()) { Text("Switch to MS-CAN") }
-            else Button(onClick = { prompt = com.openobd.session.Bus.HS }, enabled = !busy, modifier = Modifier.fillMaxWidth()) { Text("Return to HS-CAN") }
+            if (bus == com.openobd.session.Bus.HS) FilledTonalButton(onClick = { prompt = com.openobd.session.Bus.MS }, enabled = !busy, modifier = Modifier.fillMaxWidth()) { Text(tr("Switch to MS-CAN")) }
+            else Button(onClick = { prompt = com.openobd.session.Bus.HS }, enabled = !busy, modifier = Modifier.fillMaxWidth()) { Text(tr("Return to HS-CAN")) }
             if (busy) LinearProgressIndicator(Modifier.fillMaxWidth().padding(top = 8.dp))
             message?.let { (ok, t) -> if (ok) Text(t, color = Good, style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(top = 6.dp)) else ErrorText(t) }
         }
@@ -311,10 +313,10 @@ private fun BusSwitchCard(canUseModules: Boolean) {
         val toMs = target == com.openobd.session.Bus.MS
         AlertDialog(
             onDismissRequest = { prompt = null },
-            title = { Text(if (toMs) "Move the switch to MS-CAN" else "Move the switch back to HS-CAN") },
+            title = { Text(if (toMs) tr("Move the switch to MS-CAN") else tr("Move the switch back to HS-CAN")) },
             text = {
-                Text(if (toMs) "Flip the switch on your adapter to the MS-CAN position (often labelled \"MS\" or \"125K\"). Keep the ignition on, then tap Continue."
-                else "Flip the switch on your adapter back to HS-CAN (often labelled \"HS\" or \"500K\"), then tap Continue. Live data resumes once the car answers.")
+                Text(if (toMs) tr("Flip the switch on your adapter to the MS-CAN position (often labelled \"MS\" or \"125K\"). Keep the ignition on, then tap Continue.")
+                else tr("Flip the switch on your adapter back to HS-CAN (often labelled \"HS\" or \"500K\"), then tap Continue. Live data resumes once the car answers."))
             },
             confirmButton = {
                 TextButton(onClick = {
@@ -325,19 +327,19 @@ private fun BusSwitchCard(canUseModules: Boolean) {
                             if (toMs) {
                                 val answered = session.enterMsCan()
                                 val known = session.modulesForBrand().count { it.secondaryBus }
-                                if (known == 0) true to "Now on MS-CAN. Use Discover modules to find the modules on this bus."
-                                else if (answered.isEmpty()) false to "No known MS-CAN module answered. Check the switch is on MS, then try Discover modules."
-                                else true to "Now on MS-CAN: ${answered.size} of $known known modules answered (${answered.joinToString { it.shortName }})."
+                                if (known == 0) true to tr("Now on MS-CAN. Use Discover modules to find the modules on this bus.")
+                                else if (answered.isEmpty()) false to tr("No known MS-CAN module answered. Check the switch is on MS, then try Discover modules.")
+                                else true to tr("Now on MS-CAN: %1\$s of %2\$s known modules answered (%3\$s).", answered.size, known, (answered.joinToString { it.shortName }))
                             } else {
-                                if (session.returnToHsCan()) true to "Back on HS-CAN. Live data resumed."
-                                else false to "The car did not answer on HS-CAN. Make sure the switch is back on HS and tap Return to HS-CAN again."
+                                if (session.returnToHsCan()) true to tr("Back on HS-CAN. Live data resumed.")
+                                else false to tr("The car did not answer on HS-CAN. Make sure the switch is back on HS and tap Return to HS-CAN again.")
                             }
-                        } catch (e: Exception) { false to (e.message ?: "Failed") }
+                        } catch (e: Exception) { false to (e.message ?: tr("Failed")) }
                         busy = false
                     }
-                }) { Text("Continue") }
+                }) { Text(tr("Continue")) }
             },
-            dismissButton = { TextButton(onClick = { prompt = null }) { Text("Cancel") } },
+            dismissButton = { TextButton(onClick = { prompt = null }) { Text(tr("Cancel")) } },
         )
     }
 }

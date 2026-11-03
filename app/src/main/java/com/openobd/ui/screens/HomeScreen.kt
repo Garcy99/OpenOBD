@@ -1,5 +1,7 @@
 package com.openobd.ui.screens
 
+import com.openobd.ui.tr
+
 import android.content.Intent
 import android.provider.Settings
 import android.widget.Toast
@@ -105,7 +107,7 @@ fun HomeScreen(onNavigate: (String) -> Unit, onTab: (String) -> Unit) {
         if (btOk || (pendingConnect && !needsBt)) {
             if (pendingConnect) session.connect() else showPicker = true
         } else {
-            Toast.makeText(context, "Bluetooth permission is required to talk to the adapter", Toast.LENGTH_LONG).show()
+            Toast.makeText(context, tr("Bluetooth permission is required to talk to the adapter"), Toast.LENGTH_LONG).show()
         }
         pendingConnect = false
     }
@@ -133,7 +135,7 @@ fun HomeScreen(onNavigate: (String) -> Unit, onTab: (String) -> Unit) {
 
     Column(Modifier.fillMaxSize()) {
         ScreenTopBar("OpenOBD", actions = {
-            IconButton(onClick = { onNavigate(Routes.SETTINGS) }) { Icon(Icons.Default.Settings, "Settings") }
+            IconButton(onClick = { onNavigate(Routes.SETTINGS) }) { Icon(Icons.Default.Settings, tr("Settings")) }
         })
         Column(
             Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = 16.dp),
@@ -196,10 +198,10 @@ private fun ConnectionCard(
             Spacer(Modifier.width(10.dp))
             Text(
                 when (state) {
-                    is ConnectionState.Connected -> "Connected"
-                    is ConnectionState.Connecting -> "Connecting…"
-                    is ConnectionState.Failed -> "Connection failed"
-                    ConnectionState.Disconnected -> "Not connected"
+                    is ConnectionState.Connected -> tr("Connected")
+                    is ConnectionState.Connecting -> tr("Connecting…")
+                    is ConnectionState.Failed -> tr("Connection failed")
+                    ConnectionState.Disconnected -> tr("Not connected")
                 },
                 style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold,
             )
@@ -213,7 +215,7 @@ private fun ConnectionCard(
                         onClick = { onType(t) },
                         enabled = !busy,
                         shape = SegmentedButtonDefaults.itemShape(i, ConnectionType.entries.size),
-                        label = { Text(if (t == ConnectionType.BLE) "BLE" else t.label, maxLines = 1) },
+                        label = { Text(if (t == ConnectionType.BLE) "BLE" else tr(t.label), maxLines = 1) },
                     )
                 }
             }
@@ -224,13 +226,13 @@ private fun ConnectionCard(
                         Icon(Icons.Default.Bluetooth, null, tint = MaterialTheme.colorScheme.primary)
                         Spacer(Modifier.width(8.dp))
                         Column(Modifier.weight(1f)) {
-                            Text(settings.deviceName ?: if (settings.deviceAddress != null) "Unnamed adapter" else "No adapter selected", fontWeight = FontWeight.Medium)
+                            Text(settings.deviceName ?: if (settings.deviceAddress != null) tr("Unnamed adapter") else tr("No adapter selected"), fontWeight = FontWeight.Medium)
                             settings.deviceAddress?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant) }
                         }
-                        OutlinedButton(onClick = onPick, enabled = !busy) { Text("Choose") }
+                        OutlinedButton(onClick = onPick, enabled = !busy) { Text(tr("Choose")) }
                     }
                     if (settings.connectionType == ConnectionType.BLUETOOTH) {
-                        Text("Classic adapters must be paired first in Android Bluetooth settings (PIN is usually 1234 or 0000).",
+                        Text(tr("Classic adapters must be paired first in Android Bluetooth settings (PIN is usually 1234 or 0000)."),
                             style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(top = 8.dp))
                     }
                 }
@@ -239,39 +241,39 @@ private fun ConnectionCard(
                     var port by remember(settings.wifiPort) { mutableStateOf(settings.wifiPort.toString()) }
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         OutlinedTextField(host, { host = it; scope.launch { app.settings.update { s -> s.copy(wifiHost = it.trim()) } } },
-                            label = { Text("IP address") }, singleLine = true, modifier = Modifier.weight(2f), enabled = !busy)
+                            label = { Text(tr("IP address")) }, singleLine = true, modifier = Modifier.weight(2f), enabled = !busy)
                         OutlinedTextField(port, { v -> port = v.filter(Char::isDigit); port.toIntOrNull()?.let { p -> scope.launch { app.settings.update { s -> s.copy(wifiPort = p) } } } },
-                            label = { Text("Port") }, singleLine = true, modifier = Modifier.weight(1f), enabled = !busy,
+                            label = { Text(tr("Port")) }, singleLine = true, modifier = Modifier.weight(1f), enabled = !busy,
                             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number))
                     }
-                    Text("Join the adapter's Wi-Fi network (often \"WiFi_OBDII\" or \"V-LINK\") before connecting.",
+                    Text(tr("Join the adapter's Wi-Fi network (often \"WiFi_OBDII\" or \"V-LINK\") before connecting."),
                         style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(top = 8.dp))
                 }
-                ConnectionType.DEMO -> Text("Explore every feature with a simulated car: live data, trouble codes, freeze frames and more.",
+                ConnectionType.DEMO -> Text(tr("Explore every feature with a simulated car: live data, trouble codes, freeze frames and more."),
                     style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
         }
         val bus by LocalApp.current.session.bus.collectAsStateWithLifecycle()
         if (connected && bus != com.openobd.session.Bus.HS) {
-            Text("Adapter is on MS-CAN: live data is paused. Return to HS-CAN in Brand features.", color = Warn,
+            Text(tr("Adapter is on MS-CAN: live data is paused. Return to HS-CAN in Brand features."), color = Warn,
                 style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(top = 8.dp))
         }
         when (state) {
             is ConnectionState.Connecting -> {
                 Spacer(Modifier.height(12.dp))
                 LinearProgressIndicator(Modifier.fillMaxWidth())
-                Text(state.step, style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(top = 6.dp))
+                Text(tr(state.step), style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(top = 6.dp))
             }
             is ConnectionState.Failed -> ErrorText(state.message)
             else -> Unit
         }
         Spacer(Modifier.height(12.dp))
         if (connected || busy) {
-            OutlinedButton(onClick = onDisconnect, modifier = Modifier.fillMaxWidth()) { Text(if (busy) "Cancel" else "Disconnect") }
+            OutlinedButton(onClick = onDisconnect, modifier = Modifier.fillMaxWidth()) { Text(if (busy) tr("Cancel") else tr("Disconnect")) }
         } else {
             val ready = settings.connectionType == ConnectionType.DEMO || settings.connectionType == ConnectionType.WIFI || settings.deviceAddress != null
             Button(onClick = onConnect, enabled = ready, modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp)) {
-                Text(if (state is ConnectionState.Failed) "Retry" else "Connect")
+                Text(if (state is ConnectionState.Failed) tr("Retry") else tr("Connect"))
             }
         }
     }
@@ -281,23 +283,23 @@ private fun ConnectionCard(
 private fun VehicleCard(s: ConnectionState.Connected) {
     val v = s.vehicle
     val rate by LocalApp.current.session.live.rate.collectAsStateWithLifecycle()
-    SectionCard(title = "Vehicle") {
+    SectionCard(title = tr("Vehicle")) {
         val vin = v.vin?.let { VinDecoder.decode(it) }
         if (vin != null) {
-            Text(listOfNotNull(vin.modelYear?.toString(), vin.manufacturer).joinToString(" ").ifEmpty { "Unknown make" },
+            Text(listOfNotNull(vin.modelYear?.toString(), vin.manufacturer).joinToString(" ").ifEmpty { tr("Unknown make") },
                 style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
             Text(vin.vin, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
             Spacer(Modifier.height(8.dp))
         }
-        KeyValueRow("Protocol", v.elm.protocol.label)
-        KeyValueRow("Adapter", v.elm.version + if (v.elm.isStn) " (STN)" else "")
-        KeyValueRow("Link", v.transport)
-        KeyValueRow("ECUs found", v.ecus.joinToString { it.address })
-        KeyValueRow("Supported PIDs", v.supportedPids.count { it % 0x20 != 0 }.toString())
+        KeyValueRow(tr("Protocol"), v.elm.protocol.label)
+        KeyValueRow(tr("Adapter"), v.elm.version + if (v.elm.isStn) " (STN)" else "")
+        KeyValueRow(tr("Link"), tr(v.transport))
+        KeyValueRow(tr("ECUs found"), v.ecus.joinToString { it.address })
+        KeyValueRow(tr("Supported PIDs"), v.supportedPids.count { it % 0x20 != 0 }.toString())
         v.voltage?.let { volts ->
-            KeyValueRow("Battery", "%.1f V".format(volts), valueColor = when { volts < 11.8 -> Bad; volts < 12.3 -> Warn; else -> Good })
+            KeyValueRow(tr("Battery"), "%.1f V".format(volts), valueColor = when { volts < 11.8 -> Bad; volts < 12.3 -> Warn; else -> Good })
         }
-        if (rate > 0) KeyValueRow("Live data rate", "%.1f updates/s".format(rate))
+        if (rate > 0) KeyValueRow(tr("Live data rate"), "%.1f updates/s".format(rate))
     }
 }
 
@@ -311,11 +313,11 @@ private fun BrandCard(onOpen: () -> Unit) {
             Icon(Icons.Default.Hub, null, tint = MaterialTheme.colorScheme.primary)
             Spacer(Modifier.width(12.dp))
             Column(Modifier.weight(1f)) {
-                Text(brand?.let { "${it.name} features" } ?: "Choose your brand", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+                Text(brand?.let { tr("%1\$s features", it.name) } ?: tr("Choose your brand"), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
                 val done = (scan as? Op.Done)?.value
                 Text(
-                    if (done != null) "${done.count { it.online }} modules answered · ${done.sumOf { it.dtcs.size }} module code(s)"
-                    else "Scan ABS, airbag, body and other modules",
+                    if (done != null) tr("%1\$s modules answered · %2\$s module code(s)", (done.count { it.online }), (done.sumOf { it.dtcs.size }))
+                    else tr("Scan ABS, airbag, body and other modules"),
                     style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }
@@ -327,7 +329,7 @@ private fun BrandCard(onOpen: () -> Unit) {
 @Composable
 private fun HealthCard(onCodes: () -> Unit, onReadiness: () -> Unit) {
     val scan by LocalApp.current.session.dtcScan.collectAsStateWithLifecycle()
-    SectionCard(title = "Health") {
+    SectionCard(title = tr("Health")) {
         when (val s = scan) {
             is Op.Loading -> { LinearProgressIndicator(Modifier.fillMaxWidth()); Text(s.progress ?: "", style = MaterialTheme.typography.bodySmall) }
             is Op.Done -> {
@@ -339,27 +341,27 @@ private fun HealthCard(onCodes: () -> Unit, onReadiness: () -> Unit) {
                         tint = if (r?.milOn == true || stored > 0) Bad else Good, modifier = Modifier.size(36.dp))
                     Spacer(Modifier.width(12.dp))
                     Column(Modifier.weight(1f)) {
-                        Text(if (r?.milOn == true) "Check engine light ON" else if (stored + pending == 0) "No trouble codes" else "Trouble codes present",
+                        Text(if (r?.milOn == true) tr("Check engine light ON") else if (stored + pending == 0) tr("No trouble codes") else tr("Trouble codes present"),
                             style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
-                        Text("$stored confirmed · $pending pending · ${s.value.codes.size - stored - pending} permanent",
+                        Text(tr("%1\$s confirmed · %2\$s pending · %3\$s permanent", stored, pending, (s.value.codes.size - stored - pending)),
                             style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
                 }
                 r?.let {
                     Spacer(Modifier.height(10.dp))
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        Pill("${it.complete.size} monitors ready", Good)
-                        if (it.incomplete.isNotEmpty()) Pill("${it.incomplete.size} not ready", Warn)
+                        Pill(tr("%1\$s monitors ready", it.complete.size), Good)
+                        if (it.incomplete.isNotEmpty()) Pill(tr("%1\$s not ready", it.incomplete.size), Warn)
                     }
                 }
             }
             is Op.Error -> ErrorText(s.message)
-            Op.Idle -> Text("Not scanned yet")
+            Op.Idle -> Text(tr("Not scanned yet"))
         }
         Spacer(Modifier.height(12.dp))
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            FilledTonalButton(onClick = onCodes, modifier = Modifier.weight(1f)) { Text("Trouble codes") }
-            OutlinedButton(onClick = onReadiness, modifier = Modifier.weight(1f)) { Text("Readiness") }
+            FilledTonalButton(onClick = onCodes, modifier = Modifier.weight(1f)) { Text(tr("Trouble codes")) }
+            OutlinedButton(onClick = onReadiness, modifier = Modifier.weight(1f)) { Text(tr("Readiness")) }
         }
     }
 }
@@ -368,14 +370,14 @@ private fun HealthCard(onCodes: () -> Unit, onReadiness: () -> Unit) {
 private fun QuickActions(onNavigate: (String) -> Unit, onTab: (String) -> Unit) {
     data class A(val label: String, val icon: ImageVector, val go: () -> Unit)
     val actions = listOf(
-        A("Dashboard", Icons.Default.Speed) { onTab(Routes.DASHBOARD) },
-        A("Live data", Icons.Default.ShowChart) { onTab(Routes.LIVE) },
-        A("Trip", Icons.Default.Route) { onNavigate(Routes.TRIP_LIVE) },
-        A("0-100 timer", Icons.Default.Timer) { onNavigate(Routes.PERFORMANCE) },
-        A("Vehicle info", Icons.Default.DirectionsCar) { onNavigate(Routes.VEHICLE) },
-        A("Freeze frame", Icons.Default.Flag) { onNavigate(Routes.FREEZE) },
+        A(tr("Dashboard"), Icons.Default.Speed) { onTab(Routes.DASHBOARD) },
+        A(tr("Live data"), Icons.Default.ShowChart) { onTab(Routes.LIVE) },
+        A(tr("Trip"), Icons.Default.Route) { onNavigate(Routes.TRIP_LIVE) },
+        A(tr("0-100 timer"), Icons.Default.Timer) { onNavigate(Routes.PERFORMANCE) },
+        A(tr("Vehicle info"), Icons.Default.DirectionsCar) { onNavigate(Routes.VEHICLE) },
+        A(tr("Freeze frame"), Icons.Default.Flag) { onNavigate(Routes.FREEZE) },
     )
-    SectionCard(title = "Quick actions") {
+    SectionCard(title = tr("Quick actions")) {
         actions.chunked(3).forEach { row ->
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 row.forEach { a ->
@@ -385,7 +387,7 @@ private fun QuickActions(onNavigate: (String) -> Unit, onTab: (String) -> Unit) 
                     ) {
                         Icon(a.icon, null, tint = MaterialTheme.colorScheme.primary)
                         Spacer(Modifier.height(4.dp))
-                        Text(a.label, style = MaterialTheme.typography.labelMedium)
+                        Text(tr(a.label), style = MaterialTheme.typography.labelMedium)
                     }
                 }
             }
@@ -395,12 +397,12 @@ private fun QuickActions(onNavigate: (String) -> Unit, onTab: (String) -> Unit) 
 
 @Composable
 private fun GettingStarted() {
-    SectionCard(title = "Getting started") {
+    SectionCard(title = tr("Getting started")) {
         val steps = listOf(
-            "Plug the ELM327 adapter into the OBD-II port (usually under the dashboard, near the steering column).",
-            "Turn the ignition ON (engine running is best for live data).",
-            "Bluetooth classic: pair the adapter in Android settings. BLE: just scan. Wi-Fi: join its network.",
-            "Choose the adapter above and press Connect.",
+            tr("Plug the ELM327 adapter into the OBD-II port (usually under the dashboard, near the steering column)."),
+            tr("Turn the ignition ON (engine running is best for live data)."),
+            tr("Bluetooth classic: pair the adapter in Android settings. BLE: just scan. Wi-Fi: join its network."),
+            tr("Choose the adapter above and press Connect."),
         )
         steps.forEachIndexed { i, s ->
             Row(Modifier.padding(vertical = 4.dp)) {
@@ -408,7 +410,7 @@ private fun GettingStarted() {
                 Text(s, style = MaterialTheme.typography.bodyMedium)
             }
         }
-        Text("No adapter? Choose Demo to try the app.", style = MaterialTheme.typography.bodySmall,
+        Text(tr("No adapter? Choose Demo to try the app."), style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.primary, modifier = Modifier.padding(top = 8.dp))
     }
 }
@@ -443,15 +445,15 @@ private fun DevicePickerDialog(ble: Boolean, onDismiss: () -> Unit, onPick: (Fou
     AlertDialog(
         onDismissRequest = onDismiss,
         icon = { Icon(if (ble) Icons.Default.BluetoothSearching else Icons.Default.Bluetooth, null) },
-        title = { Text(if (ble) "Bluetooth LE adapters" else "Paired adapters") },
+        title = { Text(if (ble) tr("Bluetooth LE adapters") else tr("Paired adapters")) },
         text = {
             Column {
                 if (!btOn) {
-                    Text("Bluetooth is off. Turn it on and try again.")
+                    Text(tr("Bluetooth is off. Turn it on and try again."))
                 } else {
                     if (scanning) LinearProgressIndicator(Modifier.fillMaxWidth().padding(bottom = 8.dp))
                     error?.let { ErrorText(it) }
-                    if (devices.isEmpty() && !scanning) Text(if (ble) "No BLE devices found." else "No paired devices. Pair your adapter in Bluetooth settings first.")
+                    if (devices.isEmpty() && !scanning) Text(if (ble) tr("No BLE devices found.") else tr("No paired devices. Pair your adapter in Bluetooth settings first."))
                     LazyColumn(Modifier.heightIn(max = 360.dp)) {
                         items(devices, key = { it.address }) { d ->
                             Row(
@@ -461,8 +463,8 @@ private fun DevicePickerDialog(ble: Boolean, onDismiss: () -> Unit, onPick: (Fou
                                 Icon(Icons.Default.Build, null, tint = if (d.looksLikeObd) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant)
                                 Spacer(Modifier.width(12.dp))
                                 Column(Modifier.weight(1f)) {
-                                    Text(d.name ?: "Unnamed device", fontWeight = if (d.looksLikeObd) FontWeight.SemiBold else FontWeight.Normal)
-                                    Text(d.address + (d.rssi?.let { "  ·  $it dBm" } ?: ""), style = MaterialTheme.typography.bodySmall,
+                                    Text(d.name ?: tr("Unnamed device"), fontWeight = if (d.looksLikeObd) FontWeight.SemiBold else FontWeight.Normal)
+                                    Text(d.address + (d.rssi?.let { tr("  ·  %1\$s dBm", it) } ?: ""), style = MaterialTheme.typography.bodySmall,
                                         color = MaterialTheme.colorScheme.onSurfaceVariant)
                                 }
                             }
@@ -471,9 +473,9 @@ private fun DevicePickerDialog(ble: Boolean, onDismiss: () -> Unit, onPick: (Fou
                 }
             }
         },
-        confirmButton = { TextButton(onClick = onDismiss) { Text("Close") } },
+        confirmButton = { TextButton(onClick = onDismiss) { Text(tr("Close")) } },
         dismissButton = {
-            if (!ble) TextButton(onClick = { runCatching { context.startActivity(Intent(Settings.ACTION_BLUETOOTH_SETTINGS)) } }) { Text("Pair new") }
+            if (!ble) TextButton(onClick = { runCatching { context.startActivity(Intent(Settings.ACTION_BLUETOOTH_SETTINGS)) } }) { Text(tr("Pair new")) }
         },
     )
 }

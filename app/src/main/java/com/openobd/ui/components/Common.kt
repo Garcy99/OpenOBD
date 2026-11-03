@@ -1,5 +1,7 @@
 package com.openobd.ui.components
 
+import com.openobd.ui.tr
+
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -43,7 +45,7 @@ fun ScreenTopBar(title: String, onBack: (() -> Unit)? = null, actions: @Composab
     TopAppBar(
         title = { Text(title, fontWeight = FontWeight.SemiBold) },
         navigationIcon = {
-            if (onBack != null) IconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Filled.ArrowBack, "Back") }
+            if (onBack != null) IconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Filled.ArrowBack, tr("Back")) }
         },
         actions = { actions() },
     )
@@ -83,7 +85,7 @@ fun KeyValueRow(key: String, value: String, modifier: Modifier = Modifier, value
 @Composable
 fun NotConnected(onConnect: () -> Unit, modifier: Modifier = Modifier, text: String = "Connect to your car to use this feature.") {
     CenteredMessage(Icons.Default.LinkOff, text, modifier) {
-        Button(onClick = onConnect) { Text("Go to connection") }
+        Button(onClick = onConnect) { Text(tr("Go to connection")) }
     }
 }
 
@@ -104,14 +106,14 @@ fun LoadingBox(text: String?, modifier: Modifier = Modifier) {
         CircularProgressIndicator()
         if (text != null) {
             Spacer(Modifier.height(12.dp))
-            Text(text, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Text(tr(text), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
     }
 }
 
 @Composable
 fun ErrorText(text: String, modifier: Modifier = Modifier) {
-    Text(text, modifier.padding(vertical = 8.dp), color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodyMedium)
+    Text(tr(text), modifier.padding(vertical = 8.dp), color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodyMedium)
 }
 
 @Composable

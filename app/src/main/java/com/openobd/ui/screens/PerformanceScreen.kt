@@ -1,5 +1,7 @@
 package com.openobd.ui.screens
 
+import com.openobd.ui.tr
+
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -42,7 +44,7 @@ fun PerformanceScreen(onBack: () -> Unit, onConnect: () -> Unit) {
     val vehicle = connectedVehicle()
     val settings = appSettings()
     Column(Modifier.fillMaxSize()) {
-        ScreenTopBar("Performance timer", onBack)
+        ScreenTopBar(tr("Performance timer"), onBack)
         if (vehicle == null) { NotConnected(onConnect); return@Column }
         SubscribeSensors("performance", listOf("010D"))
         val s by session.perf.state.collectAsStateWithLifecycle()
@@ -58,22 +60,22 @@ fun PerformanceScreen(onBack: () -> Unit, onConnect: () -> Unit) {
                 }
                 Row(Modifier.fillMaxWidth().padding(top = 12.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     Button(onClick = session.perf::arm, enabled = s.phase != PerfPhase.RUNNING, modifier = Modifier.weight(1f)) {
-                        Text(if (s.phase == PerfPhase.FINISHED) "New run" else "Arm")
+                        Text(if (s.phase == PerfPhase.FINISHED) tr("New run") else tr("Arm"))
                     }
-                    OutlinedButton(onClick = session.perf::cancel, enabled = s.phase == PerfPhase.ARMED || s.phase == PerfPhase.RUNNING, modifier = Modifier.weight(1f)) { Text("Cancel") }
+                    OutlinedButton(onClick = session.perf::cancel, enabled = s.phase == PerfPhase.ARMED || s.phase == PerfPhase.RUNNING, modifier = Modifier.weight(1f)) { Text(tr("Cancel")) }
                 }
             }
-            SectionCard(title = "Results") {
+            SectionCard(title = tr("Results")) {
                 PerfTarget.entries.forEach { t ->
                     val r = s.results[t]
                     val best = s.best[t]
                     val trap = s.trapSpeeds[t]?.let { v -> ObdUnit.KMH.display(v, settings.units).let { " @ %.0f %s".format(it.value, it.unit.symbol) } } ?: ""
-                    KeyValueRow(t.label, (r?.let { "%.2f s".format(it) + trap } ?: "—") + (best?.let { "   (best %.2f)".format(it) } ?: ""),
+                    KeyValueRow(tr(t.label), (r?.let { "%.2f s".format(it) + trap } ?: "—") + (best?.let { tr("   (best %.2f)").format(it) } ?: ""),
                         valueColor = if (r != null && r == best) Good else androidx.compose.ui.graphics.Color.Unspecified)
                 }
             }
-            Text("Speed is sampled about %.1f times per second; results are interpolated between samples. Accuracy depends on your adapter's speed. ".format(rate) +
-                "Only use on a closed course or drag strip and obey the law.",
+            Text(tr("Speed is sampled about %.1f times per second; results are interpolated between samples. Accuracy depends on your adapter's speed. ").format(rate) +
+                tr("Only use on a closed course or drag strip and obey the law."),
                 style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
     }

@@ -1,5 +1,7 @@
 package com.openobd.ui.screens
 
+import com.openobd.ui.tr
+
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
@@ -65,15 +67,15 @@ fun HudScreen(onBack: () -> Unit) {
                     val v = formatSensor(d, readings[k]?.value, settings.units)
                     Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.padding(horizontal = 18.dp)) {
                         Text(v.value, color = color, fontSize = 40.sp, fontWeight = FontWeight.Bold, fontFamily = FontFamily.Monospace)
-                        Text(v.unit.ifEmpty { d.shortName }, color = color.copy(alpha = 0.7f), fontSize = 16.sp)
+                        Text(v.unit.ifEmpty { tr(d.shortName) }, color = color.copy(alpha = 0.7f), fontSize = 16.sp)
                     }
                 }
             }
         }
         Row(Modifier.align(Alignment.TopEnd).padding(top = 32.dp, end = 8.dp)) {
-            IconButton(onClick = { mirrored = !mirrored }) { Icon(Icons.Default.Flip, "Mirror", tint = Color.Gray) }
+            IconButton(onClick = { mirrored = !mirrored }) { Icon(Icons.Default.Flip, tr("Mirror"), tint = Color.Gray) }
             Spacer(Modifier.width(4.dp))
-            IconButton(onClick = onBack) { Icon(Icons.Default.Close, "Close", tint = Color.Gray) }
+            IconButton(onClick = onBack) { Icon(Icons.Default.Close, tr("Close"), tint = Color.Gray) }
         }
     }
 }

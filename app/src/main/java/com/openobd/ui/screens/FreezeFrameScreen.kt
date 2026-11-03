@@ -1,5 +1,7 @@
 package com.openobd.ui.screens
 
+import com.openobd.ui.tr
+
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
@@ -42,8 +44,8 @@ fun FreezeFrameScreen(onBack: () -> Unit, onConnect: () -> Unit) {
     LaunchedEffect(vehicle != null) { if (vehicle != null && op !is Op.Done) session.loadFreezeFrame() }
 
     Column(Modifier.fillMaxSize()) {
-        ScreenTopBar("Freeze frame", onBack, actions = {
-            if (vehicle != null) IconButton(onClick = session::loadFreezeFrame) { Icon(Icons.Default.Refresh, "Refresh") }
+        ScreenTopBar(tr("Freeze frame"), onBack, actions = {
+            if (vehicle != null) IconButton(onClick = session::loadFreezeFrame) { Icon(Icons.Default.Refresh, tr("Refresh")) }
         })
         if (vehicle == null) { NotConnected(onConnect); return@Column }
         Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
@@ -54,19 +56,19 @@ fun FreezeFrameScreen(onBack: () -> Unit, onConnect: () -> Unit) {
                 is Op.Done -> {
                     val ff = s.value
                     if (ff == null) {
-                        Text("No freeze frame stored. A freeze frame is captured when a confirmed trouble code sets.",
+                        Text(tr("No freeze frame stored. A freeze frame is captured when a confirmed trouble code sets."),
                             color = MaterialTheme.colorScheme.onSurfaceVariant)
                     } else {
-                        SectionCard(title = "Triggered by") {
-                            Text(ff.dtc ?: "Unknown", fontFamily = FontFamily.Monospace, fontWeight = FontWeight.Bold, style = MaterialTheme.typography.headlineSmall)
+                        SectionCard(title = tr("Triggered by")) {
+                            Text(ff.dtc ?: tr("Unknown"), fontFamily = FontFamily.Monospace, fontWeight = FontWeight.Bold, style = MaterialTheme.typography.headlineSmall)
                             ff.dtc?.let { Text(session.describe(it).description) }
                         }
-                        SectionCard(title = "Conditions at the time of the fault") {
-                            if (ff.values.isEmpty()) Text("The ECU did not provide sensor values.")
+                        SectionCard(title = tr("Conditions at the time of the fault")) {
+                            if (ff.values.isEmpty()) Text(tr("The ECU did not provide sensor values."))
                             ff.values.forEach { (k, v) ->
                                 val def = Pids.sensors[k] ?: return@forEach
                                 val f = formatSensor(def, v, settings.units)
-                                KeyValueRow(def.name, "${f.value} ${f.unit}".trim())
+                                KeyValueRow(tr(def.name), "${f.value} ${f.unit}".trim())
                             }
                         }
                     }

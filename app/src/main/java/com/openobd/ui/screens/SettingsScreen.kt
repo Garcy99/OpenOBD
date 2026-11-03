@@ -1,5 +1,7 @@
 package com.openobd.ui.screens
 
+import com.openobd.ui.tr
+
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -62,60 +64,64 @@ fun SettingsScreen(onBack: () -> Unit) {
     var addingAlert by remember { mutableStateOf(false) }
 
     Column(Modifier.fillMaxSize()) {
-        ScreenTopBar("Settings", onBack)
+        ScreenTopBar(tr("Settings"), onBack)
         Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
-            SectionCard(title = "Display") {
-                Label("Units")
-                Chips(UnitSystem.entries, s.units, { if (it == UnitSystem.METRIC) "Metric" else "Imperial (US)" }) { u -> update { it.copy(units = u) } }
-                Label("Theme")
-                Chips(ThemeMode.entries, s.theme, { it.name.lowercase().replaceFirstChar(Char::uppercase) }) { m -> update { it.copy(theme = m) } }
-                SwitchRow("Keep screen on while connected", s.keepScreenOn) { v -> update { it.copy(keepScreenOn = v) } }
-                NumberField("Shift light RPM (0 = off)", s.shiftLightRpm.toString()) { v -> v.toIntOrNull()?.let { n -> update { it.copy(shiftLightRpm = n) } } }
+            SectionCard(title = tr("Display")) {
+                Label(tr("Language"))
+                Dropdown(com.openobd.ui.I18n.languages.map { it.first }, s.language, { code -> com.openobd.ui.I18n.languages.first { it.first == code }.second.let { if (code == "system") tr(it) else it } }) { l ->
+                    update { it.copy(language = l) }
+                }
+                Label(tr("Units"))
+                Chips(UnitSystem.entries, s.units, { if (it == UnitSystem.METRIC) tr("Metric") else tr("Imperial (US)") }) { u -> update { it.copy(units = u) } }
+                Label(tr("Theme"))
+                Chips(ThemeMode.entries, s.theme, { tr(it.name.lowercase().replaceFirstChar(Char::uppercase)) }) { m -> update { it.copy(theme = m) } }
+                SwitchRow(tr("Keep screen on while connected"), s.keepScreenOn) { v -> update { it.copy(keepScreenOn = v) } }
+                NumberField(tr("Shift light RPM (0 = off)"), s.shiftLightRpm.toString()) { v -> v.toIntOrNull()?.let { n -> update { it.copy(shiftLightRpm = n) } } }
             }
-            SectionCard(title = "Connection") {
-                SwitchRow("Auto-connect on start and reconnect when lost", s.autoConnect) { v -> update { it.copy(autoConnect = v) } }
-                Label("OBD protocol")
+            SectionCard(title = tr("Connection")) {
+                SwitchRow(tr("Auto-connect on start and reconnect when lost"), s.autoConnect) { v -> update { it.copy(autoConnect = v) } }
+                Label(tr("OBD protocol"))
                 Dropdown(ObdProtocol.selectable, s.protocol, { it.label }) { p -> update { it.copy(protocol = p) } }
-                Label("Adaptive timing (ATAT)")
-                Chips(listOf(0, 1, 2), s.adaptiveTiming, { listOf("Off", "Normal", "Aggressive")[it] }) { v -> update { it.copy(adaptiveTiming = v) } }
-                NumberField("Adapter response timeout in ms (0 = default)", s.elmTimeoutMs.toString()) { v -> v.toIntOrNull()?.let { n -> update { it.copy(elmTimeoutMs = n) } } }
-                SwitchRow("Multi-PID requests (faster on CAN)", s.batching) { v -> update { it.copy(batching = v) } }
-                SwitchRow("Fast responses (response count hint)", s.fastMode) { v -> update { it.copy(fastMode = v) } }
-                SwitchRow("Adapter has an HS/MS-CAN switch (Ford / Mazda)", s.msCanSwitch) { v -> update { it.copy(msCanSwitch = v) } }
-                Text("If your adapter is a cheap clone and data looks wrong, turn off multi-PID and fast responses. Changes apply on the next connection.",
+                Label(tr("Adaptive timing (ATAT)"))
+                Chips(listOf(0, 1, 2), s.adaptiveTiming, { listOf(tr("Off"), tr("Normal"), tr("Aggressive"))[it] }) { v -> update { it.copy(adaptiveTiming = v) } }
+                NumberField(tr("Adapter response timeout in ms (0 = default)"), s.elmTimeoutMs.toString()) { v -> v.toIntOrNull()?.let { n -> update { it.copy(elmTimeoutMs = n) } } }
+                SwitchRow(tr("Multi-PID requests (faster on CAN)"), s.batching) { v -> update { it.copy(batching = v) } }
+                SwitchRow(tr("Fast responses (response count hint)"), s.fastMode) { v -> update { it.copy(fastMode = v) } }
+                SwitchRow(tr("Adapter has an HS/MS-CAN switch (Ford / Mazda)"), s.msCanSwitch) { v -> update { it.copy(msCanSwitch = v) } }
+                Text(tr("If your adapter is a cheap clone and data looks wrong, turn off multi-PID and fast responses. Changes apply on the next connection."),
                     style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 AdapterCheck()
                 SpeedTest()
             }
-            SectionCard(title = "Vehicle") {
-                Label("Fuel type (for consumption)")
-                Dropdown(FuelKind.entries, s.fuel, { it.label }) { f -> update { it.copy(fuel = f) } }
-                NumberField("Engine displacement (L) - used when there is no MAF sensor", s.displacementL.toString()) { v ->
+            SectionCard(title = tr("Vehicle")) {
+                Label(tr("Fuel type (for consumption)"))
+                Dropdown(FuelKind.entries, s.fuel, { tr(it.label) }) { f -> update { it.copy(fuel = f) } }
+                NumberField(tr("Engine displacement (L) - used when there is no MAF sensor"), s.displacementL.toString()) { v ->
                     v.replace(',', '.').toFloatOrNull()?.let { d -> update { it.copy(displacementL = d) } }
                 }
-                SwitchRow("Record GPS track for trips (shown on a map)", s.tripGps) { v -> update { it.copy(tripGps = v) } }
-                NumberField("Fuel price per liter (trip cost)", s.fuelPricePerL.toString()) { v ->
+                SwitchRow(tr("Record GPS track for trips (shown on a map)"), s.tripGps) { v -> update { it.copy(tripGps = v) } }
+                NumberField(tr("Fuel price per liter (trip cost)"), s.fuelPricePerL.toString()) { v ->
                     v.replace(',', '.').toFloatOrNull()?.let { d -> update { it.copy(fuelPricePerL = d) } }
                 }
             }
-            SectionCard(title = "Alerts") {
-                Text("Vibrate and show a warning when a sensor crosses a threshold (values in metric units).",
+            SectionCard(title = tr("Alerts")) {
+                Text(tr("Vibrate and show a warning when a sensor crosses a threshold (values in metric units)."),
                     style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 s.alerts.forEach { rule ->
                     val def = SensorCatalog.get(rule.sensorKey)
                     Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp)) {
                         Column(Modifier.weight(1f)) {
-                            Text(def?.name ?: rule.sensorKey, fontWeight = FontWeight.Medium)
+                            Text(def?.name?.let { tr(it) } ?: rule.sensorKey, fontWeight = FontWeight.Medium)
                             Text((if (rule.above) "above " else "below ") + rule.threshold + " " + (def?.unit?.symbol ?: ""), style = MaterialTheme.typography.bodySmall)
                         }
                         Switch(rule.enabled, { v -> update { st -> st.copy(alerts = st.alerts.map { if (it.id == rule.id) it.copy(enabled = v) else it }) } })
-                        IconButton(onClick = { update { st -> st.copy(alerts = st.alerts.filter { it.id != rule.id }) } }) { Icon(Icons.Default.Delete, "Delete") }
+                        IconButton(onClick = { update { st -> st.copy(alerts = st.alerts.filter { it.id != rule.id }) } }) { Icon(Icons.Default.Delete, tr("Delete")) }
                     }
                 }
-                TextButton(onClick = { addingAlert = true }) { Icon(Icons.Default.Add, null); Spacer(Modifier.width(6.dp)); Text("Add alert") }
+                TextButton(onClick = { addingAlert = true }) { Icon(Icons.Default.Add, null); Spacer(Modifier.width(6.dp)); Text(tr("Add alert")) }
                 if (s.alerts.isEmpty()) TextButton(onClick = {
                     update { it.copy(alerts = listOf(AlertRule(1, "0105", true, 108.0), AlertRule(2, "0142", false, 12.0))) }
-                }) { Text("Add suggested alerts (overheating, low voltage)") }
+                }) { Text(tr("Add suggested alerts (overheating, low voltage)")) }
             }
         }
     }
@@ -135,14 +141,14 @@ private fun AddAlertDialog(onDismiss: () -> Unit, onAdd: (AlertRule) -> Unit) {
     val sensors = SensorCatalog.available(vehicle?.supportedPids ?: (0..0xFF).toSet()).filter { it.labeler == null }
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("New alert") },
+        title = { Text(tr("New alert")) },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                OutlinedTextField(key?.let { SensorCatalog.get(it)?.name } ?: "", {}, readOnly = true, label = { Text("Sensor") },
+                OutlinedTextField(key?.let { SensorCatalog.get(it)?.name?.let { n -> tr(n) } } ?: "", {}, readOnly = true, label = { Text(tr("Sensor")) },
                     modifier = Modifier.fillMaxWidth().clickable { picking = true }, enabled = false)
-                TextButton(onClick = { picking = true }) { Text("Choose sensor") }
-                Chips(listOf(true, false), above, { if (it) "Above" else "Below" }) { above = it }
-                OutlinedTextField(threshold, { threshold = it }, label = { Text("Threshold (" + (key?.let { SensorCatalog.get(it)?.unit?.symbol } ?: "") + ")") },
+                TextButton(onClick = { picking = true }) { Text(tr("Choose sensor")) }
+                Chips(listOf(true, false), above, { if (it) tr("Above") else tr("Below") }) { above = it }
+                OutlinedTextField(threshold, { threshold = it }, label = { Text(tr("Threshold (") + (key?.let { SensorCatalog.get(it)?.unit?.symbol } ?: "") + ")") },
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal), singleLine = true)
             }
         },
@@ -150,11 +156,11 @@ private fun AddAlertDialog(onDismiss: () -> Unit, onAdd: (AlertRule) -> Unit) {
             TextButton(
                 onClick = { onAdd(AlertRule(System.currentTimeMillis(), key!!, above, threshold.replace(',', '.').toDouble())) },
                 enabled = key != null && threshold.replace(',', '.').toDoubleOrNull() != null,
-            ) { Text("Add") }
+            ) { Text(tr("Add")) }
         },
-        dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } },
+        dismissButton = { TextButton(onClick = onDismiss) { Text(tr("Cancel")) } },
     )
-    if (picking) SensorPickerDialog(sensors, "Alert sensor", onDismiss = { picking = false }, onPick = { key = it.key; picking = false })
+    if (picking) SensorPickerDialog(sensors, tr("Alert sensor"), onDismiss = { picking = false }, onPick = { key = it.key; picking = false })
 }
 
 @Composable
@@ -209,15 +215,15 @@ private fun AdapterCheck() {
             try { result = session.checkAdapter() } catch (e: Exception) { error = e.message }
             running = false
         }
-    }, enabled = vehicle != null && !running) { Text(if (running) "Checking adapter…" else "Check adapter capabilities") }
-    if (vehicle == null) Text("Connect to check which features your adapter supports (many \"v1.4/v1.5\" adapters are clones missing commands).",
+    }, enabled = vehicle != null && !running) { Text(if (running) tr("Checking adapter…") else tr("Check adapter capabilities")) }
+    if (vehicle == null) Text(tr("Connect to check which features your adapter supports (many \"v1.4/v1.5\" adapters are clones missing commands)."),
         style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
     error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
     result?.let { list ->
         val missing = list.count { !it.second }
         AlertDialog(
             onDismissRequest = { result = null },
-            title = { Text(if (missing == 0) "Adapter looks complete" else "$missing feature(s) missing") },
+            title = { Text(if (missing == 0) tr("Adapter looks complete") else tr("%1\$s feature(s) missing", missing)) },
             text = {
                 Column(Modifier.verticalScroll(rememberScrollState())) {
                     Text("${vehicle?.elm?.version ?: "Adapter"} · ${vehicle?.elm?.deviceDescription ?: ""}", style = MaterialTheme.typography.bodySmall)
@@ -228,8 +234,8 @@ private fun AdapterCheck() {
                             Text(name, style = MaterialTheme.typography.bodyMedium)
                         }
                     }
-                    if (missing > 0) Text("\nMissing commands usually mean a low-quality clone. Basic OBD functions still work; the features listed may not. " +
-                        "OpenOBD already falls back to alternatives where possible (e.g. CAN filter/mask instead of ATCRA).",
+                    if (missing > 0) Text(tr("\nMissing commands usually mean a low-quality clone. Basic OBD functions still work; the features listed may not. ") +
+                        tr("OpenOBD already falls back to alternatives where possible (e.g. CAN filter/mask instead of ATCRA)."),
                         style = MaterialTheme.typography.bodySmall)
                 }
             },
@@ -252,23 +258,23 @@ private fun SpeedTest() {
             try { result = session.speedTest() } catch (e: Exception) { error = e.message }
             running = false
         }
-    }, enabled = vehicle != null && !running) { Text(if (running) "Measuring…" else "Run live data speed test") }
+    }, enabled = vehicle != null && !running) { Text(if (running) tr("Measuring…") else tr("Run live data speed test")) }
     error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
     result?.let { b ->
         AlertDialog(
             onDismissRequest = { result = null },
-            title = { Text("%.0f PIDs per second".format(b.pidsPerSecond)) },
+            title = { Text(tr("%.0f PIDs per second").format(b.pidsPerSecond)) },
             text = {
                 Column {
-                    Text("Single request: %.0f ms (%.1f per second)".format(b.singleMs, 1000 / b.singleMs))
-                    b.batchMs?.let { Text("Batch of ${b.batchSize} PIDs: %.0f ms".format(it)) }
-                    Text(if (b.stnFast) "OBDLink/STN fast mode: active" else if (vehicle?.elm?.isStn == true) "OBDLink/STN fast mode: not usable with this car" else "OBDLink/STN fast mode: not available (ELM327 adapter)")
+                    Text(tr("Single request: %.0f ms (%.1f per second)").format(b.singleMs, 1000 / b.singleMs))
+                    b.batchMs?.let { Text(tr("Batch of %1\$s PIDs: %%.0f ms", b.batchSize).format(it)) }
+                    Text(if (b.stnFast) tr("OBDLink/STN fast mode: active") else if (vehicle?.elm?.isStn == true) tr("OBDLink/STN fast mode: not usable with this car") else tr("OBDLink/STN fast mode: not available (ELM327 adapter)"))
                     Spacer(Modifier.height(8.dp))
                     Text(
                         when {
-                            b.batchMs == null -> "Multi-PID requests are off or not supported by this car; turning them on (CAN cars) is usually the biggest speed-up."
-                            b.singleMs > 150 -> "Responses are slow. Try adaptive timing \"Aggressive\", or a timeout around 60-100 ms. Bluetooth clones are often limited to ~5-10 requests/s."
-                            else -> "Good. Fewer sensors on screen = faster updates for each one."
+                            b.batchMs == null -> tr("Multi-PID requests are off or not supported by this car; turning them on (CAN cars) is usually the biggest speed-up.")
+                            b.singleMs > 150 -> tr("Responses are slow. Try adaptive timing \"Aggressive\", or a timeout around 60-100 ms. Bluetooth clones are often limited to ~5-10 requests/s.")
+                            else -> tr("Good. Fewer sensors on screen = faster updates for each one.")
                         },
                         style = MaterialTheme.typography.bodySmall,
                     )

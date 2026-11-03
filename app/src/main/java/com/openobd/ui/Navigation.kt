@@ -127,7 +127,7 @@ fun OpenObdNavHost() {
                         selected = current == t.route,
                         onClick = { nav.goTab(t.route) },
                         icon = { Icon(t.icon, null) },
-                        label = { Text(t.label, maxLines = 1) },
+                        label = { Text(tr(t.label), maxLines = 1) },
                     )
                 }
             }

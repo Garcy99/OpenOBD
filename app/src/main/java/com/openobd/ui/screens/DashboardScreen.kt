@@ -1,5 +1,7 @@
 package com.openobd.ui.screens
 
+import com.openobd.ui.tr
+
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Box
@@ -69,12 +71,12 @@ fun DashboardScreen(onConnect: () -> Unit, onHud: () -> Unit) {
     var pickFor by remember { mutableStateOf<Int?>(null) }
 
     Column(Modifier.fillMaxSize()) {
-        ScreenTopBar("Dashboard", actions = {
+        ScreenTopBar(tr("Dashboard"), actions = {
             if (vehicle != null) {
-                IconButton(onClick = { app.session.live.resetStats() }) { Icon(Icons.Default.RestartAlt, "Reset min/max") }
-                IconButton(onClick = onHud) { Icon(Icons.Default.Fullscreen, "HUD mode") }
+                IconButton(onClick = { app.session.live.resetStats() }) { Icon(Icons.Default.RestartAlt, tr("Reset min/max")) }
+                IconButton(onClick = onHud) { Icon(Icons.Default.Fullscreen, tr("HUD mode")) }
             }
-            IconButton(onClick = { editing = !editing }) { Icon(if (editing) Icons.Default.Close else Icons.Default.Edit, "Edit") }
+            IconButton(onClick = { editing = !editing }) { Icon(if (editing) Icons.Default.Close else Icons.Default.Edit, tr("Edit")) }
         })
         if (vehicle == null && !editing) {
             NotConnected(onConnect)
@@ -102,7 +104,7 @@ fun DashboardScreen(onConnect: () -> Unit, onHud: () -> Unit) {
                 ) {
                     Box {
                         if (def == null) {
-                            Text("Unknown sensor $key", Modifier.padding(16.dp))
+                            Text(tr("Unknown sensor %1\$s", key), Modifier.padding(16.dp))
                         } else {
                             val units = settings.units
                             val (lo, hi) = displayRange(def, units)
@@ -111,7 +113,7 @@ fun DashboardScreen(onConnect: () -> Unit, onHud: () -> Unit) {
                             val f = formatSensor(def, v, units)
                             val supportedHere = vehicle == null || (def.pid < 0 && available.any { it.key == key }) || def.pid in supported
                             AnalogGauge(
-                                label = def.shortName,
+                                label = tr(def.shortName),
                                 valueText = if (supportedHere) f.value else "N/A",
                                 unit = f.unit,
                                 fraction = if (def.labeler != null) null else fraction,
@@ -126,7 +128,7 @@ fun DashboardScreen(onConnect: () -> Unit, onHud: () -> Unit) {
                             IconButton(
                                 onClick = { scope.launch { app.settings.update { it.copy(dashboard = it.dashboard.filterIndexed { i, _ -> i != index }) } } },
                                 modifier = Modifier.align(Alignment.TopEnd),
-                            ) { Icon(Icons.Default.Close, "Remove") }
+                            ) { Icon(Icons.Default.Close, tr("Remove")) }
                         }
                     }
                 }
@@ -139,7 +141,7 @@ fun DashboardScreen(onConnect: () -> Unit, onHud: () -> Unit) {
                     Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                         Column(horizontalAlignment = Alignment.CenterHorizontally) {
                             Icon(Icons.Default.Add, null)
-                            Text("Add gauge")
+                            Text(tr("Add gauge"))
                         }
                     }
                 }
@@ -148,7 +150,7 @@ fun DashboardScreen(onConnect: () -> Unit, onHud: () -> Unit) {
                 Card(shape = RoundedCornerShape(20.dp), modifier = Modifier.aspectRatio(1f).combinedClickable(onClick = {
                     scope.launch { app.settings.update { it.copy(dashboard = AppSettings.DEFAULT_DASHBOARD) } }
                 })) {
-                    Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { Text("Reset layout") }
+                    Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { Text(tr("Reset layout")) }
                 }
             }
         }
@@ -156,7 +158,7 @@ fun DashboardScreen(onConnect: () -> Unit, onHud: () -> Unit) {
         pickFor?.let { slot ->
             SensorPickerDialog(
                 sensors = if (vehicle == null) SensorCatalog.available((0..0xFF).toSet()) else available,
-                title = if (slot < 0) "Add gauge" else "Change gauge",
+                title = if (slot < 0) tr("Add gauge") else tr("Change gauge"),
                 onDismiss = { pickFor = null },
                 onPick = { def ->
                     pickFor = null

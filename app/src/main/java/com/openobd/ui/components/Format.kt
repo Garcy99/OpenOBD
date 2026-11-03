@@ -9,7 +9,7 @@ data class Formatted(val value: String, val unit: String)
 
 fun formatSensor(def: SensorDef, value: Double?, units: UnitSystem): Formatted {
     if (value == null) return Formatted("—", unitLabel(def, units))
-    def.labeler?.let { return Formatted(it(value), "") }
+    def.labeler?.let { return Formatted(com.openobd.ui.tr(it(value)), "") }
     def.customUnit?.let { return Formatted(formatNumber(value, def.decimals), it) }
     val d = def.unit.display(value, units)
     val decimals = when {

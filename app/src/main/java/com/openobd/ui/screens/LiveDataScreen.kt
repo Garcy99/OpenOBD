@@ -1,5 +1,7 @@
 package com.openobd.ui.screens
 
+import com.openobd.ui.tr
+
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
@@ -71,40 +73,40 @@ fun LiveDataScreen(onConnect: () -> Unit, onChart: () -> Unit) {
 
     if (vehicle == null) {
         Column(Modifier.fillMaxSize()) {
-            ScreenTopBar("Live data")
+            ScreenTopBar(tr("Live data"))
             NotConnected(onConnect)
         }
         return
     }
     val all = remember(vehicle.supportedPids) { SensorCatalog.available(vehicle.supportedPids) }
     val categories = remember(all) { all.map { it.category }.distinct() }
-    val shown = all.filter { (category == null || it.category == category) && (query.isBlank() || it.name.contains(query, true)) }
+    val shown = all.filter { (category == null || it.category == category) && (query.isBlank() || (it.name.contains(query, true) || tr(it.name).contains(query, true))) }
     SubscribeSensors("live", shown.map { it.key })
     val readings by session.live.readings.collectAsStateWithLifecycle()
     val tick by session.live.tick.collectAsStateWithLifecycle()
 
     Scaffold(
         topBar = {
-            ScreenTopBar("Live data", actions = {
-                IconButton(onClick = { session.live.resetStats() }) { Icon(Icons.Default.RestartAlt, "Reset min/max") }
+            ScreenTopBar(tr("Live data"), actions = {
+                IconButton(onClick = { session.live.resetStats() }) { Icon(Icons.Default.RestartAlt, tr("Reset min/max")) }
                 IconButton(onClick = { if (recording) session.stopRecording() else session.startRecording(shown.map { it.key }) }) {
-                    Icon(if (recording) Icons.Default.Stop else Icons.Default.FiberManualRecord, if (recording) "Stop recording" else "Record", tint = Bad)
+                    Icon(if (recording) Icons.Default.Stop else Icons.Default.FiberManualRecord, if (recording) tr("Stop recording") else tr("Record"), tint = Bad)
                 }
             })
         },
         floatingActionButton = {
-            ExtendedFloatingActionButton(onClick = onChart, icon = { Icon(Icons.Default.ShowChart, null) }, text = { Text("Chart (${chartKeys.size})") })
+            ExtendedFloatingActionButton(onClick = onChart, icon = { Icon(Icons.Default.ShowChart, null) }, text = { Text(tr("Chart (%1\$s)", chartKeys.size)) })
         },
         contentWindowInsets = androidx.compose.foundation.layout.WindowInsets(0),
     ) { pad ->
         Column(Modifier.padding(pad)) {
-            OutlinedTextField(query, { query = it }, leadingIcon = { Icon(Icons.Default.Search, null) }, placeholder = { Text("Search ${all.size} sensors") },
+            OutlinedTextField(query, { query = it }, leadingIcon = { Icon(Icons.Default.Search, null) }, placeholder = { Text(tr("Search %1\$s sensors", all.size)) },
                 singleLine = true, modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp))
             Row(Modifier.horizontalScroll(rememberScrollState()).padding(horizontal = 12.dp, vertical = 6.dp), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                FilterChip(category == null, { category = null }, label = { Text("All") })
-                categories.forEach { c -> FilterChip(category == c, { category = if (category == c) null else c }, label = { Text(c.label) }) }
+                FilterChip(category == null, { category = null }, label = { Text(tr("All")) })
+                categories.forEach { c -> FilterChip(category == c, { category = if (category == c) null else c }, label = { Text(tr(c.label)) }) }
             }
-            if (recording) Text("● Recording ${shown.size} sensors to CSV", color = Bad, style = MaterialTheme.typography.labelMedium, modifier = Modifier.padding(horizontal = 16.dp))
+            if (recording) Text(tr("● Recording %1\$s sensors to CSV", shown.size), color = Bad, style = MaterialTheme.typography.labelMedium, modifier = Modifier.padding(horizontal = 16.dp))
             LazyColumn(contentPadding = PaddingValues(12.dp, 4.dp, 12.dp, 96.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 items(shown, key = { it.key }) { def ->
                     val r = readings[def.key]
@@ -118,13 +120,13 @@ fun LiveDataScreen(onConnect: () -> Unit, onChart: () -> Unit) {
                         },
                     ) {
                         Row(Modifier.padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
-                            Icon(if (selected) Icons.Default.CheckBox else Icons.Default.CheckBoxOutlineBlank, "Chart",
+                            Icon(if (selected) Icons.Default.CheckBox else Icons.Default.CheckBoxOutlineBlank, tr("Chart"),
                                 tint = if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outline)
                             Spacer(Modifier.width(10.dp))
                             Column(Modifier.weight(1f)) {
-                                Text(def.name, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Medium, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                                Text(tr(def.name), style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Medium, maxLines = 2, overflow = TextOverflow.Ellipsis)
                                 if (r != null && def.labeler == null) {
-                                    Text("min ${formatSensor(def, r.min, settings.units).value} · avg ${formatSensor(def, r.avg, settings.units).value} · max ${formatSensor(def, r.max, settings.units).value}",
+                                    Text(tr("min %1\$s · avg %2\$s · max %3\$s", (formatSensor(def, r.min, settings.units).value), (formatSensor(def, r.avg, settings.units).value), (formatSensor(def, r.max, settings.units).value)),
                                         style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                                 }
                             }

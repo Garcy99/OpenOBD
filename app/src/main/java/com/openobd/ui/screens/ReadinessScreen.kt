@@ -1,5 +1,7 @@
 package com.openobd.ui.screens
 
+import com.openobd.ui.tr
+
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -51,8 +53,8 @@ fun ReadinessScreen(onBack: () -> Unit, onConnect: () -> Unit) {
     LaunchedEffect(vehicle != null) { if (vehicle != null && op !is Op.Done) session.loadReadiness() }
 
     Column(Modifier.fillMaxSize()) {
-        ScreenTopBar("Emission readiness", onBack, actions = {
-            if (vehicle != null) IconButton(onClick = session::loadReadiness) { Icon(Icons.Default.Refresh, "Refresh") }
+        ScreenTopBar(tr("Emission readiness"), onBack, actions = {
+            if (vehicle != null) IconButton(onClick = session::loadReadiness) { Icon(Icons.Default.Refresh, tr("Refresh")) }
         })
         if (vehicle == null) { NotConnected(onConnect); return@Column }
         Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
@@ -62,14 +64,14 @@ fun ReadinessScreen(onBack: () -> Unit, onConnect: () -> Unit) {
                 Op.Idle -> Unit
                 is Op.Done -> {
                     val (since, cycle) = s.value
-                    if (since == null) ErrorText("This vehicle does not report monitor status.")
+                    if (since == null) ErrorText(tr("This vehicle does not report monitor status."))
                     since?.let {
                         Verdict(it)
-                        MonitorList("Since trouble codes were cleared", it)
+                        MonitorList(tr("Since trouble codes were cleared"), it)
                     }
-                    cycle?.let { MonitorList("This drive cycle", it) }
-                    Text("Continuous monitors (misfire, fuel system, components) run all the time. The others need specific driving " +
-                        "conditions (a drive cycle) to complete after codes are cleared or the battery is disconnected.",
+                    cycle?.let { MonitorList(tr("This drive cycle"), it) }
+                    Text(tr("Continuous monitors (misfire, fuel system, components) run all the time. The others need specific driving ") +
+                        tr("conditions (a drive cycle) to complete after codes are cleared or the battery is disconnected."),
                         style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
             }
@@ -85,15 +87,15 @@ private fun Verdict(r: ReadinessStatus) {
             Icon(if (ok) Icons.Default.CheckCircle else Icons.Default.Cancel, null, tint = if (ok) Good else Bad, modifier = Modifier.size(40.dp))
             Spacer(Modifier.width(12.dp))
             Column {
-                Text(if (ok) "Likely ready for inspection" else "Not ready for inspection", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+                Text(if (ok) tr("Likely ready for inspection") else tr("Not ready for inspection"), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
                 Text(
                     buildString {
-                        append(if (r.milOn) "Check engine light ON. " else "Check engine light off. ")
-                        append("${r.complete.size} complete, ${r.incomplete.size} incomplete, ${r.monitors.size - r.supported.size} not supported.")
+                        append(if (r.milOn) tr("Check engine light ON. ") else tr("Check engine light off. "))
+                        append(tr("%1\$s complete, %2\$s incomplete, %3\$s not supported.", r.complete.size, r.incomplete.size, (r.monitors.size - r.supported.size)))
                     },
                     style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
-                Text(if (r.isDiesel) "Compression ignition (diesel) monitors" else "Spark ignition (gasoline) monitors", style = MaterialTheme.typography.labelSmall)
+                Text(if (r.isDiesel) tr("Compression ignition (diesel) monitors") else tr("Spark ignition (gasoline) monitors"), style = MaterialTheme.typography.labelSmall)
             }
         }
     }
@@ -111,8 +113,8 @@ private fun MonitorList(title: String, r: ReadinessStatus) {
                 }
                 Icon(icon, null, tint = color)
                 Spacer(Modifier.width(10.dp))
-                Text(m.name, Modifier.weight(1f))
-                Pill(m.state.label, color)
+                Text(tr(m.name), Modifier.weight(1f))
+                Pill(tr(m.state.label), color)
             }
         }
     }

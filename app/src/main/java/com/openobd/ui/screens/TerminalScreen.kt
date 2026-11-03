@@ -1,5 +1,7 @@
 package com.openobd.ui.screens
 
+import com.openobd.ui.tr
+
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -56,8 +58,8 @@ fun TerminalScreen(onBack: () -> Unit) {
     fun send(cmd: String) { if (cmd.isNotBlank()) session.sendRaw(cmd) }
 
     Column(Modifier.fillMaxSize().imePadding()) {
-        ScreenTopBar("Terminal", onBack, actions = {
-            IconButton(onClick = session::clearConsole) { Icon(Icons.Default.DeleteSweep, "Clear") }
+        ScreenTopBar(tr("Terminal"), onBack, actions = {
+            IconButton(onClick = session::clearConsole) { Icon(Icons.Default.DeleteSweep, tr("Clear")) }
         })
         LazyColumn(Modifier.weight(1f).fillMaxWidth(), state = listState, contentPadding = PaddingValues(12.dp)) {
             items(lines) { l ->
@@ -76,14 +78,14 @@ fun TerminalScreen(onBack: () -> Unit) {
         Row(Modifier.padding(8.dp), verticalAlignment = Alignment.CenterVertically) {
             OutlinedTextField(
                 input, { input = it.uppercase() }, Modifier.weight(1f), singleLine = true,
-                placeholder = { Text("AT command or OBD request, e.g. 010D") },
+                placeholder = { Text(tr("AT command or OBD request, e.g. 010D")) },
                 textStyle = MaterialTheme.typography.bodyLarge.copy(fontFamily = FontFamily.Monospace),
                 keyboardOptions = KeyboardOptions(capitalization = KeyboardCapitalization.Characters, imeAction = ImeAction.Send, autoCorrectEnabled = false),
                 keyboardActions = KeyboardActions(onSend = { send(input); input = "" }),
             )
-            IconButton(onClick = { send(input); input = "" }) { Icon(Icons.AutoMirrored.Filled.Send, "Send") }
+            IconButton(onClick = { send(input); input = "" }) { Icon(Icons.AutoMirrored.Filled.Send, tr("Send")) }
         }
-        Text("Live data polling pauses while a command runs. Commands that change adapter settings may affect the app until you reconnect.",
+        Text(tr("Live data polling pauses while a command runs. Commands that change adapter settings may affect the app until you reconnect."),
             style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp))
     }
 }

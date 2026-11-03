@@ -94,8 +94,8 @@ class UiSmokeTest {
             android.Manifest.permission.ACCESS_FINE_LOCATION, android.Manifest.permission.ACCESS_COARSE_LOCATION,
             android.Manifest.permission.POST_NOTIFICATIONS, android.Manifest.permission.BLUETOOTH_CONNECT, android.Manifest.permission.BLUETOOTH_SCAN,
         )
-        runBlocking { c.settings.update { it.copy(connectionType = ConnectionType.DEMO, theme = theme) } }
-        waitFor { c.settings.settings.value.theme == theme }
+        runBlocking { c.settings.update { it.copy(connectionType = ConnectionType.DEMO, theme = theme, language = "en") } }
+        waitFor { c.settings.settings.value.theme == theme && I18n.language == "en" }
         shot("01_home_disconnected_$suffix")
 
         tap("Connect")
@@ -278,5 +278,57 @@ class WidgetTest {
         is android.widget.TextView -> listOf(v.text.toString())
         is android.view.ViewGroup -> (0 until v.childCount).flatMap { collectText(v.getChildAt(it)) }
         else -> emptyList()
+    }
+}
+
+/** Spanish UI tour: renders the main screens with the Spanish translation. */
+@RunWith(AndroidJUnit4::class)
+@GraphicsMode(GraphicsMode.Mode.NATIVE)
+@Config(sdk = [34], qualifiers = "es-w411dp-h891dp-xxhdpi")
+class SpanishUiTest {
+    @get:Rule
+    val rule = createAndroidComposeRule<MainActivity>()
+
+    private fun shot(name: String) {
+        rule.waitForIdle()
+        val dir = File(System.getProperty("screenshot.dir") ?: "build/screenshots").apply { mkdirs() }
+        rule.activityRule.scenario.onActivity { act ->
+            val v = act.window.decorView
+            val bmp = Bitmap.createBitmap(v.width, v.height, Bitmap.Config.ARGB_8888)
+            v.draw(Canvas(bmp))
+            File(dir, "$name.png").outputStream().use { bmp.compress(Bitmap.CompressFormat.PNG, 100, it) }
+        }
+    }
+
+    private fun waitFor(timeoutMs: Long = 20_000, condition: () -> Boolean) {
+        val end = System.currentTimeMillis() + timeoutMs
+        while (!condition()) { check(System.currentTimeMillis() < end) { "Timed out waiting" }; Thread.sleep(50); rule.mainClock.advanceTimeBy(50) }
+        rule.waitForIdle()
+    }
+
+    @Test
+    fun spanishTour() {
+        val app = rule.activity.application as OpenObdApp
+        val c = app.container
+        org.robolectric.Shadows.shadowOf(app).grantPermissions(android.Manifest.permission.ACCESS_FINE_LOCATION,
+            android.Manifest.permission.ACCESS_COARSE_LOCATION, android.Manifest.permission.POST_NOTIFICATIONS)
+        runBlocking { c.settings.update { it.copy(connectionType = ConnectionType.DEMO, theme = ThemeMode.DARK, language = "es") } }
+        waitFor { I18n.language == "es" }
+        assertTrue(rule.onAllNodesWithText("Conectar").fetchSemanticsNodes().isNotEmpty())
+        rule.onAllNodes(hasText("Conectar") and hasClickAction())[0].performClick()
+        waitFor { c.session.state.value is ConnectionState.Connected && c.session.dtcScan.value is Op.Done }
+        shot("es_01_home")
+        rule.onAllNodes(hasText("Panel") and isSelectable())[0].performClick()
+        waitFor { c.session.live.readings.value.containsKey("010C") }
+        Thread.sleep(1000)
+        shot("es_02_dashboard")
+        rule.onAllNodes(hasText("Códigos") and isSelectable())[0].performClick()
+        rule.onAllNodes(hasText("Escanear") and hasClickAction())[0].performClick()
+        waitFor { c.session.dtcScan.value is Op.Done }
+        shot("es_03_codes")
+        rule.onAllNodes(hasText("Más") and isSelectable())[0].performClick()
+        shot("es_04_more")
+        c.session.disconnect()
+        waitFor { c.session.state.value is ConnectionState.Disconnected }
     }
 }
