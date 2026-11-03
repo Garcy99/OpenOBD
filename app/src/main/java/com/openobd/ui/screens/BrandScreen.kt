@@ -287,7 +287,11 @@ private fun BusSwitchCard(canUseModules: Boolean) {
             Text(tr("My adapter has an HS/MS-CAN switch"), Modifier.weight(1f))
             androidx.compose.material3.Switch(settings.msCanSwitch, { v -> scope.launch { app.settings.update { it.copy(msCanSwitch = v) } } })
         }
-        Text(tr("Ford, Lincoln and Mazda put climate, doors, SYNC/infotainment and some body modules on a second, slower bus (MS-CAN). ") +
+        val sb = session.secondaryBus()
+        Text((if (sb == com.openobd.core.brand.Families.OPEL_MS)
+            tr("Opel / Vauxhall put the radio / infotainment, display, climate control and phone module on a second, slower bus (MS-CAN, 95.2 kbps). ") +
+                tr("OpenOBD sets that speed with ATPB; adapters without it cannot reach the bus even with a switch. ")
+        else tr("Ford, Lincoln and Mazda put climate, doors, SYNC/infotainment and some body modules on a second, slower bus (MS-CAN). ")) +
             tr("\"Switch\" adapters reach it when you move their toggle to MS."),
             style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         if (settings.msCanSwitch && canUseModules) {

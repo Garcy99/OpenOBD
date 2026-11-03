@@ -80,7 +80,7 @@ object ManufacturerCodes {
 
     private val byFamily: Map<String, Map<String, String>> = mapOf(
         "ford" to ford, "mazda" to emptyMap(), "toyota" to toyota, "honda" to honda, "nissan" to nissan,
-        "gm" to gm, "stellantis" to chrysler, "hmg" to hmg,
+        "gm" to gm, "gm-europe" to gm, "stellantis" to chrysler, "hmg" to hmg,
     )
 
     fun lookup(family: BrandFamily?, code: String): String? {

@@ -9,7 +9,7 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
 
 /** Which diagnostic dialect a module answered with. */
-enum class DiagProtocol(val label: String) { UDS("UDS (ISO 14229)"), KWP("KWP2000 (ISO 14230)"), OBD("OBD-II services") }
+enum class DiagProtocol(val label: String) { UDS("UDS (ISO 14229)"), KWP("KWP2000 (ISO 14230)"), GMLAN("GMLAN (GM)"), OBD("OBD-II services") }
 
 /** A trouble code read from a module, including the UDS failure type byte and status flags when available. */
 data class ModuleDtc(val code: String, val failureType: Int?, val status: Int?, val protocol: DiagProtocol) {
@@ -147,6 +147,8 @@ object FailureTypes {
  * so live data polling can safely continue between operations.
  */
 class ModuleClient(private val elm: Elm327) {
+    /** Also try GM's GMLAN diagnostic services (Opel, Vauxhall, Chevrolet, Holden...) on modules that ignore UDS. */
+    var gmlan: Boolean = false
 
     val supported: Boolean get() = elm.protocol.isCan
 
@@ -166,6 +168,7 @@ class ModuleClient(private val elm: Elm327) {
     }
 
     private suspend fun Elm327.Locked.restore() {
+        at("ATCAF1")
         at("ATFCSM0")
         at("ATCRA")
         if (elm.protocol.is29Bit) { at("ATCP18"); at("ATSH DB33F1") } else at("ATSH 7DF")
@@ -175,6 +178,7 @@ class ModuleClient(private val elm: Elm327) {
     private suspend fun <T> withModule(m: EcuModule, block: suspend Elm327.Locked.() -> T): T = elm.exclusive {
         check(supported) { NOT_CAN }
         try {
+            currentModule = m
             select(m)
             block()
         } finally {
@@ -206,6 +210,8 @@ class ModuleClient(private val elm: Elm327) {
         // KWP2000 ReadDiagnosticTroubleCodesByStatus
         val kwp = request("1802FF00")
         positive(kwp, 0x18)?.let { return DiagProtocol.KWP to parseKwp(it.data) }
+        // GMLAN ReadDiagnosticInformation by status mask; codes arrive as separate frames on the UUDT ID
+        if (gmlan) currentModule?.let { readGmlanLocked(it) }?.let { return DiagProtocol.GMLAN to it }
         // Physically addressed OBD service 03 (works on engine / transmission)
         val obd = request("03")
         positive(obd, 0x03)?.let { msg ->
@@ -227,6 +233,44 @@ class ModuleClient(private val elm: Elm327) {
             i += 4
         }
         return out
+    }
+
+    /** Module selected by [withModule]; GMLAN replies arrive on a different CAN ID that is derived from it. */
+    private var currentModule: EcuModule? = null
+
+    /**
+     * GMLAN \$A9 \$81 (report DTCs by status mask). Positive answers are UUDT frames, one code each:
+     * `81 <DTC hi> <DTC lo> <failure type> <status>`, ending with code 0000. They come on the module's
+     * UUDT ID (0x5xx) without ISO-TP framing, so CAN auto formatting is switched off while listening.
+     */
+    private suspend fun Elm327.Locked.readGmlanLocked(m: EcuModule): List<ModuleDtc>? {
+        val uudt = gmlanUudtId(m) ?: return null
+        if (!at("ATCRA %03X".format(uudt))) { at("ATCF %03X".format(uudt)); at("ATCM 7FF") }
+        val lines = try {
+            at("ATCAF0")
+            command("03A98112", 4000)
+        } catch (e: com.openobd.core.elm.ElmException) {
+            emptyList()
+        } finally {
+            at("ATCAF1")
+            if (!at("ATCRA %03X".format(m.rx))) { at("ATCF %03X".format(m.rx)); at("ATCM 7FF") }
+        }
+        return parseGmlan(lines, uudt)
+    }
+
+    fun parseGmlan(lines: List<String>, uudt: Int): List<ModuleDtc>? {
+        var answered = false
+        val out = mutableListOf<ModuleDtc>()
+        for (line in lines) {
+            val t = com.openobd.core.elm.ResponseParser.tokenize(line, com.openobd.core.elm.ObdProtocol.ISO_15765_4_CAN_11_500, true) ?: continue
+            if (t.size < 6 || t[0].length != 3 || t[0].toIntOrNull(16) != uudt) continue
+            val d = t.drop(1).map { it.toInt(16) }
+            if (d[0] != 0x81) continue
+            answered = true
+            if (d[1] == 0 && d[2] == 0) break // end of list
+            out += ModuleDtc(DtcDecoder.decode(d[1], d[2]), d[3], d[4], DiagProtocol.GMLAN)
+        }
+        return if (answered) out.distinctBy { it.code to it.failureType } else null
     }
 
     fun parseKwp(d: IntArray): List<ModuleDtc> {
@@ -348,13 +392,18 @@ class ModuleClient(private val elm: Elm327) {
     suspend fun discover(
         range: IntRange = 0x700..0x7F7,
         secondaryBus: Boolean = false,
+        /** Receive filter for the replies, e.g. "7XX" (most brands) or "6XX" (GM 0x24x requests answered on 0x64x). */
+        rxFilter: String = "7XX",
         progress: (Int, Int) -> Unit = { _, _ -> },
     ): List<EcuModule> = elm.exclusive {
         check(supported) { NOT_CAN }
         val found = mutableListOf<EcuModule>()
         try {
             at("ATST19") // ~100 ms per absent address
-            if (!at("ATCRA 7XX")) { at("ATCF 700"); at("ATCM 700") }
+            if (!at("ATCRA $rxFilter")) {
+                at("ATCF " + rxFilter.replace('X', '0'))
+                at("ATCM " + rxFilter.mapIndexed { i, c -> if (c == 'X') '0' else if (i == 0) '7' else 'F' }.joinToString(""))
+            }
             val total = range.count()
             range.forEachIndexed { index, tx ->
                 if (index % 4 == 0) progress(index, total)
@@ -420,6 +469,14 @@ class ModuleClient(private val elm: Elm327) {
 
     companion object {
         const val NOT_CAN = "Module access needs a CAN vehicle (most cars from 2008 onwards)."
+
+        /** GMLAN sends unsegmented replies on 0x5xx: 0x643 -> 0x543, and the engine's 0x7E8 -> 0x5E8. */
+        fun gmlanUudtId(m: EcuModule): Int? = when {
+            m.is29Bit -> null
+            m.rx in 0x600..0x6FF -> m.rx - 0x100
+            m.rx in 0x7E8..0x7EF -> m.rx - 0x200
+            else -> null
+        }
 
         fun nrcText(nrc: Int): String = when (nrc) {
             0x10 -> "general reject"

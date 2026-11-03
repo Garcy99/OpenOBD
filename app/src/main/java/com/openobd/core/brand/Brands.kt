@@ -27,12 +27,25 @@ data class EcuModule(
     val addressLabel: String get() = if (is29Bit) "18DA%02XF1".format(tx) else "%03X → %03X".format(tx, rx)
 }
 
+/**
+ * A second, slower CAN bus on OBD pins 3/11 that "HS/MS-CAN switch" adapters can reach.
+ * The ELM327 talks to it as protocol B (User1 CAN) configured with ATPB [pbOptions] [pbDivisor]:
+ * options bit 4 multiplies the 500 kbps base by 8/7, so Opel's 95.24 kbps is 500 * 8/7 / 6.
+ */
+data class SecondaryBus(val label: String, val kbps: String, val pbOptions: Int, val pbDivisor: Int, val modulesHint: String) {
+    val atpb: String get() = "ATPB %02X %02X".format(pbOptions, pbDivisor)
+}
+
 /** Brands that share diagnostic architecture (addresses, conventions, manufacturer code meanings). */
 class BrandFamily(
     val id: String,
     val label: String,
     val modules: List<EcuModule>,
     val notes: String,
+    /** Medium-speed bus reachable with a switch adapter, if the brand has one. */
+    val secondaryBus: SecondaryBus? = null,
+    /** Address ranges probed by "Discover modules": request IDs and the receive filter for their replies. */
+    val discoveryRanges: List<Pair<IntRange, String>> = listOf(0x700..0x7F7 to "7XX"),
 )
 
 data class Brand(val id: String, val name: String, val family: BrandFamily, val wmis: List<String>)
@@ -41,6 +54,11 @@ private fun m(name: String, short: String, tx: Int, rx: Int, cat: ModuleCategory
     EcuModule(name, short, tx, rx, cat, secondaryBus = secondary)
 
 object Families {
+    /** Ford / Mazda MS-CAN: 125 kbps, ISO 15765 formatting. */
+    val FORD_MS = SecondaryBus("MS-CAN", "125", 0xE1, 0x04, "climate, doors, SYNC/infotainment and some body modules")
+    /** Opel / Vauxhall (GM Europe, ~2004-2017) MS-CAN on pins 3/11: 95.24 kbps. */
+    val OPEL_MS = SecondaryBus("MS-CAN", "95.2", 0xF1, 0x06, "radio / infotainment, display, climate control and phone module")
+
     private val P = ModuleCategory.POWERTRAIN; private val C = ModuleCategory.CHASSIS; private val B = ModuleCategory.BODY
     private val I = ModuleCategory.INFOTAINMENT; private val E = ModuleCategory.ELECTRIC; private val N = ModuleCategory.NETWORK
 
@@ -77,6 +95,7 @@ object Families {
         ),
         "Ford uses UDS on its high-speed CAN bus, reachable by any CAN adapter. Modules marked \"MS-CAN\" sit on the medium-speed bus " +
             "and only answer through adapters with an HS/MS-CAN switch (OBDLink EX/MX+, vLinker FS/MC+).",
+        secondaryBus = FORD_MS,
     )
 
     val MAZDA = BrandFamily(
@@ -90,6 +109,7 @@ object Families {
             m("Body control module", "BCM", 0x726, 0x72E, B),
         ),
         "Mazda shares Ford-style addressing on most CAN models from 2008 onwards. Use Discover modules if some do not respond.",
+        secondaryBus = FORD_MS,
     )
 
     val VAG = BrandFamily(
@@ -192,8 +212,29 @@ object Families {
             m("HVAC", "HVAC", 0x251, 0x651, B),
             m("Radio", "RADIO", 0x244, 0x644, I),
         ),
-        "GMLAN physical addressing. Older GMLAN modules report codes through a GM-proprietary service; if a module answers but shows no codes, " +
-            "its codes may only be readable with GM tools. Global B vehicles (2020+) may block access through the gateway.",
+        "GMLAN physical addressing. Modules that do not speak UDS are read with the GMLAN service (\$A9) and cleared with \$04. " +
+            "Global B vehicles (2020+) may block access through the gateway.",
+        discoveryRanges = listOf(0x240..0x25F to "6XX", 0x700..0x7F7 to "7XX"),
+    )
+
+    /** Opel / Vauxhall on GM's Global A architecture (Astra H/J/K, Insignia A, Corsa D/E, Zafira B/C, Meriva B, Mokka). */
+    val OPEL = BrandFamily(
+        "gm-europe", "Opel / Vauxhall (GM)", listOf(
+            m("Engine control module", "ECM", 0x7E0, 0x7E8, P),
+            m("Transmission control module", "TCM", 0x7E2, 0x7EA, P),
+            m("Electronic brake control (ABS / ESP)", "EBCM", 0x243, 0x643, C),
+            m("Airbag (SDM)", "SDM", 0x247, 0x647, C),
+            m("Power steering", "EPS", 0x242, 0x642, C),
+            m("Body control module", "BCM", 0x241, 0x641, B),
+            m("Instrument panel cluster", "IPC", 0x24C, 0x64C, B),
+            m("Radio / infotainment", "RADIO", 0x244, 0x644, I, true),
+            m("Climate control (HVAC)", "HVAC", 0x251, 0x651, B, true),
+        ),
+        "GMLAN addressing (requests 0x24x, replies 0x64x). Many modules of this era speak GMLAN rather than UDS: OpenOBD reads them " +
+            "with the GMLAN service (\$A9) and clears them with \$04. Infotainment and climate sit on MS-CAN (95.2 kbps, pins 3/11), " +
+            "reachable with an HS/MS-CAN switch adapter; some body modules use single-wire CAN (pin 1), which ELM327 adapters cannot reach.",
+        secondaryBus = OPEL_MS,
+        discoveryRanges = listOf(0x240..0x25F to "6XX", 0x700..0x7F7 to "7XX"),
     )
 
     val STELLANTIS = BrandFamily("stellantis", "Stellantis / FCA / PSA", obdBase,
@@ -211,7 +252,7 @@ object Families {
     val VOLVO = BrandFamily("volvo", "Volvo / Polestar", obdBase, "Use Discover modules to find the modules that answer on your car.")
     val OTHER_ASIA = BrandFamily("asia", "Mitsubishi / Suzuki / others", obdBase, GENERIC.notes)
 
-    val all = listOf(GENERIC, FORD, MAZDA, VAG, HMG, TOYOTA, NISSAN, RENAULT, GM, STELLANTIS, BMW, MERCEDES, HONDA, SUBARU, VOLVO, OTHER_ASIA)
+    val all = listOf(GENERIC, FORD, MAZDA, VAG, HMG, TOYOTA, NISSAN, RENAULT, GM, OPEL, STELLANTIS, BMW, MERCEDES, HONDA, SUBARU, VOLVO, OTHER_ASIA)
 }
 
 object Brands {
@@ -251,7 +292,7 @@ object Brands {
         b("mini", "MINI", Families.BMW, "WMW", "WMZ"),
         b("mitsubishi", "Mitsubishi", Families.OTHER_ASIA, "JA3", "JA4", "JMB", "JMY", "4A3", "4A4", "MMB", "MMC", "ML3"),
         b("nissan", "Nissan", Families.NISSAN, "JN1", "JN6", "JN8", "1N4", "1N6", "5N1", "3N1", "3N6", "SJN", "VSK", "MNT", "94D", "VNV"),
-        b("opel", "Opel / Vauxhall", Families.GM, "W0L", "W0V", "VXK", "SXA"),
+        b("opel", "Opel / Vauxhall", Families.OPEL, "W0L", "W0V", "VXK", "SXA"),
         b("peugeot", "Peugeot", Families.STELLANTIS, "VF3", "VR3", "936", "8AD"),
         b("polestar", "Polestar", Families.VOLVO, "LPS", "YSM"),
         b("porsche", "Porsche", Families.VAG, "WP0", "WP1"),

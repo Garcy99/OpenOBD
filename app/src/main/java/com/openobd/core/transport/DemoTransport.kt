@@ -64,12 +64,23 @@ class DemoTransport(
         0x7D0 to SimModule(0x7D8, "APIM", "OB-14G371-DEMO", mutableListOf(Triple("U0184", 0x00, 0x28))),
     )
     private val onMsCan get() = protocolCode == 'B' && can11
+    /** ATCAF: CAN auto formatting (ISO-TP PCI bytes added / interpreted by the adapter). */
+    private var caf = true
+    /** ATPB options / baud divisor for protocol B; defaults are the ELM327's (125 kbps). */
+    private var pbOptions = 0xE0
+    private var pbDivisor = 0x04
+    private val pbKbps: Double get() = 500.0 * (if (pbOptions and 0x10 != 0) 8.0 / 7 else 1.0) / pbDivisor
+    /** Opel-style MS-CAN (95.24 kbps) with GMLAN modules. */
+    val opelMsModules: Map<Int, SimModule> = mapOf(
+        0x244 to SimModule(0x644, "RADIO", "13346053", mutableListOf(Triple("B1025", 0x00, 0x6F)), gmlan = true),
+        0x251 to SimModule(0x651, "HVAC", "13406121", mutableListOf(), gmlan = true),
+    )
     private var receiveFilter: String? = null
     private var canFilter: Int? = null
     private var canMask: Int? = null
 
     /** Simulated non-OBD control modules: request ID -> module. Mutable so tests can inspect / clear. */
-    class SimModule(val rx: Int, val name: String, val partNumber: String, val dtcs: MutableList<Triple<String, Int, Int>>)
+    class SimModule(val rx: Int, val name: String, val partNumber: String, val dtcs: MutableList<Triple<String, Int, Int>>, val gmlan: Boolean = false)
     val modules: Map<Int, SimModule> = mapOf(
         0x7E0 to SimModule(0x7E8, "ECM", "OB-12A650-DEMO", mutableListOf()),
         0x7E1 to SimModule(0x7E9, "TCM", "OB-7C150-DEMO", mutableListOf()),
@@ -77,6 +88,9 @@ class DemoTransport(
         0x737 to SimModule(0x73F, "RCM", "OB-14B321-DEMO", mutableListOf(Triple("B0001", 0x13, 0x88))),
         0x726 to SimModule(0x72E, "BCM", "OB-15604-DEMO", mutableListOf(Triple("U0155", 0x00, 0x28))),
         0x720 to SimModule(0x728, "IPC", "OB-10849-DEMO", mutableListOf()),
+        // GM / Opel style modules that only speak GMLAN (codes via \$A9, cleared with \$04)
+        0x243 to SimModule(0x643, "EBCM", "13354012", mutableListOf(Triple("C0561", 0x71, 0x6F), Triple("C0035", 0x00, 0x2F)), gmlan = true),
+        0x247 to SimModule(0x647, "SDM", "13583468", mutableListOf(), gmlan = true),
     )
 
     // Car state
@@ -142,11 +156,17 @@ class DemoTransport(
     private fun handleAt(c: String): List<String> = when {
         c == "Z" || c == "WS" -> {
             echo = true; spaces = true; headers = false; connectedToCar = false
-            protocolCode = '0'
+            protocolCode = '0'; caf = true; pbOptions = 0xE0; pbDivisor = 0x04
             header = defaultHeader; receiveFilter = null; canFilter = null; canMask = null
             listOf("", "ELM327 v1.5")
         }
         limitedClone && ((c.startsWith("CRA") && c != "CRA") || c.startsWith("FCS")) -> listOf("?")
+        c.startsWith("CAF") -> { caf = c.endsWith("1"); listOf("OK") }
+        c.startsWith("PB") && c.length == 6 -> {
+            if (limitedClone) listOf("?") else {
+                pbOptions = c.substring(2, 4).toInt(16); pbDivisor = c.substring(4, 6).toInt(16).coerceAtLeast(1); listOf("OK")
+            }
+        }
         c.startsWith("SH") -> {
             val h = c.substring(2)
             header = if (protocol.is29Bit && h.length == 8) h.substring(2) else h
@@ -173,7 +193,8 @@ class DemoTransport(
     private fun handleObd(cmd: String): List<String> {
         // Odd length -> trailing "expected responses" digit
         val hex = if (cmd.length % 2 == 1) cmd.dropLast(1) else cmd
-        val bytes = hex.chunked(2).map { it.toInt(16) }
+        // With CAN auto formatting off the tester supplies the ISO-TP PCI byte itself.
+        val bytes = hex.chunked(2).map { it.toInt(16) }.let { if (!caf && it.isNotEmpty() && it[0] in 1..7) it.drop(1).take(it[0]) else it }
         if (bytes.isEmpty()) return listOf("?")
         if (!onMsCan && protocolCode != '0' && protocolCode != protocol.code) {
             // Locked to a protocol this car does not speak.
@@ -183,7 +204,14 @@ class DemoTransport(
         connectedToCar = true
         if (onMsCan) {
             val tx = header.toIntOrNull(16) ?: return listOf("NO DATA")
-            val module = msModules[tx] ?: return listOf("NO DATA")
+            // The modules only answer at their bus speed; anything else is garbage on the wire.
+            val bus = when {
+                kotlin.math.abs(pbKbps - 125.0) < 1 -> msModules
+                kotlin.math.abs(pbKbps - 95.24) < 1 -> opelMsModules
+                else -> return listOf("CAN ERROR")
+            }
+            val module = bus[tx] ?: return listOf("NO DATA")
+            if (module.gmlan) gmlanReply(module, bytes)?.let { return it }
             if (!accepts(module.rx)) return listOf("NO DATA")
             val payload = moduleReply(tx, module, bytes) ?: return listOf("NO DATA")
             return format("%03X".format(module.rx), payload)
@@ -195,6 +223,7 @@ class DemoTransport(
             val module = modules[tx] ?: return listOf("NO DATA")
             val isObdService = bytes[0] in setOf(0x01, 0x02, 0x03, 0x04, 0x06, 0x07, 0x09, 0x0A)
             val rxHex = "%03X".format(module.rx)
+            if (module.gmlan) gmlanReply(module, bytes)?.let { return it }
             if (!accepts(module.rx)) return listOf("NO DATA")
             if (isObdService && tx in 0x7E0..0x7E1) {
                 val saved = header
@@ -270,6 +299,28 @@ class DemoTransport(
         val prefix = if (!firstContact) emptyList()
             else (if (protocolCode == '0') listOf("SEARCHING...") else emptyList()) + (if (needsBusInit) listOf("BUS INIT: ...OK") else emptyList())
         return prefix + replies.flatMap { (ecu, payload) -> format(ecu, payload) }
+    }
+
+    /**
+     * GMLAN behaviour: UDS / KWP code services are rejected, \$A9 \$81 sends one UUDT frame per code on 0x5xx
+     * (raw, no PCI), \$04 clears. Returns null for requests handled like any other module.
+     */
+    private fun gmlanReply(m: SimModule, b: List<Int>): List<String>? {
+        val rxHex = "%03X".format(m.rx)
+        fun usdt(vararg payload: Int) = if (accepts(m.rx)) format(rxHex, payload.toList()) else listOf("NO DATA")
+        return when (b.getOrNull(0)) {
+            0x19, 0x18, 0x14 -> usdt(0x7F, b[0], 0x11)
+            0x3E -> usdt(0x7E)
+            0x04 -> { m.dtcs.clear(); usdt(0x44) }
+            0xA9 -> {
+                val uudt = m.rx - 0x100
+                if (!accepts(uudt)) return listOf("NO DATA")
+                val frames = m.dtcs.map { (code, ftb, st) -> DtcDecoder.encode(code).let { listOf(0x81, it.first, it.second, ftb, st, 0, 0, 0) } } +
+                    listOf(listOf(0x81, 0, 0, 0, 0xFF, 0, 0, 0))
+                frames.map { f -> join(listOf("%03X".format(uudt)) + f.map(::hex)) }
+            }
+            else -> null
+        }
     }
 
     private fun accepts(rx: Int): Boolean {

@@ -178,6 +178,18 @@ class Elm327(
         ok
     }
 
+    /**
+     * Switches to a manufacturer's medium-speed bus as protocol B (User1 CAN) with the given ATPB options and baud
+     * divisor. Without ATPB support only the adapter default (125 kbps) is possible.
+     */
+    suspend fun setUserCan(atpb: String, needsCustomSpeed: Boolean): Boolean = exclusive {
+        val pb = at(atpb)
+        if (!pb && needsCustomSpeed) return@exclusive false
+        val ok = at("ATSPB")
+        if (ok) protocol = ObdProtocol.USER1_CAN
+        ok
+    }
+
     /** Checks which optional ELM327 features this adapter really implements (many clones claim v1.4/v1.5 but lack some). */
     suspend fun checkCapabilities(): List<Pair<String, Boolean>> = exclusive {
         val out = mutableListOf<Pair<String, Boolean>>()
@@ -191,6 +203,8 @@ class Elm327(
         add("Flow control data / mode (ATFCSD, ATFCSM)", at("ATFCSD 300000") && at("ATFCSM1"))
         add("Adaptive timing (ATAT)", at("ATAT1"))
         add("User CAN 125k protocol (ATSP B) - Ford/Mazda MS-CAN", at("ATSPB"))
+        add("Custom CAN speed (ATPB) - Opel/Vauxhall MS-CAN 95k", at("ATPB F1 06"))
+        add("Raw CAN frames (ATCAF0) - GMLAN trouble codes", at("ATCAF0") && at("ATCAF1"))
         add("Response count hint (fast mode)", runCatching {
             at("ATSP${baseProtocol.code}")
             at("ATFCSM0"); at("ATCRA"); at("ATSH 7DF")

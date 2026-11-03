@@ -89,7 +89,7 @@ fun SettingsScreen(onBack: () -> Unit) {
                 NumberField(tr("Adapter response timeout in ms (0 = default)"), s.elmTimeoutMs.toString()) { v -> v.toIntOrNull()?.let { n -> update { it.copy(elmTimeoutMs = n) } } }
                 SwitchRow(tr("Multi-PID requests (faster on CAN)"), s.batching) { v -> update { it.copy(batching = v) } }
                 SwitchRow(tr("Fast responses (response count hint)"), s.fastMode) { v -> update { it.copy(fastMode = v) } }
-                SwitchRow(tr("Adapter has an HS/MS-CAN switch (Ford / Mazda)"), s.msCanSwitch) { v -> update { it.copy(msCanSwitch = v) } }
+                SwitchRow(tr("Adapter has an HS/MS-CAN switch (Ford, Mazda, Opel)"), s.msCanSwitch) { v -> update { it.copy(msCanSwitch = v) } }
                 Text(tr("If your adapter is a cheap clone and data looks wrong, turn off multi-PID and fast responses. Changes apply on the next connection."),
                     style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 AdapterCheck()

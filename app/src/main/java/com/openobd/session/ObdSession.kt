@@ -507,7 +507,7 @@ class ObdSession(
 
     private fun moduleClient(): ModuleClient {
         val e = elm ?: throw IllegalStateException("Not connected to a vehicle")
-        val mc = ModuleClient(e)
+        val mc = ModuleClient(e).apply { gmlan = usesGmlan() }
         if (!mc.supported) throw IllegalStateException("Module access needs a CAN vehicle (most cars from 2008 onwards). This car uses ${e.protocol.label}.")
         return mc
     }
@@ -568,18 +568,29 @@ class ObdSession(
      */
     suspend fun enterMsCan(): List<EcuModule> {
         val e = elm ?: throw IllegalStateException("Not connected to a vehicle")
-        if (!e.baseProtocol.isCan || e.baseProtocol.is29Bit) throw IllegalStateException("MS-CAN is only used on 11-bit CAN vehicles (Ford, Lincoln, Mazda).")
+        if (!e.baseProtocol.isCan || e.baseProtocol.is29Bit) throw IllegalStateException("MS-CAN is only used on 11-bit CAN vehicles (Ford, Lincoln, Mazda, Opel).")
         if (bus.value == Bus.MS) return emptyList()
+        val sb = secondaryBus()
         live.pause()
-        if (!e.setProtocol(com.openobd.core.elm.ObdProtocol.USER1_CAN)) {
+        if (!e.setUserCan(sb.atpb, needsCustomSpeed = sb.pbDivisor != 0x04 || sb.pbOptions and 0x10 != 0)) {
             live.resume()
-            throw IllegalStateException("This adapter rejected protocol B (User1 CAN 125k), so it can't talk to MS-CAN.")
+            throw IllegalStateException(
+                if (sb.pbDivisor != 0x04) "This adapter cannot set a custom CAN speed (ATPB), which ${sb.kbps} kbps MS-CAN needs."
+                else "This adapter rejected protocol B (User1 CAN 125k), so it can't talk to MS-CAN.",
+            )
         }
+        debug.event("Switched to ${sb.label} ${sb.kbps} kbps (${sb.atpb})")
         _bus.value = Bus.MS
         moduleScan.value = Op.Idle; discovery.value = Op.Idle
         val known = modulesForBrand().filter { it.secondaryBus }
-        return if (known.isEmpty()) emptyList() else ModuleClient(e).ping(known)
+        return if (known.isEmpty()) emptyList() else ModuleClient(e).apply { gmlan = usesGmlan() }.ping(known)
     }
+
+    private fun usesGmlan() = brand.value?.family?.id in setOf("gm", "gm-europe")
+
+    /** The medium-speed bus of the current brand (Ford-style 125 kbps when the brand has none listed). */
+    fun secondaryBus(): com.openobd.core.brand.SecondaryBus =
+        brand.value?.family?.secondaryBus ?: com.openobd.core.brand.Families.FORD_MS
 
     /** Switches back to the vehicle's normal bus. Returns false if the car doesn't answer (switch still on MS?). */
     suspend fun returnToHsCan(): Boolean {
@@ -660,7 +671,18 @@ class ObdSession(
         scope.launch {
             try {
                 val ms = bus.value == Bus.MS
-                val found = moduleOp { mc -> mc.discover(secondaryBus = ms) { i, n -> discovery.value = Op.Loading("Probing address %03X … %d%%".format(0x700 + i, i * 100 / n)) } }
+                val ranges = (brand.value?.family ?: com.openobd.core.brand.Families.GENERIC).discoveryRanges
+                val total = ranges.sumOf { it.first.count() }
+                var done = 0
+                val found = mutableListOf<EcuModule>()
+                for ((range, filter) in ranges) {
+                    found += moduleOp { mc ->
+                        mc.discover(range, secondaryBus = ms, rxFilter = filter) { i, _ ->
+                            discovery.value = Op.Loading("Probing address %03X … %d%%".format(range.first + i, (done + i) * 100 / total))
+                        }
+                    }.filter { f -> found.none { it.rx == f.rx } }
+                    done += range.count()
+                }
                 val known = modulesForBrand()
                 discovery.value = Op.Done(found.map { f -> known.firstOrNull { it.tx == f.tx && !it.is29Bit && it.secondaryBus == ms } ?: f })
             } catch (e: Exception) {

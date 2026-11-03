@@ -73,7 +73,7 @@ class ModuleClientTest {
     fun discoversAllModules() = runBlocking {
         val (demo, obd, mc) = connect()
         val found = mc.discover()
-        assertEquals(demo.modules.keys.sorted(), found.map { it.tx }.sorted())
+        assertEquals(demo.modules.keys.filter { it in 0x700..0x7F7 }.sorted(), found.map { it.tx }.sorted())
         assertEquals(0x768, found.first { it.tx == 0x760 }.rx)
         assertEquals(2, obd.readPids(listOf(0x0C, 0x0D)).size)
     }
