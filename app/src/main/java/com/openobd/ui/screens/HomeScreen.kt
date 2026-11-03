@@ -120,7 +120,7 @@ private fun CrashCard() {
             TextButton(onClick = {
                 scope.launch {
                     val f = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
-                        app.diagnostics.writeReport(app.session.debugSections(), includeCrash = true)
+                        app.diagnostics.writeReport(app.session.reports.debugSections(), includeCrash = true)
                     }
                     com.openobd.ui.shareFile(context, f, "text/plain")
                     app.diagnostics.dismissCrash()
@@ -299,7 +299,7 @@ private fun ConnectionCard(
                     style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
         }
-        val bus by LocalApp.current.session.bus.collectAsStateWithLifecycle()
+        val bus by LocalApp.current.session.modules.bus.collectAsStateWithLifecycle()
         if (connected && bus != com.openobd.session.Bus.HS) {
             Text(tr("Adapter is on MS-CAN: live data is paused. Return to HS-CAN in Brand features."), color = Warn,
                 style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(top = 8.dp))
@@ -353,7 +353,7 @@ private fun VehicleCard(s: ConnectionState.Connected) {
 private fun BrandCard(onOpen: () -> Unit) {
     val session = LocalApp.current.session
     val brand by session.brand.collectAsStateWithLifecycle()
-    val scan by session.moduleScan.collectAsStateWithLifecycle()
+    val scan by session.modules.moduleScan.collectAsStateWithLifecycle()
     SectionCard(Modifier.clickable(onClick = onOpen)) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Icon(Icons.Default.Hub, null, tint = MaterialTheme.colorScheme.primary)

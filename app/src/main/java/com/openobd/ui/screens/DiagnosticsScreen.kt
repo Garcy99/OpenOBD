@@ -79,7 +79,7 @@ fun DiagnosticsScreen(onConnect: () -> Unit, onNavigate: (String) -> Unit) {
         ScreenTopBar(tr("Trouble codes"), actions = {
             IconButton(onClick = { onNavigate(Routes.LOOKUP) }) { Icon(Icons.Default.Search, tr("Code lookup")) }
             IconButton(onClick = { onNavigate(Routes.HISTORY) }) { Icon(Icons.Default.History, tr("Scan history")) }
-            if (vehicle != null) IconButton(onClick = { shareText(context, tr("Vehicle diagnostic report"), session.buildReport()) }) {
+            if (vehicle != null) IconButton(onClick = { shareText(context, tr("Vehicle diagnostic report"), session.reports.text()) }) {
                 Icon(Icons.Default.Share, tr("Share report"))
             }
         })

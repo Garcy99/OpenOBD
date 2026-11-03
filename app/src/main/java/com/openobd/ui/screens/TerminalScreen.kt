@@ -66,7 +66,7 @@ fun TerminalScreen(onBack: () -> Unit) {
         ScreenTopBar(tr("Terminal"), onBack, actions = {
             IconButton(onClick = {
                 scope.launch {
-                    val f = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) { app.diagnostics.writeReport(session.debugSections(), includeCrash = false) }
+                    val f = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) { app.diagnostics.writeReport(session.reports.debugSections(), includeCrash = false) }
                     com.openobd.ui.shareFile(context, f, "text/plain")
                 }
             }) { Icon(Icons.Default.Share, tr("Share debug report")) }

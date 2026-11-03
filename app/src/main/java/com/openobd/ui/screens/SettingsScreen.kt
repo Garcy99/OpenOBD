@@ -324,7 +324,7 @@ fun DebugReportSection() {
         TextButton(onClick = {
             scope.launch {
                 val f = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
-                    app.diagnostics.writeReport(app.session.debugSections(), includeCrash = true)
+                    app.diagnostics.writeReport(app.session.reports.debugSections(), includeCrash = true)
                 }
                 shareFile(context, f, "text/plain")
             }

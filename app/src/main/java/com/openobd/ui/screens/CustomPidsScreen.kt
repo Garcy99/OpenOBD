@@ -219,7 +219,7 @@ private fun PidEditor(initial: CustomPid, isNew: Boolean, onDismiss: () -> Unit,
                         testResult = tr("Reading…")
                         scope.launch {
                             testResult = try {
-                                val bytes = session.testCustomPid(pid)
+                                val bytes = session.modules.testCustomPid(pid)
                                 if (bytes == null) tr("No answer (check header and request)")
                                 else tr("Bytes: ") + bytes.joinToString(" ") { "%02X".format(it) } + "\nValue: " + (Equation(pid.equation).evaluate(bytes)?.let { "%.3f %s".format(it, pid.unit) } ?: tr("equation needs more bytes"))
                             } catch (e: Exception) { tr("Error: %1\$s", e.message) }

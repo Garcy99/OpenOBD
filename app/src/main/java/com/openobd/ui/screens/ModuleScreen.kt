@@ -60,7 +60,7 @@ fun ModuleScreen(moduleId: String, onBack: () -> Unit, onConnect: () -> Unit) {
     val session = LocalApp.current.session
     val vehicle = connectedVehicle()
     val scope = rememberCoroutineScope()
-    val module = remember(moduleId) { session.findModule(moduleId) }
+    val module = remember(moduleId) { session.modules.findModule(moduleId) }
     var result by remember { mutableStateOf<ModuleScanResult?>(null) }
     var busy by remember { mutableStateOf<String?>(null) }
     var message by remember { mutableStateOf<Pair<Boolean, String>?>(null) }
@@ -81,7 +81,7 @@ fun ModuleScreen(moduleId: String, onBack: () -> Unit, onConnect: () -> Unit) {
         ScreenTopBar(module?.shortName ?: tr("Module"), onBack)
         if (module == null) { CenteredMessage(null, tr("Unknown module.")); return@Column }
         if (vehicle == null) { NotConnected(onConnect); return@Column }
-        val bus by session.bus.collectAsStateWithLifecycle()
+        val bus by session.modules.bus.collectAsStateWithLifecycle()
         val onMs = bus == com.openobd.session.Bus.MS
         if (bus == com.openobd.session.Bus.RETURNING || module.secondaryBus != onMs) {
             CenteredMessage(null, if (module.secondaryBus) tr("%1\$s is on MS-CAN. In Brand features, enable the HS/MS-CAN switch option, ", module.name) +
@@ -89,7 +89,7 @@ fun ModuleScreen(moduleId: String, onBack: () -> Unit, onConnect: () -> Unit) {
             else tr("%1\$s is on HS-CAN but the adapter is on MS-CAN. Go back to Brand features and tap \"Return to HS-CAN\".", module.name))
             return@Column
         }
-        LaunchedEffect(module.id) { run(tr("Reading codes")) { result = session.scanModule(module) } }
+        LaunchedEffect(module.id) { run(tr("Reading codes")) { result = session.modules.scanModule(module) } }
 
         Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
             SectionCard {
@@ -104,7 +104,7 @@ fun ModuleScreen(moduleId: String, onBack: () -> Unit, onConnect: () -> Unit) {
                     style = MaterialTheme.typography.bodySmall, color = Warn)
             }
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                Button(onClick = { run(tr("Reading codes")) { result = session.scanModule(module); message = null } }, enabled = busy == null, modifier = Modifier.weight(1f)) { Text(tr("Read codes")) }
+                Button(onClick = { run(tr("Reading codes")) { result = session.modules.scanModule(module); message = null } }, enabled = busy == null, modifier = Modifier.weight(1f)) { Text(tr("Read codes")) }
                 OutlinedButton(onClick = { confirmClear = true }, enabled = busy == null && result?.online == true, modifier = Modifier.weight(1f),
                     colors = ButtonDefaults.outlinedButtonColors(contentColor = MaterialTheme.colorScheme.error)) { Text(tr("Clear codes")) }
             }
@@ -124,7 +124,7 @@ fun ModuleScreen(moduleId: String, onBack: () -> Unit, onConnect: () -> Unit) {
             }
 
             SectionCard(title = tr("Identification")) {
-                if (ident == null) TextButton(onClick = { run(tr("Reading identification")) { ident = session.identifyModule(module) } }, enabled = busy == null) {
+                if (ident == null) TextButton(onClick = { run(tr("Reading identification")) { ident = session.modules.identifyModule(module) } }, enabled = busy == null) {
                     Text(tr("Read part number, software and hardware versions"))
                 } else if (ident!!.isEmpty()) Text(tr("The module did not report standard identification data."), color = MaterialTheme.colorScheme.onSurfaceVariant)
                 else SelectionContainer { Column { ident!!.forEach { (k, v) -> KeyValueRow(k, v) } } }
@@ -141,7 +141,7 @@ fun ModuleScreen(moduleId: String, onBack: () -> Unit, onConnect: () -> Unit) {
                         val did = didText.toIntOrNull(16) ?: return@TextButton
                         run(tr("Reading DID %1\$s", didText)) {
                             didResult = try {
-                                val bytes = session.readDid(module, did)
+                                val bytes = session.modules.readDid(module, did)
                                 bytes.joinToString(" ") { "%02X".format(it) } + "\n" + ModuleClient.formatDidValue(bytes)
                             } catch (e: Exception) { tr("Error: %1\$s", e.message) }
                         }
@@ -162,9 +162,9 @@ fun ModuleScreen(moduleId: String, onBack: () -> Unit, onConnect: () -> Unit) {
                 TextButton(onClick = {
                     confirmClear = false
                     run(tr("Clearing codes")) {
-                        val r = session.clearModule(module)
+                        val r = session.modules.clearModule(module)
                         message = r.success to r.message
-                        result = session.scanModule(module)
+                        result = session.modules.scanModule(module)
                     }
                 }) { Text(tr("Clear"), color = MaterialTheme.colorScheme.error) }
             },
@@ -231,7 +231,7 @@ private fun ModuleDtcDialog(module: com.openobd.core.brand.EcuModule, d: ModuleD
                         details == null -> TextButton(onClick = {
                             loading = true
                             scope.launch {
-                                try { details = session.dtcDetails(module, d) } catch (e: Exception) { error = e.message }
+                                try { details = session.modules.dtcDetails(module, d) } catch (e: Exception) { error = e.message }
                                 loading = false
                             }
                         }) { Text(tr("Read freeze frame & counters")) }

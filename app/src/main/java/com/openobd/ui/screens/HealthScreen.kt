@@ -50,7 +50,7 @@ private fun healthColor(l: HealthLevel) = when (l) { HealthLevel.GOOD -> Good; H
 fun HealthScreen(onBack: () -> Unit) {
     val app = LocalApp.current
     val garage by app.garage.data.collectAsStateWithLifecycle()
-    val report = remember(garage.health, garage.activeVehicleId) { app.session.healthReport() }
+    val report = remember(garage.health, garage.activeVehicleId) { app.session.health.report() }
     val carName = garage.active?.name
 
     Column(Modifier.fillMaxSize()) {

@@ -74,9 +74,9 @@ fun BrandScreen(onBack: () -> Unit, onNavigate: (String) -> Unit) {
     val activeVehicle = garageData.active
     val brand by session.brand.collectAsStateWithLifecycle()
     val detected by session.brandAutoDetected.collectAsStateWithLifecycle()
-    val scan by session.moduleScan.collectAsStateWithLifecycle()
-    val discovery by session.discovery.collectAsStateWithLifecycle()
-    val bus by session.bus.collectAsStateWithLifecycle()
+    val scan by session.modules.moduleScan.collectAsStateWithLifecycle()
+    val discovery by session.modules.discovery.collectAsStateWithLifecycle()
+    val bus by session.modules.bus.collectAsStateWithLifecycle()
     var picking by remember { mutableStateOf(false) }
     var showCodes by remember { mutableStateOf(false) }
     val family = brand?.family ?: com.openobd.core.brand.Families.GENERIC
@@ -116,8 +116,8 @@ fun BrandScreen(onBack: () -> Unit, onNavigate: (String) -> Unit) {
                 if (vehicle == null) Text(tr("Connect to your car to scan modules."), color = MaterialTheme.colorScheme.onSurfaceVariant)
                 else if (!canUseModules) ErrorText(tr("Module access needs a CAN vehicle (most cars from 2008 onwards). This car uses %1\$s.", vehicle.elm.protocol.label))
                 else if (bus == com.openobd.session.Bus.RETURNING) ErrorText(tr("Switching back to HS-CAN - see the switch card above."))
-                else Button(onClick = session::scanAllModules, enabled = scan !is Op.Loading && discovery !is Op.Loading, modifier = Modifier.fillMaxWidth()) {
-                    Text(tr("Scan all %1\$s modules", (session.modulesOnCurrentBus().size)))
+                else Button(onClick = session.modules::scanAllModules, enabled = scan !is Op.Loading && discovery !is Op.Loading, modifier = Modifier.fillMaxWidth()) {
+                    Text(tr("Scan all %1\$s modules", (session.modules.modulesOnCurrentBus().size)))
                 }
                 when (val s = scan) {
                     is Op.Loading -> { Spacer(Modifier.height(8.dp)); LinearProgressIndicator(Modifier.fillMaxWidth()); Text(s.progress ?: "", style = MaterialTheme.typography.bodySmall) }
@@ -134,9 +134,9 @@ fun BrandScreen(onBack: () -> Unit, onNavigate: (String) -> Unit) {
                         ModuleRow(r.module, r) { onNavigate(Routes.module(r.module.id)) }
                     }
                 } else {
-                    session.modulesOnCurrentBus().forEach { m -> ModuleRow(m, null) { onNavigate(Routes.module(m.id)) } }
+                    session.modules.modulesOnCurrentBus().forEach { m -> ModuleRow(m, null) { onNavigate(Routes.module(m.id)) } }
                 }
-                val otherBus = session.modulesForBrand().filter { it.secondaryBus != (bus == com.openobd.session.Bus.MS) }
+                val otherBus = session.modules.modulesForBrand().filter { it.secondaryBus != (bus == com.openobd.session.Bus.MS) }
                 if (otherBus.isNotEmpty()) {
                     Text(if (bus == com.openobd.session.Bus.MS) tr("On HS-CAN (switch back to reach them)") else tr("On MS-CAN (needs the adapter switch)"),
                         style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(top = 12.dp, bottom = 2.dp))
@@ -148,13 +148,13 @@ fun BrandScreen(onBack: () -> Unit, onNavigate: (String) -> Unit) {
                 Text(tr("Probes every diagnostic address (700-7F7) to find all modules on your car, whatever the brand. Takes about 30-60 seconds."),
                     style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 Spacer(Modifier.height(10.dp))
-                OutlinedButton(onClick = session::discoverModules, enabled = canUseModules && discovery !is Op.Loading && scan !is Op.Loading,
+                OutlinedButton(onClick = session.modules::discoverModules, enabled = canUseModules && discovery !is Op.Loading && scan !is Op.Loading,
                     modifier = Modifier.fillMaxWidth()) { Text(tr("Discover modules")) }
                 when (val d = discovery) {
                     is Op.Loading -> { Spacer(Modifier.height(8.dp)); LinearProgressIndicator(Modifier.fillMaxWidth()); Text(d.progress ?: "", style = MaterialTheme.typography.bodySmall) }
                     is Op.Error -> ErrorText(d.message)
                     is Op.Done -> {
-                        val known = session.modulesForBrand().map { it.id }.toSet()
+                        val known = session.modules.modulesForBrand().map { it.id }.toSet()
                         val new = d.value.filter { it.id !in known }
                         Text(tr("%1\$s module(s) answered", d.value.size) + if (new.isNotEmpty()) tr(", %1\$s not in the list yet", new.size) else "",
                             fontWeight = FontWeight.SemiBold, modifier = Modifier.padding(vertical = 6.dp))
@@ -277,7 +277,7 @@ private fun BusSwitchCard(canUseModules: Boolean) {
     val session = app.session
     val scope = rememberCoroutineScope()
     val settings = appSettings()
-    val bus by session.bus.collectAsStateWithLifecycle()
+    val bus by session.modules.bus.collectAsStateWithLifecycle()
     var prompt by remember { mutableStateOf<com.openobd.session.Bus?>(null) }
     var busy by remember { mutableStateOf(false) }
     var message by remember { mutableStateOf<Pair<Boolean, String>?>(null) }
@@ -287,7 +287,7 @@ private fun BusSwitchCard(canUseModules: Boolean) {
             Text(tr("My adapter has an HS/MS-CAN switch"), Modifier.weight(1f))
             androidx.compose.material3.Switch(settings.msCanSwitch, { v -> scope.launch { app.settings.update { it.copy(msCanSwitch = v) } } })
         }
-        val sb = session.secondaryBus()
+        val sb = session.modules.secondaryBus()
         Text((if (sb == com.openobd.core.brand.Families.OPEL_MS)
             tr("Opel / Vauxhall put the radio / infotainment, display, climate control and phone module on a second, slower bus (MS-CAN, 95.2 kbps). ") +
                 tr("OpenOBD sets that speed with ATPB; adapters without it cannot reach the bus even with a switch. ")
@@ -329,13 +329,13 @@ private fun BusSwitchCard(canUseModules: Boolean) {
                     scope.launch {
                         message = try {
                             if (toMs) {
-                                val answered = session.enterMsCan()
-                                val known = session.modulesForBrand().count { it.secondaryBus }
+                                val answered = session.modules.enterMsCan()
+                                val known = session.modules.modulesForBrand().count { it.secondaryBus }
                                 if (known == 0) true to tr("Now on MS-CAN. Use Discover modules to find the modules on this bus.")
                                 else if (answered.isEmpty()) false to tr("No known MS-CAN module answered. Check the switch is on MS, then try Discover modules.")
                                 else true to tr("Now on MS-CAN: %1\$s of %2\$s known modules answered (%3\$s).", answered.size, known, (answered.joinToString { it.shortName }))
                             } else {
-                                if (session.returnToHsCan()) true to tr("Back on HS-CAN. Live data resumed.")
+                                if (session.modules.returnToHsCan()) true to tr("Back on HS-CAN. Live data resumed.")
                                 else false to tr("The car did not answer on HS-CAN. Make sure the switch is back on HS and tap Return to HS-CAN again.")
                             }
                         } catch (e: Exception) { false to (e.message ?: tr("Failed")) }

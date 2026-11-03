@@ -190,30 +190,30 @@ class UiSmokeTest {
             }
         }
         waitFor { c.session.brand.value?.id == "ford" }
-        tap("Scan all ${c.session.modulesOnCurrentBus().size} modules")
-        waitFor(30_000) { c.session.moduleScan.value is Op.Done }
+        tap("Scan all ${c.session.modules.modulesOnCurrentBus().size} modules")
+        waitFor(30_000) { c.session.modules.moduleScan.value is Op.Done }
         shot("18_modules_$suffix")
         tap("Anti-lock brake system")
         waitFor { rule.onAllNodesWithText("C0035-31").fetchSemanticsNodes().isNotEmpty() }
         shot("19_module_abs_$suffix")
         rule.activityRule.scenario.onActivity { it.onBackPressedDispatcher.onBackPressed() }
         tap("Discover modules")
-        waitFor(60_000) { c.session.discovery.value is Op.Done }
-        assertTrue((c.session.discovery.value as Op.Done).value.size == 6)
+        waitFor(60_000) { c.session.modules.discovery.value is Op.Done }
+        assertTrue((c.session.modules.discovery.value as Op.Done).value.size == 6)
         shot("20_discovery_$suffix")
         // Manual HS/MS-CAN switch adapter flow
         runBlocking { c.settings.update { it.copy(msCanSwitch = true) } }
         waitFor { c.settings.settings.value.msCanSwitch }
         tap("Switch to MS-CAN")
         tap("Continue")
-        waitFor { c.session.bus.value == com.openobd.session.Bus.MS }
+        waitFor { c.session.modules.bus.value == com.openobd.session.Bus.MS }
         waitFor { rule.onAllNodesWithText("3 of 6 known modules", substring = true).fetchSemanticsNodes().isNotEmpty() }
         tap("Scan all 6 modules")
-        waitFor(30_000) { c.session.moduleScan.value is Op.Done }
+        waitFor(30_000) { c.session.modules.moduleScan.value is Op.Done }
         shot("22_ms_can_$suffix")
         tap("Return to HS-CAN")
         tap("Continue")
-        waitFor { c.session.bus.value == com.openobd.session.Bus.HS }
+        waitFor { c.session.modules.bus.value == com.openobd.session.Bus.HS }
         waitFor { c.session.live.rate.value > 0 || c.session.live.readings.value.isNotEmpty() }
 
         tap("Manage custom PIDs")
@@ -485,8 +485,8 @@ class VehicleCheckUiTest {
         rule.onAllNodesWithText("Used car & pre-ITV check")[0].performClick()
         rule.waitForIdle()
         rule.onAllNodes(hasText("Run the check") and hasClickAction())[0].performClick()
-        waitFor { c.session.vehicleCheck.value is Op.Done }
-        val report = (c.session.vehicleCheck.value as Op.Done).value
+        waitFor { c.session.check.result.value is Op.Done }
+        val report = (c.session.check.result.value as Op.Done).value
         // Demo car: MIL on with P0301/P0420 stored and ABS / airbag / body codes -> serious warning, would fail the ITV.
         assertTrue(report.items.joinToString("\n"), report.verdict == com.openobd.core.report.Verdict.BAD)
         assertTrue(report.itv == com.openobd.core.report.ItvVerdict.FAIL)

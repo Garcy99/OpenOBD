@@ -145,7 +145,7 @@ class DemoSessionTest {
         waitFor("codes gone", 20_000) { !visible("P0301") }
 
         // The debug report can be written to app storage and contains this session.
-        val report = c.diagnostics.writeReport(c.session.debugSections(), includeCrash = false).readText()
+        val report = c.diagnostics.writeReport(c.session.reports.debugSections(), includeCrash = false).readText()
         assertTrue(report.contains("> 04") && report.contains("Connection: DEMO"))
 
         tab("Vehicle")
@@ -158,9 +158,9 @@ class DemoSessionTest {
         configure()
         tap("Connect")
         waitFor("connection") { c.session.state.value is ConnectionState.Connected }
-        c.session.runVehicleCheck()
-        waitFor("vehicle check", 90_000) { c.session.vehicleCheck.value is Op.Done || c.session.vehicleCheck.value is Op.Error }
-        val report = (c.session.vehicleCheck.value as Op.Done).value
+        c.session.check.run()
+        waitFor("vehicle check", 90_000) { c.session.check.result.value is Op.Done || c.session.check.result.value is Op.Error }
+        val report = (c.session.check.result.value as Op.Done).value
         assertEquals(com.openobd.core.report.Verdict.BAD, report.verdict)
         val vehicle = (c.session.state.value as ConnectionState.Connected).vehicle
         val pdf = com.openobd.ui.screens.writeVehicleCheckPdf(app, report, vehicle, "Demo")

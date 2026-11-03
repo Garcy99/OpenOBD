@@ -82,7 +82,7 @@ fun CodeScreen(code: String, onBack: () -> Unit, onAssistant: () -> Unit) {
     val ff by session.freezeFrame.collectAsStateWithLifecycle()
     val tests by session.monitorTests.collectAsStateWithLifecycle()
     val desc = remember(code) { session.describe(code) }
-    val explanation = remember(code, ff, tests) { session.explain(code) }
+    val explanation = remember(code, ff, tests) { session.diagnosis.explain(code) }
 
     Column(Modifier.fillMaxSize()) {
         ScreenTopBar(code, onBack)
@@ -120,7 +120,7 @@ fun CodeScreen(code: String, onBack: () -> Unit, onAssistant: () -> Unit) {
             }
             if (vehicle != null && (ff !is Op.Done || (tests !is Op.Done && vehicle.elm.protocol.isCan))) {
                 val busy = ff is Op.Loading || tests is Op.Loading
-                OutlinedButton(onClick = session::readMoreDiagnosisData, enabled = !busy, modifier = Modifier.fillMaxWidth()) {
+                OutlinedButton(onClick = session.diagnosis::readMoreData, enabled = !busy, modifier = Modifier.fillMaxWidth()) {
                     if (busy) { CircularProgressIndicator(Modifier.size(16.dp), strokeWidth = 2.dp); Spacer(Modifier.width(8.dp)) }
                     Text(tr("Read freeze frame and on-board tests for better evidence"))
                 }
@@ -155,7 +155,7 @@ fun AssistantScreen(code: String, onBack: () -> Unit, onSettings: () -> Unit) {
     var busy by remember { mutableStateOf(false) }
     var error by remember { mutableStateOf<String?>(null) }
     var showContext by remember { mutableStateOf(false) }
-    val contextText = remember(code) { session.assistantContext(code) }
+    val contextText = remember(code) { session.diagnosis.assistantContext(code) }
     val assistant = remember(settings.claudeApiKey, settings.language) {
         settings.claudeApiKey.takeIf { it.isNotBlank() }?.let { DiagnosisAssistant(app.assistantBackend(it), com.openobd.ui.I18n.language) }
     }

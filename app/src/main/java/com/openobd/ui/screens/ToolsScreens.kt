@@ -64,10 +64,10 @@ import kotlinx.coroutines.launch
 fun DieselScreen(onBack: () -> Unit, onConnect: () -> Unit, onGuides: () -> Unit) {
     val session = LocalApp.current.session
     val vehicle = connectedVehicle()
-    val status by session.regen.collectAsStateWithLifecycle()
+    val status by session.diesel.status.collectAsStateWithLifecycle()
     DisposableEffect(vehicle != null) {
-        if (vehicle != null) session.startRegenMonitor()
-        onDispose { session.stopRegenMonitor() }
+        if (vehicle != null) session.diesel.start()
+        onDispose { session.diesel.stop() }
     }
     Column(Modifier.fillMaxSize()) {
         ScreenTopBar(tr("Diesel particulate filter"), onBack)
@@ -117,7 +117,7 @@ private fun Condition(label: String, ok: Boolean?) {
 fun ServiceGuidesScreen(onBack: () -> Unit, onDieselHelper: () -> Unit) {
     val session = LocalApp.current.session
     val brand by session.brand.collectAsStateWithLifecycle()
-    val procedures = remember(brand) { Procedures.forCar(brand?.family?.id, session.isDiesel || brand == null) }
+    val procedures = remember(brand) { Procedures.forCar(brand?.family?.id, session.diesel.isDiesel || brand == null) }
     var open by remember { mutableStateOf<String?>(null) }
     Column(Modifier.fillMaxSize()) {
         ScreenTopBar(tr("Service guides"), onBack)
@@ -167,9 +167,9 @@ fun IdExplorerScreen(onBack: () -> Unit, onConnect: () -> Unit) {
     val session = LocalApp.current.session
     val vehicle = connectedVehicle()
     val scope = rememberCoroutineScope()
-    val discovered by session.discovery.collectAsStateWithLifecycle()
+    val discovered by session.modules.discovery.collectAsStateWithLifecycle()
     val modules = remember(discovered) {
-        (session.modulesOnCurrentBus() + ((discovered as? Op.Done)?.value.orEmpty())).distinctBy { it.id }
+        (session.modules.modulesOnCurrentBus() + ((discovered as? Op.Done)?.value.orEmpty())).distinctBy { it.id }
     }
     var module by remember { mutableStateOf<EcuModule?>(null) }
     var range by remember { mutableStateOf(ranges.first()) }
@@ -185,7 +185,7 @@ fun IdExplorerScreen(onBack: () -> Unit, onConnect: () -> Unit) {
         val m = module ?: return@LaunchedEffect
         while (watching && isActive) {
             val ids = watched.filterValues { it }.keys
-            if (ids.isNotEmpty()) runCatching { session.readIds(m, ids, range.gmlan) }.onSuccess { r ->
+            if (ids.isNotEmpty()) runCatching { session.modules.readIds(m, ids, range.gmlan) }.onSuccess { r ->
                 r.forEach { (id, bytes) -> found[id]?.let { previous[id] = it }; found[id] = bytes }
             }
             delay(1000)
@@ -222,7 +222,7 @@ fun IdExplorerScreen(onBack: () -> Unit, onConnect: () -> Unit) {
                     error = null; found.clear(); watched.clear(); watching = false
                     scope.launch {
                         try {
-                            val r = session.scanIds(m, range.range, range.gmlan) { i, n -> progress = i to n }
+                            val r = session.modules.scanIds(m, range.range, range.gmlan) { i, n -> progress = i to n }
                             found.putAll(r)
                         } catch (e: Exception) { error = e.message }
                         progress = null
@@ -248,7 +248,7 @@ fun IdExplorerScreen(onBack: () -> Unit, onConnect: () -> Unit) {
                                 val ascii = bytes.filter { it in 0x20..0x7E }.map { it.toChar() }.joinToString("")
                                 if (ascii.length >= 4 && ascii.length >= bytes.size / 2) Text("\"$ascii\"", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                             }
-                            TextButton(onClick = { scope.launch { session.saveIdAsCustomPid(m, id, range.gmlan, bytes.size); savedMsg = tr("Saved as a custom PID. Edit its name and formula in Custom PIDs.") } }) {
+                            TextButton(onClick = { scope.launch { session.modules.saveIdAsCustomPid(m, id, range.gmlan, bytes.size); savedMsg = tr("Saved as a custom PID. Edit its name and formula in Custom PIDs.") } }) {
                                 Text(tr("Save"))
                             }
                         }

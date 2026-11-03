@@ -85,7 +85,7 @@ fun VehicleCheckScreen(onBack: () -> Unit, onConnect: () -> Unit) {
     val app = LocalApp.current
     val session = app.session
     val vehicle = connectedVehicle()
-    val op by session.vehicleCheck.collectAsStateWithLifecycle()
+    val op by session.check.result.collectAsStateWithLifecycle()
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
 
@@ -107,8 +107,8 @@ fun VehicleCheckScreen(onBack: () -> Unit, onConnect: () -> Unit) {
             }
             when (val s = op) {
                 is Op.Loading -> LoadingBox(s.progress)
-                is Op.Error -> { ErrorText(s.message); Button(onClick = session::runVehicleCheck) { Text(tr("Try again")) } }
-                Op.Idle -> Button(onClick = session::runVehicleCheck, modifier = Modifier.fillMaxWidth()) { Text(tr("Run the check")) }
+                is Op.Error -> { ErrorText(s.message); Button(onClick = session.check::run) { Text(tr("Try again")) } }
+                Op.Idle -> Button(onClick = session.check::run, modifier = Modifier.fillMaxWidth()) { Text(tr("Run the check")) }
                 is Op.Done -> {
                     val r = s.value
                     VerdictCard(tr("As a used car"), tr(r.verdict.label), tr(r.verdict.detail), when (r.verdict) { Verdict.GOOD -> Good; Verdict.CHECK -> Warn; Verdict.BAD -> Bad })
@@ -130,7 +130,7 @@ fun VehicleCheckScreen(onBack: () -> Unit, onConnect: () -> Unit) {
                         }, modifier = Modifier.weight(1f)) {
                             Icon(Icons.Default.PictureAsPdf, null); Spacer(Modifier.width(6.dp)); Text(tr("Share PDF"))
                         }
-                        OutlinedButton(onClick = session::runVehicleCheck, modifier = Modifier.weight(1f)) { Text(tr("Run again")) }
+                        OutlinedButton(onClick = session.check::run, modifier = Modifier.weight(1f)) { Text(tr("Run again")) }
                     }
                     Text(tr(VehicleCheck.DISCLAIMER), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
