@@ -40,11 +40,11 @@ jobs:
           java-version: 17
       - uses: actions/setup-python@v5
         with:
-          python-version: "3.x"
+          python-version: "3.12"
       - uses: gradle/actions/setup-gradle@v4
       - name: Start the newest ELM327-emulator
         run: |
-          pip install --upgrade ELM327-emulator
+          pip install "git+https://github.com/Ircama/ELM327-emulator.git"
           elm -V
           elm -n 35000 -s car -d
           for i in $(seq 1 30); do (echo > /dev/tcp/127.0.0.1/35000) 2>/dev/null && exit 0; sleep 1; done
