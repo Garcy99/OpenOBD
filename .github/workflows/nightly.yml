@@ -1,0 +1,58 @@
+name: Nightly checks
+
+# Things outside our control that can break without a code change: the public vehicle data services
+# (EEA, RDW, EPA fueleconomy.gov, NHTSA vPIC) and the newest ELM327-emulator release.
+on:
+  schedule:
+    - cron: "17 3 * * *"
+  workflow_dispatch:
+  push:
+    paths:
+      - ".github/workflows/nightly.yml"
+      - "app/src/main/java/com/openobd/core/specs/**"
+      - "app/src/test/java/com/openobd/core/LiveSpecsTest.kt"
+
+jobs:
+  live-services:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+      - uses: gradle/actions/setup-gradle@v4
+      - name: Vehicle lookups against the live services
+        run: ./gradlew testDebugUnitTest --tests '*LiveSpecsTest' -PliveSpecs=true
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: live-services-report
+          path: app/build/reports/tests/testDebugUnitTest
+
+  latest-emulator:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.x"
+      - uses: gradle/actions/setup-gradle@v4
+      - name: Start the newest ELM327-emulator
+        run: |
+          pip install --upgrade ELM327-emulator
+          elm -V
+          elm -n 35000 -s car -d
+          for i in $(seq 1 30); do (echo > /dev/tcp/127.0.0.1/35000) 2>/dev/null && exit 0; sleep 1; done
+          echo "emulator did not start"; exit 1
+      - name: Session against the emulator
+        run: ./gradlew testDebugUnitTest --tests '*ExternalEmulatorTest' -PelmEmulator=127.0.0.1:35000
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: latest-emulator-log
+          path: app/build/elm-emulator.log
