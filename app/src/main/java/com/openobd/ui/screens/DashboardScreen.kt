@@ -20,6 +20,7 @@ import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Fullscreen
+import androidx.compose.material.icons.filled.PictureInPictureAlt
 import androidx.compose.material.icons.filled.RestartAlt
 import androidx.compose.material.icons.filled.Speed
 import androidx.compose.material.icons.filled.Pin
@@ -80,6 +81,7 @@ fun DashboardScreen(onConnect: () -> Unit, onHud: () -> Unit) {
             if (vehicle != null) {
                 IconButton(onClick = { app.session.live.resetStats() }) { Icon(Icons.Default.RestartAlt, tr("Reset min/max")) }
                 IconButton(onClick = onHud) { Icon(Icons.Default.Fullscreen, tr("HUD mode")) }
+                FloatingGaugesButton()
             }
             IconButton(onClick = { editing = !editing }) { Icon(if (editing) Icons.Default.Close else Icons.Default.Edit, tr("Edit")) }
         })
@@ -239,3 +241,38 @@ private fun DigitalTile(label: String, valueText: String, unit: String, minText:
 
 /** Formats a reading compactly for small displays. */
 fun compact(value: Double?, decimals: Int) = value?.let { formatNumber(it, decimals) } ?: "—"
+
+/** Shows or hides the floating window with three values over other apps (asks for the permission first). */
+@Composable
+private fun FloatingGaugesButton() {
+    val context = androidx.compose.ui.platform.LocalContext.current
+    val shown by com.openobd.service.ObdService.gaugesShown.collectAsStateWithLifecycle()
+    var explain by remember { mutableStateOf(false) }
+    fun send(action: String) {
+        runCatching { context.startService(android.content.Intent(context, com.openobd.service.ObdService::class.java).setAction(action)) }
+    }
+    IconButton(onClick = {
+        when {
+            shown -> send(com.openobd.service.ObdService.ACTION_HIDE_GAUGES)
+            com.openobd.service.FloatingGauges.canShow(context) -> send(com.openobd.service.ObdService.ACTION_SHOW_GAUGES)
+            else -> explain = true
+        }
+    }) {
+        Icon(Icons.Default.PictureInPictureAlt, if (shown) tr("Hide the floating window") else tr("Floating window over other apps"))
+    }
+    if (explain) androidx.compose.material3.AlertDialog(
+        onDismissRequest = { explain = false },
+        title = { Text(tr("Floating window")) },
+        text = { Text(tr("Shows the first three values of your dashboard over other apps, such as Google Maps or Waze. Drag it anywhere; tap it to come back here. Android asks you to allow \"Display over other apps\" for OpenOBD once.")) },
+        confirmButton = {
+            androidx.compose.material3.TextButton(onClick = {
+                explain = false
+                runCatching {
+                    context.startActivity(android.content.Intent(android.provider.Settings.ACTION_MANAGE_OVERLAY_PERMISSION,
+                        android.net.Uri.parse("package:" + context.packageName)))
+                }
+            }) { Text(tr("Allow")) }
+        },
+        dismissButton = { androidx.compose.material3.TextButton(onClick = { explain = false }) { Text(tr("Cancel")) } },
+    )
+}

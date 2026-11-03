@@ -181,7 +181,7 @@ class DemoTransport(
         c.startsWith("CM") -> { canMask = c.substring(2).toIntOrNull(16); listOf("OK") }
         c == "I" -> listOf("ELM327 v1.5")
         c == "@1" -> listOf("OpenOBD Demo Adapter")
-        c == "RV" -> listOf("%.1fV".format(if (connectedToCar) 14.1 + random.nextDouble(-0.1, 0.1) else 12.6))
+        c == "RV" -> listOf("%.1fV".format(java.util.Locale.US, if (connectedToCar) 14.1 + random.nextDouble(-0.1, 0.1) else 12.6))
         c == "DPN" -> listOf(if (onMsCan) "B" else if (!connectedToCar) protocolCode.toString() else if (protocolCode == '0') "A${protocol.code}" else "${protocol.code}")
         c.startsWith("SP") || c.startsWith("TP") -> { protocolCode = c.last(); listOf("OK") }
         c == "DP" -> listOf(if (protocolCode == '0') "AUTO, ${protocol.label}" else protocol.label)

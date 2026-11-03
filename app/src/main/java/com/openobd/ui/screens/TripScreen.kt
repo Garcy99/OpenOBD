@@ -64,6 +64,7 @@ fun TripScreen(onBack: () -> Unit, onConnect: () -> Unit, onHistory: () -> Unit 
                 BigStat(tr("Now"), inst?.let { fmt(it, ObdUnit.L_PER_100KM) } ?: readings["CALC_FUEL"]?.value?.let { fmt(it, ObdUnit.LITERS_PER_HOUR, 2) } ?: "—", Modifier.weight(1f))
                 BigStat(tr("Trip average"), t.avgConsumption?.let { fmt(it, ObdUnit.L_PER_100KM) } ?: "—", Modifier.weight(1f))
             }
+            EcoScoreCard(t.ecoScore, t.eco, session.trip.diesel)
             SectionCard(title = tr("Details")) {
                 KeyValueRow(tr("Fuel used"), if (t.hasFuelData) fmt(t.fuelL, ObdUnit.LITERS, 2) else tr("Not available"))
                 if (settings.fuelPricePerL > 0 && t.hasFuelData) KeyValueRow(tr("Fuel cost"), "%.2f".format(t.fuelL * settings.fuelPricePerL))
@@ -86,6 +87,31 @@ private fun BigStat(label: String, value: String, modifier: Modifier = Modifier)
         Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.fillMaxWidth()) {
             Text(label, style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
             Text(value, style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold, fontFamily = FontFamily.Monospace, maxLines = 1)
+        }
+    }
+}
+
+/** Smooth-driving score with the counters behind it and the most useful tips. */
+@Composable
+fun EcoScoreCard(score: Int?, eco: com.openobd.core.trip.EcoStats, diesel: Boolean) {
+    SectionCard(title = tr("Eco driving")) {
+        if (score == null) {
+            Text(tr("The score appears after the first kilometre and two minutes of driving."), style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant)
+            return@SectionCard
+        }
+        val color = when { score >= 80 -> com.openobd.ui.theme.Good; score >= 60 -> com.openobd.ui.theme.Warn; else -> com.openobd.ui.theme.Bad }
+        androidx.compose.foundation.layout.Row(verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
+            Text("$score", style = MaterialTheme.typography.displaySmall, fontWeight = androidx.compose.ui.text.font.FontWeight.Bold, color = color)
+            androidx.compose.foundation.layout.Spacer(Modifier.padding(horizontal = 6.dp))
+            Text(tr("of 100"), color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
+        KeyValueRow(tr("Hard accelerations"), eco.harshAccel.toString())
+        KeyValueRow(tr("Hard braking"), eco.harshBrake.toString())
+        KeyValueRow(tr("High engine speed"), formatDuration(eco.highRpmS))
+        KeyValueRow(tr("Long idling"), formatDuration(eco.longIdleS))
+        com.openobd.core.trip.EcoScorer.tips(eco, diesel).forEach { tip ->
+            Text("• " + tr(tip.text, *tip.args.toTypedArray()), style = MaterialTheme.typography.bodyMedium, modifier = Modifier.padding(top = 4.dp))
         }
     }
 }

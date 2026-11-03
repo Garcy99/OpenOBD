@@ -73,6 +73,7 @@ class GarageRepository(context: Context) {
                 fuel = d.fuel.filter { it.vehicleId != id },
                 trips = d.trips.filter { it.vehicleId != id },
                 health = d.health.filter { it.vehicleId != id },
+                batteryTests = d.batteryTests.filter { it.vehicleId != id },
             )
         }
         withContext(Dispatchers.IO) { trips.forEach { trackFile(it.id).delete() } }
@@ -82,6 +83,12 @@ class GarageRepository(context: Context) {
     suspend fun addHealthSample(h: com.openobd.core.health.HealthSample) = update { d ->
         val mine = (d.health.filter { it.vehicleId == h.vehicleId } + h).takeLast(300)
         d.copy(health = d.health.filter { it.vehicleId != h.vehicleId } + mine)
+    }
+
+    /** Keeps the last 50 battery tests per car. */
+    suspend fun addBatteryTest(r: com.openobd.core.battery.BatteryTestRecord) = update { d ->
+        val mine = (d.batteryTests.filter { it.vehicleId == r.vehicleId } + r).takeLast(50)
+        d.copy(batteryTests = d.batteryTests.filter { it.vehicleId != r.vehicleId } + mine)
     }
 
     suspend fun upsertMaintenance(item: MaintenanceItem) = update { d ->

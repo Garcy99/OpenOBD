@@ -89,6 +89,7 @@ object Routes {
     const val HEALTH = "health"
     const val LIGHTS = "lights"
     const val PACKS = "packs"
+    const val BATTERY = "battery"
     const val WELCOME = "welcome"
     const val LOG = "log/{name}"
     fun log(name: String) = "log/" + android.net.Uri.encode(name)
@@ -187,6 +188,7 @@ fun OpenObdNavHost() {
             composable(Routes.PACKS) { com.openobd.ui.screens.PacksScreen(onBack = back) }
             composable(Routes.LIGHTS) { com.openobd.ui.screens.WarningLightScreen(onBack = back, onSettings = { nav.navigate(Routes.SETTINGS) }) }
             composable(Routes.HEALTH) { com.openobd.ui.screens.HealthScreen(onBack = back) }
+            composable(Routes.BATTERY) { com.openobd.ui.screens.BatteryTestScreen(onBack = back, onConnect = toHome) }
                 composable(Routes.CHECK) { com.openobd.ui.screens.VehicleCheckScreen(onBack = back, onConnect = toHome) }
                 composable(Routes.VEHICLE) { VehicleInfoScreen(onBack = back, onConnect = toHome) }
                 composable(Routes.FREEZE) { FreezeFrameScreen(onBack = back, onConnect = toHome) }

@@ -81,6 +81,9 @@ class TranslationCoverageTest {
         keys += com.openobd.core.service.Procedures.texts
         keys += com.openobd.core.brand.PidPacks.texts
         keys += com.openobd.core.specs.CrossCheck.texts
+        keys += com.openobd.core.voice.VoiceWatch.texts
+        keys += com.openobd.core.trip.EcoScorer.texts
+        keys += com.openobd.core.battery.CrankAnalysis.texts + com.openobd.session.BatteryTestFeature.texts
         keys += listOf("Name is required", "Request must be hex bytes, e.g. 221E1C",
             "Only read requests are allowed (services 01, 02, 09, 21, 22, 1A, AA)", "Header must be a CAN ID like 7E0")
         // Causes and advice of the code database (shown translated in the code screen)

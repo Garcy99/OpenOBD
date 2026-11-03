@@ -1,0 +1,4 @@
+• Alertas habladas: sobrecalentamiento, batería que no carga, limpieza del FAP y tus alertas
+• Prueba de batería y arranque con historial
+• Ventana flotante con 3 valores sobre Maps o Waze
+• Puntuación de conducción eficiente en cada viaje, con consejos

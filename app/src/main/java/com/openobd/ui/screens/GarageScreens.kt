@@ -571,7 +571,8 @@ fun TripsScreen(onBack: () -> Unit, onOpen: (String) -> Unit) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Column(Modifier.weight(1f)) {
                             Text(fmtDateTime(t.start), fontWeight = FontWeight.SemiBold)
-                            Text("${fmtKm(t.distanceKm, settings.units, 1)} · ${formatDuration((t.end - t.start) / 1000.0)} · ${fmtL100(t.avgL100, settings.units)}",
+                            Text("${fmtKm(t.distanceKm, settings.units, 1)} · ${formatDuration((t.end - t.start) / 1000.0)} · ${fmtL100(t.avgL100, settings.units)}" +
+                                (t.ecoScore?.let { " · " + tr("Eco %1\$s", it) } ?: ""),
                                 style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                         }
                         if (t.trackPoints > 1) Icon(Icons.Default.Map, tr("Has map"), tint = MaterialTheme.colorScheme.primary)
@@ -614,6 +615,7 @@ fun TripDetailScreen(tripId: String, onBack: () -> Unit) {
                 KeyValueRow(tr("Average consumption"), fmtL100(t.avgL100, settings.units))
                 t.cost?.let { KeyValueRow(tr("Fuel cost"), fmtMoney(it)) }
             }
+            if (t.ecoScore != null) EcoScoreCard(t.ecoScore, t.eco, g.vehicles.firstOrNull { it.id == t.vehicleId }?.specs?.fuel?.burnsDiesel == true)
             val speeds = pts.mapNotNull { p -> p.speedKmh?.let { p.t to ObdUnit.KMH.display(it.toDouble(), settings.units).value.toFloat() } }
             if (speeds.size >= 2) SectionCard(title = tr("Speed")) {
                 LineChart(listOf(ChartSeries(speeds, Cyan, min = 0f)), (speeds.last().first - speeds.first().first).coerceAtLeast(1), speeds.last().first,

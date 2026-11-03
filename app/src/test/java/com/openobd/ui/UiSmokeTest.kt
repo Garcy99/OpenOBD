@@ -499,6 +499,33 @@ class VehicleCheckUiTest {
         // The PDF itself is generated on real Android in the device tests (Robolectric has no native PDF engine).
         c.session.disconnect()
     }
+
+    @Test
+    fun batteryStartingTest() {
+        val app = rule.activity.application as OpenObdApp
+        val c = app.container
+        runBlocking { c.settings.update { it.copy(connectionType = ConnectionType.DEMO, language = "en", tripGps = false, theme = ThemeMode.DARK) } }
+        waitFor { c.settings.settings.value.connectionType == ConnectionType.DEMO && I18n.language == "en" }
+        c.session.connect()
+        waitFor { c.session.state.value is ConnectionState.Connected }
+        rule.onAllNodes(hasText("More") and isSelectable())[0].performClick()
+        rule.waitForIdle()
+        rule.onAllNodes(hasScrollAction())[0].performScrollToNode(hasText("Battery & starting test"))
+        rule.onAllNodesWithText("Battery & starting test")[0].performClick()
+        rule.waitForIdle()
+        rule.onAllNodes(hasText("Start test") and hasClickAction())[0].performClick()
+        waitFor { c.session.battery.state.value is com.openobd.session.BatteryTestState.WaitingStart }
+        assertTrue(rule.onAllNodesWithText("Start the engine now").fetchSemanticsNodes().isNotEmpty())
+        waitFor(60_000) { c.session.battery.state.value is com.openobd.session.BatteryTestState.Done }
+        val r = (c.session.battery.state.value as com.openobd.session.BatteryTestState.Done).result
+        // Demo start: 12.5 V at rest, a short inrush spike, ~10.3 V while cranking, then 14.2 V charging
+        assertTrue(r.toString(), r.restV!! in 12.3..12.7 && r.minV!! in 10.0..10.8 && r.chargingV!! in 14.0..14.4)
+        assertTrue(r.toString(), r.overall == com.openobd.core.battery.BatteryLevel.GOOD)
+        waitFor { c.garage.data.value.batteryTests.isNotEmpty() }
+        waitFor { rule.onAllNodesWithText("Earlier tests").fetchSemanticsNodes().isNotEmpty() }
+        shot("31_battery_test_dark")
+        c.session.disconnect()
+    }
 }
 
 /** Code explanation screen and the AI assistant chat (with a fake backend instead of the Claude API). */

@@ -13,7 +13,9 @@ data class TripStats(
     val maxSpeed: Double = 0.0,
     val maxRpm: Double = 0.0,
     val hasFuelData: Boolean = false,
+    val eco: com.openobd.core.trip.EcoStats = com.openobd.core.trip.EcoStats(),
 ) {
+    val ecoScore: Int? get() = com.openobd.core.trip.EcoScorer.score(eco)
     val avgSpeed: Double get() = if (movingS > 0) distanceKm / (movingS / 3600.0) else 0.0
     val avgConsumption: Double? get() = if (hasFuelData && distanceKm > 0.1) fuelL / distanceKm * 100.0 else null
 }
@@ -23,10 +25,14 @@ class TripComputer : CycleListener {
     private val _stats = MutableStateFlow(TripStats())
     val stats: StateFlow<TripStats> = _stats
     private var lastTime = 0L
+    /** Diesel engines are judged against a lower economical engine speed. */
+    @Volatile var diesel = false
+    private var eco = com.openobd.core.trip.EcoScorer(diesel)
 
     fun reset() {
         _stats.value = TripStats()
         lastTime = 0L
+        eco = com.openobd.core.trip.EcoScorer(diesel)
     }
 
     override fun onCycle(values: Map<String, Double>, fresh: Set<String>, timeMs: Long) {
@@ -37,7 +43,9 @@ class TripComputer : CycleListener {
         val rpm = values["010C"] ?: 0.0
         val fuel = values["CALC_FUEL"]
         val s = _stats.value
+        eco.onSample(speed, rpm, timeMs)
         _stats.value = s.copy(
+            eco = eco.current,
             durationS = s.durationS + dt,
             movingS = s.movingS + if (speed > 1) dt else 0.0,
             idleS = s.idleS + if (speed <= 1 && rpm > 300) dt else 0.0,

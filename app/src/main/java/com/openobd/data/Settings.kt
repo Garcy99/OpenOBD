@@ -89,6 +89,8 @@ data class AppSettings(
     val dvlaApiKey: String = "",
     /** Optional Claude API key for the AI diagnosis assistant (stays on the phone, only sent to Anthropic). */
     val claudeApiKey: String = "",
+    /** Speak alerts (thresholds, overheating, not charging, particulate filter cleaning). */
+    val voiceAlerts: Boolean = false,
 ) {
     companion object {
         val DEFAULT_DASHBOARD = listOf("010C", "010D", "0105", "0104", "0111", "CALC_FUEL", "0142", "CALC_BOOST")
@@ -137,6 +139,7 @@ class SettingsRepository(private val context: Context, scope: CoroutineScope) {
         val specsCountry = stringPreferencesKey("specs_country")
         val dvlaKey = stringPreferencesKey("dvla_key")
         val claudeKey = stringPreferencesKey("claude_key")
+        val voiceAlerts = booleanPreferencesKey("voice_alerts")
     }
 
     private val json = Json { ignoreUnknownKeys = true }
@@ -178,6 +181,7 @@ class SettingsRepository(private val context: Context, scope: CoroutineScope) {
             specsCountry = p[K.specsCountry] ?: d.specsCountry,
             dvlaApiKey = p[K.dvlaKey] ?: d.dvlaApiKey,
             claudeApiKey = p[K.claudeKey] ?: d.claudeApiKey,
+            voiceAlerts = p[K.voiceAlerts] ?: d.voiceAlerts,
         )
     }
 
@@ -222,6 +226,7 @@ class SettingsRepository(private val context: Context, scope: CoroutineScope) {
             p[K.specsCountry] = s.specsCountry
             p[K.dvlaKey] = s.dvlaApiKey
             p[K.claudeKey] = s.claudeApiKey
+            p[K.voiceAlerts] = s.voiceAlerts
         }
     }
 }

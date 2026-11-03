@@ -21,6 +21,8 @@ import kotlinx.coroutines.launch
 /** Foreground service that keeps the OBD connection (and data logging) alive in the background. */
 class ObdService : LifecycleService() {
     private val session get() = (application as OpenObdApp).container.session
+    private var gauges: FloatingGauges? = null
+    private var gaugesJob: kotlinx.coroutines.Job? = null
 
     override fun onCreate() {
         super.onCreate()
@@ -37,6 +39,8 @@ class ObdService : LifecycleService() {
             stopSelf()
             return START_NOT_STICKY
         }
+        if (intent?.action == ACTION_SHOW_GAUGES) { showGauges(); return START_NOT_STICKY }
+        if (intent?.action == ACTION_HIDE_GAUGES) { hideGauges(); return START_NOT_STICKY }
         try {
             ServiceCompat.startForeground(
                 this, NOTIFICATION_ID, build("Connected"),
@@ -73,6 +77,39 @@ class ObdService : LifecycleService() {
         return START_NOT_STICKY
     }
 
+    /** Floating window with the first three dashboard values, over other apps. */
+    private fun showGauges() {
+        if (gauges?.isShown == true || !FloatingGauges.canShow(this)) return
+        val settings = (application as OpenObdApp).container.settings
+        val keys = settings.settings.value.dashboard.map { it.substringBefore('@') }.distinct().take(3)
+        val g = gauges ?: FloatingGauges(this).also { gauges = it }
+        g.show(keys) { com.openobd.ui.tr(it) }
+        if (!g.isShown) return
+        session.live.subscribe("overlay", keys)
+        gaugesShown.value = true
+        gaugesJob?.cancel()
+        gaugesJob = lifecycleScope.launch {
+            while (g.isShown) {
+                g.update({ session.live.latestValue(it) }, settings.settings.value.units)
+                delay(500)
+            }
+            session.live.unsubscribe("overlay")
+            gaugesShown.value = false
+        }
+    }
+
+    private fun hideGauges() {
+        gauges?.hide()
+        gaugesJob?.cancel()
+        session.live.unsubscribe("overlay")
+        gaugesShown.value = false
+    }
+
+    override fun onDestroy() {
+        hideGauges()
+        super.onDestroy()
+    }
+
     private fun build(text: String): Notification {
         val open = PendingIntent.getActivity(this, 0, Intent(this, MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP), PendingIntent.FLAG_IMMUTABLE)
         val disconnect = PendingIntent.getService(this, 1, Intent(this, ObdService::class.java).setAction(ACTION_DISCONNECT), PendingIntent.FLAG_IMMUTABLE)
@@ -91,5 +128,9 @@ class ObdService : LifecycleService() {
         private const val CHANNEL = "connection"
         private const val NOTIFICATION_ID = 42
         const val ACTION_DISCONNECT = "com.openobd.DISCONNECT"
+        const val ACTION_SHOW_GAUGES = "com.openobd.SHOW_GAUGES"
+        const val ACTION_HIDE_GAUGES = "com.openobd.HIDE_GAUGES"
+        /** Whether the floating window is on screen, for the button that toggles it. */
+        val gaugesShown = kotlinx.coroutines.flow.MutableStateFlow(false)
     }
 }

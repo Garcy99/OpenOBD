@@ -7,6 +7,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.BatteryChargingFull
 import androidx.compose.material.icons.filled.Checklist
 import androidx.compose.material.icons.filled.FactCheck
 import androidx.compose.material.icons.filled.MonitorHeart
@@ -53,6 +54,7 @@ private val items = listOf(
     MenuItem(Routes.FUEL, "Fuel log", tr("Fill-ups, real consumption and costs"), Icons.Default.LocalGasStation),
     MenuItem(Routes.TRIPS, "Trip history", tr("Saved trips with GPS map, fuel and speed"), Icons.Default.Map),
     MenuItem(Routes.LIGHTS, "Identify a warning light", tr("Photo of the dashboard: which lights are on, how urgent, what to do (AI)"), Icons.Default.PhotoCamera),
+    MenuItem(Routes.BATTERY, "Battery & starting test", tr("How far the voltage falls while starting and whether the alternator charges"), Icons.Default.BatteryChargingFull),
     MenuItem(Routes.HEALTH, "Car health", tr("Battery, charging, fuel trims and warm-up over time, with early warnings"), Icons.Default.MonitorHeart),
     MenuItem(Routes.DIESEL, "Diesel particulate filter", tr("Guided regeneration drive with live conditions and DPF values"), Icons.Default.LocalFireDepartment),
     MenuItem(Routes.GUIDES, "Service guides", tr("Oil service reset, after a battery change, drive cycle for the ITV"), Icons.Default.MenuBook),

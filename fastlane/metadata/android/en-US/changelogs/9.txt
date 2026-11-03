@@ -1,0 +1,4 @@
+• Spoken alerts: overheating, battery not charging, DPF cleaning and your own alerts
+• Battery and starting test with history
+• Floating window with 3 values over Maps or Waze
+• Eco-driving score for every trip, with tips

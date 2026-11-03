@@ -130,6 +130,12 @@ fun SettingsScreen(onBack: () -> Unit) {
             }
             SectionCard(title = tr("Backup")) { BackupSection() }
             SectionCard(title = tr("Troubleshooting")) { DebugReportSection() }
+            SectionCard(title = tr("Voice")) {
+                SwitchRow(tr("Spoken alerts"), s.voiceAlerts) { v -> update { it.copy(voiceAlerts = v) } }
+                Text(tr("Says your alerts out loud and warns by itself about overheating, a battery that is not charging and particulate filter cleaning (when the car reports it). Music is lowered while it speaks."),
+                    style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                if (s.voiceAlerts) TextButton(onClick = { app.session.voice.test() }) { Text(tr("Test the voice")) }
+            }
             SectionCard(title = tr("Alerts")) {
                 Text(tr("Vibrate and show a warning when a sensor crosses a threshold (values in metric units)."),
                     style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)

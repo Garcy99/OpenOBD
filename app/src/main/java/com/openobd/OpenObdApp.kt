@@ -74,6 +74,7 @@ class OpenObdApp : Application() {
             container.dtcDatabase.size // warm up off the main thread
         }
         keepWidgetUpdated()
+        speakAlerts()
         // Keep a foreground service alive while connected so logging continues with the screen off.
         container.scope.launch {
             var wasConnected = false
@@ -94,6 +95,20 @@ class OpenObdApp : Application() {
             kotlinx.coroutines.flow.combine(c.session.state, c.session.dtcScan, c.garage.data, c.history.records) { _, _, _, _ -> }
                 .debounce(1000)
                 .collect { runCatching { com.openobd.widget.CarWidget.updateAll(this@OpenObdApp, c) } }
+        }
+    }
+
+    /** Speaks the session's voice alerts in the app's language. */
+    private fun speakAlerts() {
+        val speaker = com.openobd.data.Speaker(this)
+        container.scope.launch {
+            container.session.voice.announcements.collect { a ->
+                speaker.language = com.openobd.ui.I18n.language
+                speaker.speak(com.openobd.ui.tr(a.text, *a.args.map { com.openobd.ui.tr(it) }.toTypedArray()))
+            }
+        }
+        container.scope.launch {
+            container.settings.settings.collect { if (!it.voiceAlerts) speaker.shutdown() }
         }
     }
 

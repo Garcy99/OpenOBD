@@ -162,7 +162,14 @@ data class TripRecord(
     val maxRpm: Double = 0.0,
     val cost: Double? = null,
     val trackPoints: Int = 0,
+    val harshAccel: Int = 0,
+    val harshBrake: Int = 0,
+    val highRpmS: Double = 0.0,
+    val longIdleS: Double = 0.0,
+    /** Smooth-driving score 0-100; null for short trips and trips saved by older versions. */
+    val ecoScore: Int? = null,
 ) {
+    val eco: com.openobd.core.trip.EcoStats get() = com.openobd.core.trip.EcoStats(harshAccel, harshBrake, highRpmS, longIdleS, movingS + idleS, distanceKm)
     val avgL100: Double? get() = if (fuelL != null && distanceKm > 0.5) fuelL / distanceKm * 100 else null
 }
 
@@ -175,6 +182,8 @@ data class GarageData(
     val trips: List<TripRecord> = emptyList(),
     /** One sample per drive, for long-term health trends. */
     val health: List<com.openobd.core.health.HealthSample> = emptyList(),
+    /** Battery and starting tests. */
+    val batteryTests: List<com.openobd.core.battery.BatteryTestRecord> = emptyList(),
 ) {
     val active: Vehicle? get() = vehicles.firstOrNull { it.id == activeVehicleId } ?: vehicles.firstOrNull()
 

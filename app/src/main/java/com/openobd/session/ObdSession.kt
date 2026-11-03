@@ -122,6 +122,8 @@ class ObdSession(
     val diagnosis = DiagnosisFeatures(this)
     val check = VehicleCheckFeature(this)
     val specsCheck = SpecsCheckFeature(this)
+    val voice = VoiceFeature(this)
+    val battery = BatteryTestFeature(this)
     val health = HealthFeature(this)
     val diesel = DieselFeature(this)
     val reports = SessionReports(this)
@@ -163,6 +165,7 @@ class ObdSession(
             settingsRepo.settings.collectLatest { s ->
                 live.params = fuelParams(s, vehicle)
                 updateAlertSubscriptions(s)
+                voice.configure(s)
                 updateBrand()
             }
         }
@@ -177,6 +180,7 @@ class ObdSession(
         live.addListener(demoGpsListener())
         live.addListener { values, _, now -> health.onCycle(values, now) }
         live.addListener { values, _, now -> diesel.onCycle(values, now) }
+        live.addListener { values, _, now -> voice.onCycle(values, now) }
         scope.launch {
             var last: String? = null
             _state.collect { s ->
@@ -255,6 +259,7 @@ class ObdSession(
         live.subscribe("trip", listOf("010D", "010C", "CALC_FUEL"))
         live.subscribe("health", health.keys)
         updateAlertSubscriptions(s)
+        trip.diesel = diesel.isDiesel
         trip.reset()
         tripStart = System.currentTimeMillis()
         tripActive = true
@@ -307,6 +312,7 @@ class ObdSession(
 
     private suspend fun linkLost(message: String) {
         if (userDisconnect || state.value !is ConnectionState.Connected) return
+        voice.onLinkLost()
         cleanup()
         _state.value = ConnectionState.Failed(message)
         if (settingsRepo.settings.value.autoConnect) {
@@ -329,6 +335,7 @@ class ObdSession(
         vehicleInfo.value = Op.Idle; monitorTests.value = Op.Idle; clearResult.value = Op.Idle
         modules.reset()
         specsCheck.observed.value = Op.Idle
+        battery.onDisconnected()
     }
 
     private fun logConsole(dir: Char, text: String) {
@@ -458,6 +465,8 @@ class ObdSession(
                 id = garage.newId(), vehicleId = vehicle.id, start = tripStart, end = System.currentTimeMillis(),
                 distanceKm = st.distanceKm, fuelL = fuel, maxSpeed = st.maxSpeed, avgSpeed = st.avgSpeed, movingS = st.movingS,
                 idleS = st.idleS, maxRpm = st.maxRpm, cost = fuel?.let { f -> if (price > 0) f * price else null }, trackPoints = track.size,
+                harshAccel = st.eco.harshAccel, harshBrake = st.eco.harshBrake, highRpmS = st.eco.highRpmS, longIdleS = st.eco.longIdleS,
+                ecoScore = st.ecoScore,
             ),
             track,
         )
@@ -551,7 +560,9 @@ class ObdSession(
                 val triggered = if (rule.above) v > rule.threshold else v < rule.threshold
                 if (triggered && rule.id !in active && now - (lastFired[rule.id] ?: 0) > 30_000) {
                     lastFired[rule.id] = now
-                    _alerts.tryEmit(AlertEvent(rule, v, SensorCatalog.get(rule.sensorKey)?.name ?: rule.sensorKey))
+                    val event = AlertEvent(rule, v, SensorCatalog.get(rule.sensorKey)?.name ?: rule.sensorKey)
+                    _alerts.tryEmit(event)
+                    voice.onAlert(event)
                 }
                 if (triggered) active += rule.id else active -= rule.id
             }
