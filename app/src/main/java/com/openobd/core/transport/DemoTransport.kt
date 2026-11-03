@@ -1,5 +1,6 @@
 package com.openobd.core.transport
 
+import com.openobd.core.elm.ObdProtocol
 import com.openobd.core.obd.DtcDecoder
 import kotlinx.coroutines.delay
 import kotlin.math.PI
@@ -11,8 +12,10 @@ import kotlin.math.sin
 import kotlin.random.Random
 
 /**
- * A simulated ELM327 adapter connected to a simulated car (ISO 15765-4 CAN 11-bit, 500 kbaud,
- * engine ECU 7E8 + transmission ECU 7E9). Used for the in-app demo mode and for unit tests.
+ * A simulated ELM327 adapter connected to a simulated car. By default the car speaks ISO 15765-4 CAN 11-bit
+ * 500 kbaud (engine ECU 7E8 + transmission ECU 7E9); [protocol] can select 29-bit CAN or one of the pre-CAN
+ * protocols (J1850 PWM/VPW, ISO 9141-2, KWP2000) with their framing, headers, checksums and limits.
+ * Used for the in-app demo mode and for unit tests.
  */
 class DemoTransport(
     private val latencyMs: Long = 35,
@@ -24,8 +27,24 @@ class DemoTransport(
     private val stn: Boolean = false,
     /** Simulate a transmission ECU that also answers OBD requests (two responders). */
     private val withTransmission: Boolean = true,
+    /** The protocol the simulated car speaks. */
+    val protocol: ObdProtocol = ObdProtocol.ISO_15765_4_CAN_11_500,
 ) : ObdTransport() {
-    override val description: String = "Demo car (simulated)"
+    override val description: String =
+        if (protocol == ObdProtocol.ISO_15765_4_CAN_11_500) "Demo car (simulated)" else "Demo car (simulated, ${protocol.label})"
+
+    private val can11 = protocol.isCan && !protocol.is29Bit
+    private val legacy = !protocol.isCan
+    private val engine = if (can11) "7E8" else "10"
+    private val trans = if (can11) "7E9" else "18"
+    private val defaultHeader = when {
+        can11 -> "7DF"
+        protocol.is29Bit -> "DB33F1"
+        protocol == ObdProtocol.J1850_PWM -> "616AF1"
+        protocol == ObdProtocol.ISO_14230_4_KWP_5BAUD || protocol == ObdProtocol.ISO_14230_4_KWP_FAST -> "C133F1"
+        else -> "686AF1"
+    }
+    private val needsBusInit = protocol in setOf(ObdProtocol.ISO_9141_2, ObdProtocol.ISO_14230_4_KWP_5BAUD, ObdProtocol.ISO_14230_4_KWP_FAST)
 
     private val buffer = StringBuilder()
     private val startedAt = clock()
@@ -35,7 +54,7 @@ class DemoTransport(
     private var spaces = true
     private var headers = false
     private var connectedToCar = false
-    private var header = "7DF"
+    private var header = defaultHeader
     /** ATSP value; "B" = User1 CAN 125k, i.e. the MS-CAN side of an HS/MS switch adapter. */
     private var protocolCode = '0'
     /** Modules on the simulated medium-speed bus (reached with ATSP B). */
@@ -44,7 +63,7 @@ class DemoTransport(
         0x740 to SimModule(0x748, "DDM", "OB-14B533-DEMO", mutableListOf()),
         0x7D0 to SimModule(0x7D8, "APIM", "OB-14G371-DEMO", mutableListOf(Triple("U0184", 0x00, 0x28))),
     )
-    private val onMsCan get() = protocolCode == 'B' 
+    private val onMsCan get() = protocolCode == 'B' && can11
     private var receiveFilter: String? = null
     private var canFilter: Int? = null
     private var canMask: Int? = null
@@ -124,11 +143,15 @@ class DemoTransport(
         c == "Z" || c == "WS" -> {
             echo = true; spaces = true; headers = false; connectedToCar = false
             protocolCode = '0'
-            header = "7DF"; receiveFilter = null; canFilter = null; canMask = null
+            header = defaultHeader; receiveFilter = null; canFilter = null; canMask = null
             listOf("", "ELM327 v1.5")
         }
         limitedClone && ((c.startsWith("CRA") && c != "CRA") || c.startsWith("FCS")) -> listOf("?")
-        c.startsWith("SH") -> { header = c.substring(2); listOf("OK") }
+        c.startsWith("SH") -> {
+            val h = c.substring(2)
+            header = if (protocol.is29Bit && h.length == 8) h.substring(2) else h
+            listOf("OK")
+        }
         c == "CRA" -> { receiveFilter = null; canFilter = null; canMask = null; listOf("OK") }
         c.startsWith("CRA") -> { receiveFilter = c.substring(3); listOf("OK") }
         c.startsWith("CF") -> { canFilter = c.substring(2).toIntOrNull(16); listOf("OK") }
@@ -136,9 +159,9 @@ class DemoTransport(
         c == "I" -> listOf("ELM327 v1.5")
         c == "@1" -> listOf("OpenOBD Demo Adapter")
         c == "RV" -> listOf("%.1fV".format(if (connectedToCar) 14.1 + random.nextDouble(-0.1, 0.1) else 12.6))
-        c == "DPN" -> listOf(if (onMsCan) "B" else if (connectedToCar) "A6" else "0")
+        c == "DPN" -> listOf(if (onMsCan) "B" else if (!connectedToCar) protocolCode.toString() else if (protocolCode == '0') "A${protocol.code}" else "${protocol.code}")
         c.startsWith("SP") || c.startsWith("TP") -> { protocolCode = c.last(); listOf("OK") }
-        c == "DP" -> listOf("AUTO, ISO 15765-4 (CAN 11/500)")
+        c == "DP" -> listOf(if (protocolCode == '0') "AUTO, ${protocol.label}" else protocol.label)
         c.startsWith("E") -> { echo = c.endsWith("1"); listOf("OK") }
         c.startsWith("S") && c.length == 2 && (c[1] == '0' || c[1] == '1') -> { spaces = c[1] == '1'; listOf("OK") }
         c.startsWith("H") && c.length == 2 -> { headers = c[1] == '1'; listOf("OK") }
@@ -151,6 +174,11 @@ class DemoTransport(
         // Odd length -> trailing "expected responses" digit
         val hex = if (cmd.length % 2 == 1) cmd.dropLast(1) else cmd
         val bytes = hex.chunked(2).map { it.toInt(16) }
+        if (bytes.isEmpty()) return listOf("?")
+        if (!onMsCan && protocolCode != '0' && protocolCode != protocol.code) {
+            // Locked to a protocol this car does not speak.
+            return listOf(when (protocolCode) { '3', '4', '5' -> "BUS INIT: ...ERROR"; '1', '2' -> "NO DATA"; else -> "CAN ERROR" })
+        }
         val firstContact = !connectedToCar
         connectedToCar = true
         if (onMsCan) {
@@ -160,7 +188,9 @@ class DemoTransport(
             val payload = moduleReply(tx, module, bytes) ?: return listOf("NO DATA")
             return format("%03X".format(module.rx), payload)
         }
-        if (header != "7DF") {
+        if (header != defaultHeader) {
+            // Physical addressing of individual modules is simulated on 11-bit CAN only.
+            if (!can11) return listOf("NO DATA")
             val tx = header.toIntOrNull(16) ?: return listOf("NO DATA")
             val module = modules[tx] ?: return listOf("NO DATA")
             val isObdService = bytes[0] in setOf(0x01, 0x02, 0x03, 0x04, 0x06, 0x07, 0x09, 0x0A)
@@ -183,9 +213,10 @@ class DemoTransport(
             0x01 -> {
                 val pids = bytes.drop(1)
                 if (pids.isEmpty() || pids.size > 6) return listOf("?")
-                for ((ecu, supported) in listOf("7E8" to enginePids, "7E9" to transmissionPids).filter { withTransmission || it.first == "7E8" }) {
+                for ((ecu, supported) in listOf(engine to enginePids, trans to transmissionPids).filter { withTransmission || it.first == engine }) {
                     val payload = mutableListOf(0x41)
-                    for (p in pids) {
+                    // Pre-CAN ECUs answer one PID per request (multi-PID requests are a CAN feature).
+                    for (p in if (legacy) pids.take(1) else pids) {
                         val d = if (p % 0x20 == 0) supportBitmap(p, supported) else if (p in supported) pidValue(p, ecu) else null
                         if (d != null) { payload += p; payload += d.toList() }
                     }
@@ -203,27 +234,41 @@ class DemoTransport(
                         pid == 0x02 -> DtcDecoder.encode(stored.first()).let { intArrayOf(it.first, it.second) }
                         else -> ff[pid]
                     }
-                    if (d != null) replies += "7E8" to listOf(0x42, pid, frame) + d.toList()
+                    if (d != null) replies += engine to listOf(0x42, pid, frame) + d.toList()
                 }
             }
             0x03, 0x07, 0x0A -> {
+                if (legacy && mode == 0x0A) return listOf("NO DATA")
                 val list = when (mode) { 0x03 -> stored; 0x07 -> pending; else -> permanent }
-                val payload = mutableListOf(mode + 0x40, list.size)
-                list.forEach { val (a, b) = DtcDecoder.encode(it); payload += a; payload += b }
-                replies += "7E8" to payload
-                if (mode == 0x03) replies += "7E9" to listOf(0x43, 0)
+                if (legacy) {
+                    // No count byte; three codes per frame, padded with 00 00.
+                    for (group in list.chunked(3).ifEmpty { listOf(emptyList()) }) {
+                        val payload = mutableListOf(mode + 0x40)
+                        group.forEach { val (a, b) = DtcDecoder.encode(it); payload += a; payload += b }
+                        while (payload.size < 7) payload += 0
+                        replies += engine to payload
+                    }
+                    if (mode == 0x03 && withTransmission) replies += trans to listOf(0x43, 0, 0, 0, 0, 0, 0)
+                } else {
+                    val payload = mutableListOf(mode + 0x40, list.size)
+                    list.forEach { val (a, b) = DtcDecoder.encode(it); payload += a; payload += b }
+                    replies += engine to payload
+                    if (mode == 0x03 && withTransmission) replies += trans to listOf(0x43, 0)
+                }
             }
             0x04 -> {
                 stored.clear(); pending.clear(); monitorsComplete = false
-                replies += "7E8" to listOf(0x44)
-                replies += "7E9" to listOf(0x44)
+                replies += engine to listOf(0x44)
+                if (withTransmission) replies += trans to listOf(0x44)
             }
-            0x06 -> replies += mode06(bytes.getOrElse(1) { 0 }) ?: return listOf("NO DATA")
-            0x09 -> replies += mode09(bytes.getOrElse(1) { 0 }) ?: return listOf("NO DATA")
+            0x06 -> if (legacy) return listOf("NO DATA") else replies += mode06(bytes.getOrElse(1) { 0 }) ?: return listOf("NO DATA")
+            0x09 -> replies += (if (legacy) legacyMode09(bytes.getOrElse(1) { 0 }) else mode09(bytes.getOrElse(1) { 0 })?.let { listOf(it) })
+                ?: return listOf("NO DATA")
             else -> return listOf("NO DATA")
         }
         if (replies.isEmpty()) return listOf("NO DATA")
-        val prefix = if (firstContact) listOf("SEARCHING...") else emptyList()
+        val prefix = if (!firstContact) emptyList()
+            else (if (protocolCode == '0') listOf("SEARCHING...") else emptyList()) + (if (needsBusInit) listOf("BUS INIT: ...OK") else emptyList())
         return prefix + replies.flatMap { (ecu, payload) -> format(ecu, payload) }
     }
 
@@ -238,7 +283,13 @@ class DemoTransport(
     }
 
     /** UDS behaviour of the simulated modules. */
-    private fun moduleReply(tx: Int, m: SimModule, b: List<Int>): List<Int>? {
+    private fun moduleReply(tx: Int, m: SimModule, b: List<Int>): List<Int>? = try {
+        moduleReplyUnchecked(tx, m, b)
+    } catch (e: IndexOutOfBoundsException) {
+        listOf(0x7F, b[0], 0x13) // incorrect message length
+    }
+
+    private fun moduleReplyUnchecked(tx: Int, m: SimModule, b: List<Int>): List<Int>? {
         fun neg(nrc: Int) = listOf(0x7F, b[0], nrc)
         return when (b[0]) {
             0x3E -> listOf(0x7E, 0x00)
@@ -288,7 +339,7 @@ class DemoTransport(
 
     private fun mode06(mid: Int): Pair<String, List<Int>>? {
         val mids = setOf(0x01, 0x21, 0xA1, 0xA2, 0xA3)
-        if (mid % 0x20 == 0) return supportBitmap(mid, mids + 0x20 + 0x40 + 0x60 + 0x80 + 0xA0)?.let { "7E8" to listOf(0x46, mid) + it.toList() }
+        if (mid % 0x20 == 0) return supportBitmap(mid, mids + 0x20 + 0x40 + 0x60 + 0x80 + 0xA0)?.let { engine to listOf(0x46, mid) + it.toList() }
         fun test(tid: Int, uas: Int, v: Int, mn: Int, mx: Int) =
             listOf(mid, tid, uas, v shr 8, v and 0xFF, mn shr 8, mn and 0xFF, mx shr 8, mx and 0xFF)
         val tests: List<Int> = when (mid) {
@@ -299,18 +350,33 @@ class DemoTransport(
             0xA3 -> test(0x0B, 0x24, 0x0000, 0x0000, 0xFFFF) + test(0x0C, 0x24, 0x0000, 0x0000, 0xFFFF)
             else -> return null
         }
-        return "7E8" to listOf(0x46) + tests
+        return engine to listOf(0x46) + tests
     }
 
     private fun mode09(type: Int): Pair<String, List<Int>>? = when (type) {
-        0x00 -> "7E8" to listOf(0x49, 0x00) + supportBitmap(0, setOf(0x02, 0x04, 0x06, 0x08, 0x0A))!!.toList()
-        0x02 -> "7E8" to listOf(0x49, 0x02, 0x01) + vin.map { it.code }
-        0x04 -> "7E8" to listOf(0x49, 0x04, 0x01) + "OPENOBD-DEMO-1.0".padEnd(16, '\u0000').map { it.code }
-        0x06 -> "7E8" to listOf(0x49, 0x06, 0x01, 0x1B, 0x3C, 0x9A, 0x7F)
-        0x08 -> "7E8" to listOf(0x49, 0x08, 0x10) + listOf(312, 1048, 287, 312, 0, 0, 301, 312, 0, 0, 155, 312, 0, 0, 98, 312)
+        0x00 -> engine to listOf(0x49, 0x00) + supportBitmap(0, setOf(0x02, 0x04, 0x06, 0x08, 0x0A))!!.toList()
+        0x02 -> engine to listOf(0x49, 0x02, 0x01) + vin.map { it.code }
+        0x04 -> engine to listOf(0x49, 0x04, 0x01) + "OPENOBD-DEMO-1.0".padEnd(16, '\u0000').map { it.code }
+        0x06 -> engine to listOf(0x49, 0x06, 0x01, 0x1B, 0x3C, 0x9A, 0x7F)
+        0x08 -> engine to listOf(0x49, 0x08, 0x10) + listOf(312, 1048, 287, 312, 0, 0, 301, 312, 0, 0, 155, 312, 0, 0, 98, 312)
             .flatMap { listOf(it shr 8, it and 0xFF) }
-        0x0A -> "7E8" to listOf(0x49, 0x0A, 0x01) + "ECM\u0000-EngineControl".padEnd(20, '\u0000').map { it.code }
+        0x0A -> engine to listOf(0x49, 0x0A, 0x01) + "ECM\u0000-EngineControl".padEnd(20, '\u0000').map { it.code }
         else -> null
+    }
+
+    /** Pre-CAN service 09: every message carries a sequence number and 4 data bytes. */
+    private fun legacyMode09(type: Int): List<Pair<String, List<Int>>>? {
+        fun messages(data: List<Int>) = data.chunked(4).mapIndexed { i, c -> engine to listOf(0x49, type, i + 1) + c + List(4 - c.size) { 0 } }
+        return when (type) {
+            0x00 -> listOf(engine to listOf(0x49, 0x00, 0x01) + supportBitmap(0, setOf(0x01, 0x02, 0x03, 0x04, 0x05, 0x06))!!.toList())
+            0x01 -> listOf(engine to listOf(0x49, 0x01, 0x05))
+            0x02 -> messages(listOf(0, 0, 0) + vin.map { it.code })
+            0x03 -> listOf(engine to listOf(0x49, 0x03, 0x04))
+            0x04 -> messages("OPENOBD-DEMO-1.0".map { it.code })
+            0x05 -> listOf(engine to listOf(0x49, 0x05, 0x01))
+            0x06 -> messages(listOf(0x1B, 0x3C, 0x9A, 0x7F))
+            else -> null
+        }
     }
 
     // ------------------------------------------------------------------ live values
@@ -334,7 +400,7 @@ class DemoTransport(
         val maf = rpm * load / 9000.0 + noise(0.2)
         fun b(v: Double) = v.roundToInt().coerceIn(0, 255)
         fun w(v: Double) = v.roundToInt().coerceIn(0, 65535).let { intArrayOf(it shr 8, it and 0xFF) }
-        if (ecu == "7E9") return when (pid) {
+        if (ecu == trans) return when (pid) {
             0x01 -> intArrayOf(0x00, 0x00, 0x00, 0x00)
             0x0D -> intArrayOf(b(speed))
             else -> null
@@ -394,6 +460,35 @@ class DemoTransport(
     private fun join(parts: List<String>) = if (spaces) parts.joinToString(" ") else parts.joinToString("")
 
     private fun format(ecu: String, payload: List<Int>): List<String> {
+        if (legacy) {
+            if (!headers) return listOf(join(payload.map(::hex)))
+            val src = ecu.toInt(16)
+            val head = when (protocol) {
+                ObdProtocol.J1850_PWM -> listOf(0x41, 0x6B, src)
+                ObdProtocol.ISO_14230_4_KWP_5BAUD, ObdProtocol.ISO_14230_4_KWP_FAST -> listOf(0x80 or payload.size, 0xF1, src)
+                else -> listOf(0x48, 0x6B, src)
+            }
+            val frame = head + payload
+            val check = if (protocol == ObdProtocol.J1850_PWM || protocol == ObdProtocol.J1850_VPW) j1850Crc(frame) else frame.sum() and 0xFF
+            return listOf(join((frame + check).map(::hex)))
+        }
+        if (protocol.is29Bit && headers) {
+            return formatCan(payload) { listOf("18", "DA", "F1", ecu) }
+        }
+        return formatCan(payload) { listOf(ecu) }
+    }
+
+    /** SAE J1850 CRC-8 (polynomial 0x1D, init 0xFF, final xor 0xFF). */
+    private fun j1850Crc(bytes: List<Int>): Int {
+        var crc = 0xFF
+        for (b in bytes) {
+            crc = crc xor b
+            repeat(8) { crc = if (crc and 0x80 != 0) ((crc shl 1) xor 0x1D) and 0xFF else (crc shl 1) and 0xFF }
+        }
+        return crc xor 0xFF
+    }
+
+    private fun formatCan(payload: List<Int>, headerTokens: () -> List<String>): List<String> {
         if (!headers) {
             if (payload.size <= 7) return listOf(join(payload.map(::hex)))
             val lines = mutableListOf("%03X".format(payload.size))
@@ -403,14 +498,14 @@ class DemoTransport(
         }
         if (payload.size <= 7) {
             val frame = listOf(payload.size) + payload + List(7 - payload.size) { 0 }
-            return listOf(join(listOf(ecu) + frame.map(::hex)))
+            return listOf(join(headerTokens() + frame.map(::hex)))
         }
         val lines = mutableListOf<String>()
         val first = listOf(0x10 or (payload.size shr 8), payload.size and 0xFF) + payload.take(6)
-        lines += join(listOf(ecu) + first.map(::hex))
+        lines += join(headerTokens() + first.map(::hex))
         payload.drop(6).chunked(7).forEachIndexed { i, c ->
             val frame = listOf(0x20 or ((i + 1) and 0x0F)) + c + List(7 - c.size) { 0 }
-            lines += join(listOf(ecu) + frame.map(::hex))
+            lines += join(headerTokens() + frame.map(::hex))
         }
         return lines
     }

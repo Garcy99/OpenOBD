@@ -26,6 +26,8 @@ import com.openobd.core.obd.SensorCatalog
 import com.openobd.core.obd.TestResult
 import com.openobd.core.obd.VehicleInfo
 import com.openobd.core.transport.DemoTransport
+import com.openobd.core.transport.FaultPlan
+import com.openobd.core.transport.FaultyTransport
 import com.openobd.core.transport.ObdTransport
 import com.openobd.data.AlertRule
 import com.openobd.data.AppSettings
@@ -195,7 +197,9 @@ class ObdSession(
     private suspend fun doConnect(s: AppSettings) {
         cleanup()
         val t: ObdTransport = when (s.connectionType) {
-            ConnectionType.DEMO -> DemoTransport()
+            ConnectionType.DEMO -> DemoTransport(latencyMs = if (s.demoProtocol.isCan) 35 else 90, protocol = s.demoProtocol).let {
+                if (s.demoFaults) FaultyTransport(it, FaultPlan.NASTY.copy(jitterMs = 3), kotlin.random.Random(System.nanoTime())) else it
+            }
             ConnectionType.WIFI -> WifiTransport(s.wifiHost, s.wifiPort)
             ConnectionType.BLUETOOTH -> BluetoothClassicTransport(context, s.deviceAddress ?: throw IllegalStateException("Choose a Bluetooth adapter first"), s.deviceName)
             ConnectionType.BLE -> BleTransport(context, s.deviceAddress ?: throw IllegalStateException("Choose a Bluetooth LE adapter first"), s.deviceName)
@@ -220,7 +224,7 @@ class ObdSession(
         _state.value = ConnectionState.Connecting("Reading VIN")
         val vin = runCatching { c.readVin() }.getOrNull()
         val voltage = e.readVoltage()
-        val snapshot = VehicleSnapshot(t.description, info, supported, c.ecus, vin, voltage, t is DemoTransport)
+        val snapshot = VehicleSnapshot(t.description, info, supported, c.ecus, vin, voltage, s.connectionType == ConnectionType.DEMO)
         selectVehicleFor(vin)
         if (0xA6 in supported) readOdometer(c)
         _state.value = ConnectionState.Connected(snapshot)
@@ -232,7 +236,7 @@ class ObdSession(
         trip.reset()
         tripStart = System.currentTimeMillis()
         tripActive = true
-        if (s.tripGps && t !is DemoTransport) location.start()
+        if (s.tripGps && s.connectionType != ConnectionType.DEMO) location.start()
         startVoltageMonitor()
         // Pre-load monitor status for the home screen
         scope.launch { runCatching { scanDtcsInternal(record = false) } }

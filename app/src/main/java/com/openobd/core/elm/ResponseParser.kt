@@ -113,9 +113,11 @@ object ResponseParser {
                     multi = mutableListOf(); total = line.toInt(16)
                 }
                 Regex("^[0-9A-F]:").containsMatchIn(line) -> {
+                    val tokens = line.substringAfter(':').trim().split(Regex("\\s+")).filter { it.isNotEmpty() }
+                    // Corrupted line (noise on the serial link): skip it rather than fail the whole reply.
+                    if (!tokens.all { it.length == 2 && hexToken.matches(it) }) continue
                     val m = multi ?: mutableListOf<Int>().also { multi = it }
-                    line.substringAfter(':').trim().split(Regex("\\s+")).filter { it.isNotEmpty() }
-                        .forEach { m.add(it.toInt(16)) }
+                    tokens.forEach { m.add(it.toInt(16)) }
                     if (total > 0 && m.size >= total) {
                         out += EcuMessage("ECU", m.take(total).toIntArray()); multi = null; total = 0
                     }

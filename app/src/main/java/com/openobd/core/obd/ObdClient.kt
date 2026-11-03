@@ -108,6 +108,8 @@ class ObdClient(val elm: Elm327) {
             for (chunk in batchable.chunked(6)) {
                 val req = "01" + chunk.joinToString("") { "%02X".format(it) }
                 val useStpx = stn && fastResponses && ecus.size <= 1 && stnFastVerified != false
+                // Did the ECU really answer (data or NO DATA)? Adapter errors on a noisy link say nothing about batching.
+                var answered = true
                 if (useStpx && stnFastVerified == null && chunk.size > 1) {
                     // One-time check: does STPX with r:1 return the complete (possibly multi-frame) answer?
                     val fast = HashMap<Int, IntArray>()
@@ -119,9 +121,10 @@ class ObdClient(val elm: Elm327) {
                 } else {
                     val r = elm.query(if (useStpx && stnFastVerified == true) "STPX D:$req, R:1" else req, 3000)
                     if (r is ObdResult.Data) parseMultiPid(r, out)
+                    answered = r is ObdResult.Data || (r as ObdResult.Failure).error == ElmError.NO_DATA
                 }
                 val missing = chunk.filter { it !in out }
-                if (missing.isNotEmpty() && chunk.size > 1) {
+                if (missing.isNotEmpty() && chunk.size > 1 && answered) {
                     if (missing.size == chunk.size) batchFailures++
                     if (batchFailures >= 3) batchingEnabled = false
                 }

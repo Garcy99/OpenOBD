@@ -21,7 +21,8 @@ enum class ElmError(val text: String, val userMessage: String) {
     UNKNOWN_COMMAND("?", "The adapter does not understand this command."),
     LOW_VOLTAGE("LV RESET", "Low voltage reset."),
     ERROR("ERROR", "Adapter reported an error."),
-    TIMEOUT("TIMEOUT", "No reply from the adapter.");
+    TIMEOUT("TIMEOUT", "No reply from the adapter."),
+    LINK_LOST("LINK LOST", "The connection to the adapter was lost.");
 }
 
 sealed class ObdResult {
@@ -74,10 +75,11 @@ class Elm327(
     suspend fun command(cmd: String, timeoutMs: Long = 3000): List<String> = mutex.withLock { commandLocked(cmd, timeoutMs) }
 
     private suspend fun commandLocked(cmd: String, timeoutMs: Long): List<String> {
+        if (!transport.isOpen) throw ElmException("The connection to the adapter is closed", ElmError.LINK_LOST)
         // Drop anything stale that arrived between commands.
         while (transport.incoming.tryReceive().isSuccess) { /* drain */ }
         log('>', cmd)
-        transport.send((cmd + "\r").toByteArray(Charsets.US_ASCII))
+        sendRaw(cmd + "\r")
         val sb = StringBuilder()
         try {
             withTimeout(timeoutMs) {
@@ -89,14 +91,43 @@ class Elm327(
             }
         } catch (e: TimeoutCancellationException) {
             log('!', "timeout after ${timeoutMs}ms: ${sb.toString().trim()}")
-            // Interrupt a possibly still running request so the next command starts clean.
-            runCatching { transport.send("\r".toByteArray()) }
+            resync()
             throw ElmException("No reply from the adapter to '$cmd'", ElmError.TIMEOUT)
         }
         val text = sb.substring(0, sb.indexOf(">"))
         val lines = clean(text, cmd)
         log('<', lines.joinToString(" | "))
         return lines
+    }
+
+    private suspend fun sendRaw(text: String) {
+        try {
+            transport.send(text.toByteArray(Charsets.US_ASCII))
+        } catch (e: Exception) {
+            if (e is kotlinx.coroutines.CancellationException) throw e
+            log('!', "send failed: ${e.message}")
+            throw ElmException("The connection to the adapter was lost", ElmError.LINK_LOST)
+        }
+    }
+
+    /**
+     * After a timeout the adapter may still be busy (or its reply may arrive late). Interrupt it and
+     * swallow everything up to the next prompt so the late reply is not mistaken for the answer to the
+     * next command.
+     */
+    private suspend fun resync() {
+        if (!transport.isOpen) return
+        runCatching { transport.send("\r".toByteArray()) }
+        val sb = StringBuilder()
+        val gotPrompt = kotlinx.coroutines.withTimeoutOrNull(1500) {
+            while (true) {
+                sb.append(String(transport.incoming.receive(), Charsets.ISO_8859_1))
+                if (sb.indexOf(">") >= 0) break
+            }
+        } != null
+        // A second prompt (e.g. from the interrupt itself) may follow shortly after a late reply.
+        if (gotPrompt) kotlinx.coroutines.withTimeoutOrNull(100) { while (true) sb.append(String(transport.incoming.receive(), Charsets.ISO_8859_1)) }
+        if (sb.isNotBlank()) log('!', "discarded after timeout: ${sb.toString().replace("\r", " ").trim()}")
     }
 
     /**

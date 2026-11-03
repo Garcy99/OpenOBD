@@ -173,6 +173,7 @@ class ModuleClient(private val elm: Elm327) {
     }
 
     private suspend fun <T> withModule(m: EcuModule, block: suspend Elm327.Locked.() -> T): T = elm.exclusive {
+        check(supported) { NOT_CAN }
         try {
             select(m)
             block()
@@ -349,6 +350,7 @@ class ModuleClient(private val elm: Elm327) {
         secondaryBus: Boolean = false,
         progress: (Int, Int) -> Unit = { _, _ -> },
     ): List<EcuModule> = elm.exclusive {
+        check(supported) { NOT_CAN }
         val found = mutableListOf<EcuModule>()
         try {
             at("ATST19") // ~100 ms per absent address
@@ -417,6 +419,8 @@ class ModuleClient(private val elm: Elm327) {
     }
 
     companion object {
+        const val NOT_CAN = "Module access needs a CAN vehicle (most cars from 2008 onwards)."
+
         fun nrcText(nrc: Int): String = when (nrc) {
             0x10 -> "general reject"
             0x11 -> "service not supported"

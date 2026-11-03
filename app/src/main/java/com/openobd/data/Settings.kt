@@ -74,6 +74,10 @@ data class AppSettings(
     val msCanSwitch: Boolean = false,
     /** Record a GPS track for saved trips (needs location permission). */
     val tripGps: Boolean = true,
+    /** Protocol spoken by the simulated car in demo mode. */
+    val demoProtocol: ObdProtocol = ObdProtocol.ISO_15765_4_CAN_11_500,
+    /** Demo mode simulates an unreliable adapter (fragmented replies, noise, errors, lost prompts). */
+    val demoFaults: Boolean = false,
     /** "system", "en" or "es". */
     val language: String = "system",
     /** Country used for vehicle lookups (ISO code); empty = from the phone's region. */
@@ -83,6 +87,12 @@ data class AppSettings(
 ) {
     companion object {
         val DEFAULT_DASHBOARD = listOf("010C", "010D", "0105", "0104", "0111", "CALC_FUEL", "0142", "CALC_BOOST")
+
+        /** Protocols the demo simulator can speak. */
+        val DEMO_PROTOCOLS = listOf(
+            ObdProtocol.ISO_15765_4_CAN_11_500, ObdProtocol.ISO_15765_4_CAN_29_500, ObdProtocol.ISO_14230_4_KWP_FAST,
+            ObdProtocol.ISO_14230_4_KWP_5BAUD, ObdProtocol.ISO_9141_2, ObdProtocol.J1850_VPW, ObdProtocol.J1850_PWM,
+        )
     }
 }
 
@@ -115,6 +125,8 @@ class SettingsRepository(private val context: Context, scope: CoroutineScope) {
         val customModules = stringPreferencesKey("custom_modules")
         val msCanSwitch = booleanPreferencesKey("ms_can_switch")
         val tripGps = booleanPreferencesKey("trip_gps")
+        val demoProtocol = stringPreferencesKey("demo_protocol")
+        val demoFaults = booleanPreferencesKey("demo_faults")
         val language = stringPreferencesKey("language")
         val specsCountry = stringPreferencesKey("specs_country")
         val dvlaKey = stringPreferencesKey("dvla_key")
@@ -152,6 +164,8 @@ class SettingsRepository(private val context: Context, scope: CoroutineScope) {
             customModules = p[K.customModules]?.let { runCatching { json.decodeFromString<List<EcuModule>>(it) }.getOrNull() } ?: d.customModules,
             msCanSwitch = p[K.msCanSwitch] ?: d.msCanSwitch,
             tripGps = p[K.tripGps] ?: d.tripGps,
+            demoProtocol = enumOf(p[K.demoProtocol], d.demoProtocol).takeIf { it in AppSettings.DEMO_PROTOCOLS } ?: d.demoProtocol,
+            demoFaults = p[K.demoFaults] ?: d.demoFaults,
             language = p[K.language] ?: d.language,
             specsCountry = p[K.specsCountry] ?: d.specsCountry,
             dvlaApiKey = p[K.dvlaKey] ?: d.dvlaApiKey,
@@ -192,6 +206,8 @@ class SettingsRepository(private val context: Context, scope: CoroutineScope) {
             p[K.customModules] = json.encodeToString(s.customModules)
             p[K.msCanSwitch] = s.msCanSwitch
             p[K.tripGps] = s.tripGps
+            p[K.demoProtocol] = s.demoProtocol.name
+            p[K.demoFaults] = s.demoFaults
             p[K.language] = s.language
             p[K.specsCountry] = s.specsCountry
             p[K.dvlaKey] = s.dvlaApiKey

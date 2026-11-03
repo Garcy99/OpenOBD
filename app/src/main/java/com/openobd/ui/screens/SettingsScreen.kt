@@ -104,6 +104,13 @@ fun SettingsScreen(onBack: () -> Unit) {
                     v.replace(',', '.').toFloatOrNull()?.let { d -> update { it.copy(fuelPricePerL = d) } }
                 }
             }
+            SectionCard(title = tr("Demo simulator")) {
+                Text(tr("Demo mode can imitate older cars and bad adapters, to see how the app copes without a real car."),
+                    style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Label(tr("Protocol of the simulated car"))
+                Dropdown(AppSettings.DEMO_PROTOCOLS, s.demoProtocol, { it.label }) { p -> update { it.copy(demoProtocol = p) } }
+                SwitchRow(tr("Unreliable adapter (fragmented replies, noise, errors, lost prompts)"), s.demoFaults) { v -> update { it.copy(demoFaults = v) } }
+            }
             SectionCard(title = tr("Alerts")) {
                 Text(tr("Vibrate and show a warning when a sensor crosses a threshold (values in metric units)."),
                     style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
