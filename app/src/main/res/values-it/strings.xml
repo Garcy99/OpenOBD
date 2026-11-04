@@ -1,0 +1,16 @@
+<resources>
+    <string name="widget_description">La tua auto a colpo d\'occhio: codici di guasto, prossimo tagliando e ultimo viaggio</string>
+    <string name="widget_connected">Connesso</string>
+    <string name="widget_not_connected">Non connesso</string>
+    <string name="widget_mil_on">Spia motore ACCESA · %1$d codice/i</string>
+    <string name="widget_codes">%1$d codice/i di guasto</string>
+    <string name="widget_no_codes">Nessun codice di guasto</string>
+    <string name="widget_last_scan">Ultima scansione %1$s: %2$s</string>
+    <string name="widget_never_scanned">Non ancora scansionata · tocca per connettere</string>
+    <string name="widget_service_overdue">Scaduto: %1$s</string>
+    <string name="widget_service_due">In scadenza: %1$s</string>
+    <string name="widget_service_ok">Manutenzione in regola</string>
+    <string name="widget_service_none">Nessun promemoria di manutenzione</string>
+    <string name="widget_trip">Ultimo viaggio %1$s · %2$s</string>
+    <string name="widget_no_trip">Ancora nessun viaggio registrato</string>
+</resources>

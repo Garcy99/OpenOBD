@@ -121,15 +121,33 @@ class TranslationCoverageTest {
         assertTrue("Wrap these in tr(): $offenders", offenders.isEmpty())
     }
 
+    /** Every language in the picker has a complete table, with the same placeholders, and its widget strings. */
     @Test
-    fun spanishCoversEverything() {
-        val es = Json.decodeFromString<Map<String, String>>(File(root, "assets/i18n/es.json").readText())
-        val missing = requiredKeys().filter { it !in es }
-        if (missing.isNotEmpty()) File("build/i18n-missing.json").apply { parentFile.mkdirs() }
-            .writeText(Json { prettyPrint = true }.encodeToString(missing))
-        assertTrue("${missing.size} untranslated phrases, see app/build/i18n-missing.json", missing.isEmpty())
-        // Placeholders must survive translation
-        val ph = Regex("%\\d+\\\$s")
-        es.forEach { (k, v) -> assertTrue("Placeholder mismatch: $k -> $v", ph.findAll(k).map { it.value }.toSet() == ph.findAll(v).map { it.value }.toSet()) }
+    fun everyLanguageCoversEverything() {
+        val keys = requiredKeys()
+        val ph = Regex("%\\d+\\\$s|%%|%[dsf]")
+        val problems = mutableListOf<String>()
+        val widgetNames = Regex("<string name=\"(widget_[a-z_]+)\"").findAll(File(root, "res/values/strings.xml").readText()).map { it.groupValues[1] }.toSet()
+        for (lang in I18n.languages.map { it.first }.filter { it != "system" && it != "en" }) {
+            val file = File(root, "assets/i18n/$lang.json")
+            if (!file.exists()) { problems += "$lang: assets/i18n/$lang.json missing"; continue }
+            val table = Json.decodeFromString<Map<String, String>>(file.readText())
+            val missing = keys.filter { it !in table }
+            if (missing.isNotEmpty()) {
+                File("build/i18n-missing-$lang.json").apply { parentFile.mkdirs() }.writeText(Json { prettyPrint = true }.encodeToString(missing))
+                if (lang == "es") File("build/i18n-missing.json").writeText(Json { prettyPrint = true }.encodeToString(missing))
+                problems += "$lang: ${missing.size} untranslated phrases, see app/build/i18n-missing-$lang.json"
+            }
+            table.forEach { (k, v) ->
+                val a = ph.findAll(k).map { it.value }.toList().sorted()
+                val b = ph.findAll(v).map { it.value }.toList().sorted()
+                if (a != b) problems += "$lang: placeholder mismatch: $k -> $v"
+                if (v.isBlank() && k.isNotBlank()) problems += "$lang: empty translation for $k"
+            }
+            val res = File(root, "res/values-$lang/strings.xml")
+            val names = if (res.exists()) Regex("<string name=\"(widget_[a-z_]+)\"").findAll(res.readText()).map { it.groupValues[1] }.toSet() else emptySet()
+            if (names != widgetNames) problems += "$lang: widget strings missing in res/values-$lang: ${widgetNames - names}"
+        }
+        assertTrue(problems.take(40).joinToString("\n"), problems.isEmpty())
     }
 }

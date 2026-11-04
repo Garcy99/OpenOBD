@@ -15,8 +15,8 @@ android {
         applicationId = "com.openobd"
         minSdk = 26
         targetSdk = 35
-        versionCode = 10
-        versionName = "1.8.0"
+        versionCode = 11
+        versionName = "1.9.0"
         vectorDrawables { useSupportLibrary = true }
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         // Optional donation page (gradle.properties: openobd.donateUrl). Builds for Google Play pass -Pplay,

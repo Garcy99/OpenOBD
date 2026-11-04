@@ -1,0 +1,16 @@
+<resources>
+    <string name="widget_description">Twoje auto w skrócie: kody usterek, najbliższy serwis i ostatnia trasa</string>
+    <string name="widget_connected">Połączono</string>
+    <string name="widget_not_connected">Nie połączono</string>
+    <string name="widget_mil_on">Kontrolka silnika ŚWIECI · kody: %1$d</string>
+    <string name="widget_codes">Kody usterek: %1$d</string>
+    <string name="widget_no_codes">Brak kodów usterek</string>
+    <string name="widget_last_scan">Ostatni skan %1$s: %2$s</string>
+    <string name="widget_never_scanned">Jeszcze nie skanowano · dotknij, aby połączyć</string>
+    <string name="widget_service_overdue">Po terminie: %1$s</string>
+    <string name="widget_service_due">Wkrótce: %1$s</string>
+    <string name="widget_service_ok">Serwis aktualny</string>
+    <string name="widget_service_none">Brak przypomnień serwisowych</string>
+    <string name="widget_trip">Ostatnia trasa %1$s · %2$s</string>
+    <string name="widget_no_trip">Brak zapisanych tras</string>
+</resources>

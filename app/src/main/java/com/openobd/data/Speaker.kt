@@ -6,7 +6,6 @@ import android.media.AudioFocusRequest
 import android.media.AudioManager
 import android.speech.tts.TextToSpeech
 import android.speech.tts.UtteranceProgressListener
-import java.util.Locale
 import java.util.concurrent.atomic.AtomicInteger
 
 /**
@@ -25,7 +24,7 @@ class Speaker(private val context: Context) {
         .build()
     private val focus = AudioFocusRequest.Builder(AudioManager.AUDIOFOCUS_GAIN_TRANSIENT_MAY_DUCK).setAudioAttributes(attributes).build()
 
-    /** Language of the app ("es" or "en"); the phone's language otherwise. */
+    /** Language code of the app ("es", "de" ...); "system" follows the phone. */
     var language: String = "system"
 
     @Synchronized
@@ -50,11 +49,7 @@ class Speaker(private val context: Context) {
         ready = ok
         val engine = tts ?: return
         if (!ok) { pending.clear(); return }
-        val locale = when (language) {
-            "es" -> Locale("es", "ES")
-            "en" -> Locale.UK
-            else -> Locale.getDefault()
-        }
+        val locale = com.openobd.ui.I18n.localeOf(language)
         if (engine.isLanguageAvailable(locale) >= TextToSpeech.LANG_AVAILABLE) engine.language = locale
         pending.forEach { say(engine, it) }
         pending.clear()

@@ -1,0 +1,16 @@
+<resources>
+    <string name="widget_description">Dein Auto auf einen Blick: Fehlercodes, nächster Service und letzte Fahrt</string>
+    <string name="widget_connected">Verbunden</string>
+    <string name="widget_not_connected">Nicht verbunden</string>
+    <string name="widget_mil_on">Motorkontrollleuchte AN · %1$d Code(s)</string>
+    <string name="widget_codes">%1$d Fehlercode(s)</string>
+    <string name="widget_no_codes">Keine Fehlercodes</string>
+    <string name="widget_last_scan">Letzter Scan %1$s: %2$s</string>
+    <string name="widget_never_scanned">Noch nicht gescannt · tippen zum Verbinden</string>
+    <string name="widget_service_overdue">Überfällig: %1$s</string>
+    <string name="widget_service_due">Bald fällig: %1$s</string>
+    <string name="widget_service_ok">Wartung aktuell</string>
+    <string name="widget_service_none">Keine Wartungserinnerungen</string>
+    <string name="widget_trip">Letzte Fahrt %1$s · %2$s</string>
+    <string name="widget_no_trip">Noch keine Fahrten aufgezeichnet</string>
+</resources>

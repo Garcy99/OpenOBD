@@ -699,3 +699,50 @@ class TabletUiTest {
         c.session.disconnect()
     }
 }
+
+/** Quick tour of the main tabs in each added language, to catch missing glyphs and labels that do not fit. */
+@RunWith(AndroidJUnit4::class)
+@GraphicsMode(GraphicsMode.Mode.NATIVE)
+@Config(sdk = [34], qualifiers = "w360dp-h780dp-xxhdpi")
+class LanguagesUiTest {
+    @get:Rule
+    val rule = createAndroidComposeRule<MainActivity>()
+
+    private fun shot(name: String) {
+        rule.waitForIdle()
+        val dir = File(System.getProperty("screenshot.dir") ?: "build/screenshots").apply { mkdirs() }
+        rule.activityRule.scenario.onActivity { act ->
+            val v = act.window.decorView
+            val bmp = Bitmap.createBitmap(v.width, v.height, Bitmap.Config.ARGB_8888)
+            v.draw(Canvas(bmp))
+            File(dir, "$name.png").outputStream().use { bmp.compress(Bitmap.CompressFormat.PNG, 100, it) }
+        }
+    }
+
+    private fun waitFor(timeoutMs: Long = 20_000, condition: () -> Boolean) {
+        val end = System.currentTimeMillis() + timeoutMs
+        while (!condition()) { check(System.currentTimeMillis() < end) { "Timed out waiting" }; Thread.sleep(50); rule.mainClock.advanceTimeBy(50) }
+        rule.waitForIdle()
+    }
+
+    @Test
+    fun tourEveryLanguage() {
+        val c = (rule.activity.application as OpenObdApp).container
+        runBlocking { c.settings.update { it.copy(connectionType = ConnectionType.DEMO, theme = ThemeMode.DARK, language = "de", tripGps = false, onboarded = true) } }
+        waitFor { I18n.language == "de" }
+        c.session.connect()
+        waitFor { c.session.state.value is ConnectionState.Connected && c.session.dtcScan.value is Op.Done }
+        for (lang in listOf("de", "fr", "it", "pt", "nl", "pl", "tr", "ru", "zh")) {
+            runBlocking { c.settings.update { it.copy(language = lang) } }
+            waitFor { I18n.language == lang }
+            rule.onAllNodes(hasText(tr("Home")) and isSelectable())[0].performClick()
+            shot("lang_${lang}_1_home")
+            rule.onAllNodes(hasText(tr("Diagnose")) and isSelectable())[0].performClick()
+            shot("lang_${lang}_2_diagnose")
+            rule.onAllNodes(hasText(tr("More")) and isSelectable())[0].performClick()
+            shot("lang_${lang}_3_more")
+        }
+        c.session.disconnect()
+        waitFor { c.session.state.value is ConnectionState.Disconnected }
+    }
+}

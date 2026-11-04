@@ -1,0 +1,16 @@
+<resources>
+    <string name="widget_description">Votre voiture en un coup d\'œil : codes défaut, prochain entretien et dernier trajet</string>
+    <string name="widget_connected">Connecté</string>
+    <string name="widget_not_connected">Non connecté</string>
+    <string name="widget_mil_on">Voyant moteur ALLUMÉ · %1$d code(s)</string>
+    <string name="widget_codes">%1$d code(s) défaut</string>
+    <string name="widget_no_codes">Aucun code défaut</string>
+    <string name="widget_last_scan">Dernière analyse %1$s : %2$s</string>
+    <string name="widget_never_scanned">Pas encore analysée · touchez pour connecter</string>
+    <string name="widget_service_overdue">En retard : %1$s</string>
+    <string name="widget_service_due">Bientôt : %1$s</string>
+    <string name="widget_service_ok">Entretien à jour</string>
+    <string name="widget_service_none">Aucun rappel d\'entretien</string>
+    <string name="widget_trip">Dernier trajet %1$s · %2$s</string>
+    <string name="widget_no_trip">Aucun trajet enregistré</string>
+</resources>

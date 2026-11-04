@@ -10,13 +10,34 @@ import java.util.Locale
  * translations can reorder arguments.
  */
 object I18n {
-    val languages = listOf("system" to "System default", "en" to "English", "es" to "Español")
+    val languages = listOf(
+        "system" to "System default", "en" to "English", "es" to "Español", "de" to "Deutsch", "fr" to "Français",
+        "it" to "Italiano", "pt" to "Português (Brasil)", "nl" to "Nederlands", "pl" to "Polski", "tr" to "Türkçe",
+        "ru" to "Русский", "zh" to "中文（简体）",
+    )
+
+    /** English name of a language, for prompts to the AI assistant. */
+    fun englishName(code: String): String = mapOf(
+        "en" to "English", "es" to "Spanish (Spain)", "de" to "German", "fr" to "French", "it" to "Italian", "pt" to "Brazilian Portuguese",
+        "nl" to "Dutch", "pl" to "Polish", "tr" to "Turkish", "ru" to "Russian", "zh" to "Simplified Chinese",
+    )[code] ?: "the user's language"
+
+    /** Locale for speech and formatting of an app language. */
+    fun localeOf(code: String): Locale = when (code) {
+        "es" -> Locale("es", "ES"); "pt" -> Locale("pt", "BR"); "zh" -> Locale.SIMPLIFIED_CHINESE; "en" -> Locale.UK
+        "system" -> Locale.getDefault()
+        else -> Locale(code)
+    }
 
     @Volatile var language: String = "en"
         private set
     @Volatile private var table: Map<String, String> = emptyMap()
 
-    fun resolve(setting: String): String = if (setting == "system") Locale.getDefault().language else setting
+    /** "system" follows the phone; a phone language the app does not have falls back to English. */
+    fun resolve(setting: String): String {
+        val lang = if (setting == "system") Locale.getDefault().language else setting
+        return if (languages.any { it.first == lang }) lang else "en"
+    }
 
     fun load(context: Context, setting: String) {
         val lang = resolve(setting)

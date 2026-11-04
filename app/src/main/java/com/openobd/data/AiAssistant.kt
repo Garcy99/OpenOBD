@@ -107,7 +107,7 @@ open class AssistantConversation(private val backend: ChatBackend, val system: S
     }
 }
 
-private fun languageName(language: String) = if (language == "es") "Spanish (Spain)" else "the user's language"
+private fun languageName(language: String) = com.openobd.ui.I18n.englishName(language)
 
 /**
  * Identifies dashboard warning lights from a photo. The car model and the codes stored right now are given as
@@ -135,7 +135,7 @@ class DiagnosisAssistant(private val backend: ChatBackend, language: String) {
     val system = """
         You are the diagnostic assistant inside OpenOBD, an OBD-II car diagnostics app. You are talking to the car's owner,
         who may not be a mechanic. The first message contains the data the app read from the car; treat it as the facts and
-        never invent readings that are not there. Answer in ${if (language == "es") "Spanish (Spain)" else "the user's language"}.
+        never invent readings that are not there. Answer in ${languageName(language)}.
         Be practical and short: the most likely causes for this car and data, in order, what to check first and how, whether it
         is safe to keep driving, and when a mechanic is needed. Mention typical repair cost ranges in euros only if asked.
         If something involves brakes, steering, airbags, overheating, oil pressure or fuel leaks, say clearly to stop and get help.

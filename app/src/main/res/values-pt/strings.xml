@@ -1,0 +1,16 @@
+<resources>
+    <string name="widget_description">Seu carro num relance: códigos de falha, próxima revisão e última viagem</string>
+    <string name="widget_connected">Conectado</string>
+    <string name="widget_not_connected">Não conectado</string>
+    <string name="widget_mil_on">Luz de injeção ACESA · %1$d código(s)</string>
+    <string name="widget_codes">%1$d código(s) de falha</string>
+    <string name="widget_no_codes">Nenhum código de falha</string>
+    <string name="widget_last_scan">Última varredura %1$s: %2$s</string>
+    <string name="widget_never_scanned">Ainda não escaneado · toque para conectar</string>
+    <string name="widget_service_overdue">Atrasado: %1$s</string>
+    <string name="widget_service_due">Em breve: %1$s</string>
+    <string name="widget_service_ok">Manutenção em dia</string>
+    <string name="widget_service_none">Nenhum lembrete de manutenção</string>
+    <string name="widget_trip">Última viagem %1$s · %2$s</string>
+    <string name="widget_no_trip">Nenhuma viagem gravada ainda</string>
+</resources>

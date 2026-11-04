@@ -1,0 +1,3 @@
+• 9 new languages: German, French, Italian, Portuguese (Brazil), Dutch, Polish, Turkish, Russian and Simplified Chinese
+• Voice alerts and the AI assistant follow the app language
+• Long words no longer break inside buttons

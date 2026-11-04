@@ -1,0 +1,16 @@
+<resources>
+    <string name="widget_description">一眼看清您的车辆：故障码、下次保养和上次行程</string>
+    <string name="widget_connected">已连接</string>
+    <string name="widget_not_connected">未连接</string>
+    <string name="widget_mil_on">发动机故障灯亮 · %1$d 个代码</string>
+    <string name="widget_codes">%1$d 个故障码</string>
+    <string name="widget_no_codes">无故障码</string>
+    <string name="widget_last_scan">上次扫描 %1$s：%2$s</string>
+    <string name="widget_never_scanned">尚未扫描 · 点按连接</string>
+    <string name="widget_service_overdue">已逾期：%1$s</string>
+    <string name="widget_service_due">即将到期：%1$s</string>
+    <string name="widget_service_ok">保养已是最新</string>
+    <string name="widget_service_none">没有保养提醒</string>
+    <string name="widget_trip">上次行程 %1$s · %2$s</string>
+    <string name="widget_no_trip">尚无行程记录</string>
+</resources>

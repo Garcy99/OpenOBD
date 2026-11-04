@@ -1,0 +1,16 @@
+<resources>
+    <string name="widget_description">Aracınız bir bakışta: arıza kodları, sonraki bakım ve son yolculuk</string>
+    <string name="widget_connected">Bağlı</string>
+    <string name="widget_not_connected">Bağlı değil</string>
+    <string name="widget_mil_on">Motor arıza lambası AÇIK · %1$d kod</string>
+    <string name="widget_codes">%1$d arıza kodu</string>
+    <string name="widget_no_codes">Arıza kodu yok</string>
+    <string name="widget_last_scan">Son tarama %1$s: %2$s</string>
+    <string name="widget_never_scanned">Henüz taranmadı · bağlanmak için dokunun</string>
+    <string name="widget_service_overdue">Gecikmiş: %1$s</string>
+    <string name="widget_service_due">Yakında: %1$s</string>
+    <string name="widget_service_ok">Bakım güncel</string>
+    <string name="widget_service_none">Bakım hatırlatıcısı yok</string>
+    <string name="widget_trip">Son yolculuk %1$s · %2$s</string>
+    <string name="widget_no_trip">Henüz kayıtlı yolculuk yok</string>
+</resources>

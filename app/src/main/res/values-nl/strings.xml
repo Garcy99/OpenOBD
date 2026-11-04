@@ -1,0 +1,16 @@
+<resources>
+    <string name="widget_description">Je auto in één oogopslag: storingscodes, volgende beurt en laatste rit</string>
+    <string name="widget_connected">Verbonden</string>
+    <string name="widget_not_connected">Niet verbonden</string>
+    <string name="widget_mil_on">Motorstoringslampje AAN · %1$d code(s)</string>
+    <string name="widget_codes">%1$d storingscode(s)</string>
+    <string name="widget_no_codes">Geen storingscodes</string>
+    <string name="widget_last_scan">Laatste scan %1$s: %2$s</string>
+    <string name="widget_never_scanned">Nog niet gescand · tik om te verbinden</string>
+    <string name="widget_service_overdue">Achterstallig: %1$s</string>
+    <string name="widget_service_due">Binnenkort: %1$s</string>
+    <string name="widget_service_ok">Onderhoud bijgewerkt</string>
+    <string name="widget_service_none">Geen onderhoudsherinneringen</string>
+    <string name="widget_trip">Laatste rit %1$s · %2$s</string>
+    <string name="widget_no_trip">Nog geen ritten opgenomen</string>
+</resources>

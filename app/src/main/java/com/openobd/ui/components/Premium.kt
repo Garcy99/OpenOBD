@@ -35,6 +35,8 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
+import androidx.compose.ui.unit.isSpecified
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
@@ -201,7 +203,32 @@ fun GradientButton(text: String, onClick: () -> Unit, modifier: Modifier = Modif
     ) {
         val color = if (enabled) Color.White else MaterialTheme.colorScheme.onSurfaceVariant
         if (icon != null) { Icon(icon, null, tint = color, modifier = Modifier.size(20.dp)); Spacer(Modifier.width(8.dp)) }
-        Text(text, color = color, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold)
+        FitText(text, color, MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold))
+    }
+}
+
+/**
+ * Button label that never breaks a word in the middle: when the longest word is wider than the room
+ * (long German, French or Russian words on a narrow phone), the text is scaled down a little instead.
+ */
+@Composable
+private fun FitText(text: String, color: Color, style: androidx.compose.ui.text.TextStyle) {
+    androidx.compose.foundation.layout.BoxWithConstraints(contentAlignment = Alignment.Center) {
+        val measurer = androidx.compose.ui.text.rememberTextMeasurer()
+        val maxW = constraints.maxWidth
+        val scale = remember(text, maxW, style) {
+            // Scripts without spaces between words (Chinese) wrap anywhere, so they never need it.
+            if (maxW == androidx.compose.ui.unit.Constraints.Infinity || text.any { Character.UnicodeScript.of(it.code) == Character.UnicodeScript.HAN }) 1f
+            else {
+                val widest = text.split(' ').maxOf { measurer.measure(it, style, softWrap = false, maxLines = 1).size.width }
+                if (widest <= maxW) 1f else (maxW.toFloat() / widest).coerceAtLeast(0.72f)
+            }
+        }
+        val fitted = if (scale >= 1f) style else style.copy(
+            fontSize = style.fontSize * scale,
+            lineHeight = if (style.lineHeight.isSpecified) style.lineHeight * scale else style.lineHeight,
+        )
+        Text(text, color = color, style = fitted, textAlign = androidx.compose.ui.text.style.TextAlign.Center, maxLines = 2)
     }
 }
 
@@ -216,7 +243,7 @@ fun SoftButton(text: String, onClick: () -> Unit, modifier: Modifier = Modifier,
         horizontalArrangement = Arrangement.Center, verticalAlignment = Alignment.CenterVertically,
     ) {
         if (icon != null) { Icon(icon, null, tint = color, modifier = Modifier.size(18.dp)); Spacer(Modifier.width(8.dp)) }
-        Text(text, color = color, style = MaterialTheme.typography.labelLarge)
+        FitText(text, color, MaterialTheme.typography.labelLarge)
     }
 }
 

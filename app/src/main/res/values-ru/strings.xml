@@ -1,0 +1,16 @@
+<resources>
+    <string name="widget_description">Ваш автомобиль одним взглядом: коды неисправностей, следующее ТО и последняя поездка</string>
+    <string name="widget_connected">Подключено</string>
+    <string name="widget_not_connected">Не подключено</string>
+    <string name="widget_mil_on">Check Engine ГОРИТ · кодов: %1$d</string>
+    <string name="widget_codes">Кодов неисправностей: %1$d</string>
+    <string name="widget_no_codes">Нет кодов неисправностей</string>
+    <string name="widget_last_scan">Последнее сканирование %1$s: %2$s</string>
+    <string name="widget_never_scanned">Ещё не сканировалось · нажмите, чтобы подключиться</string>
+    <string name="widget_service_overdue">Просрочено: %1$s</string>
+    <string name="widget_service_due">Скоро: %1$s</string>
+    <string name="widget_service_ok">Обслуживание в порядке</string>
+    <string name="widget_service_none">Нет напоминаний об обслуживании</string>
+    <string name="widget_trip">Последняя поездка %1$s · %2$s</string>
+    <string name="widget_no_trip">Поездок пока нет</string>
+</resources>
