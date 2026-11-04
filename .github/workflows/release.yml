@@ -1,9 +1,19 @@
 name: Release
 
-# Push a tag like v1.3.0 to build a signed APK + AAB and publish a GitHub release.
+# Publishes a GitHub release with the APK (and the App Bundle when signed).
+# - Push a tag like v1.8.0, or
+# - run it by hand (Actions -> Release -> Run workflow); the tag is created from versionName if not given.
+# With the OPENOBD_* signing secrets (docs/RELEASING.md) the build is signed with your release key.
+# Without them it is published as a pre-release signed with a temporary key, for testing only.
 on:
   push:
     tags: ["v*"]
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Tag to create, e.g. v1.8.0 (empty = v + versionName)"
+        required: false
+        default: ""
 
 permissions:
   contents: write
@@ -18,30 +28,70 @@ jobs:
           distribution: temurin
           java-version: 17
       - uses: gradle/actions/setup-gradle@v4
+      - name: Version
+        id: v
+        env:
+          INPUT_VERSION: ${{ inputs.version }}
+        run: |
+          NAME=$(grep -oP 'versionName = "\K[^"]+' app/build.gradle.kts)
+          CODE=$(grep -oP 'versionCode = \K[0-9]+' app/build.gradle.kts)
+          if [ "$GITHUB_REF_TYPE" = "tag" ]; then TAG="$GITHUB_REF_NAME"; else TAG="${INPUT_VERSION:-v$NAME}"; fi
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+          echo "name=$NAME" >> "$GITHUB_OUTPUT"
+          echo "code=$CODE" >> "$GITHUB_OUTPUT"
       - name: Decode signing key
+        id: key
         env:
           KEYSTORE_BASE64: ${{ secrets.OPENOBD_KEYSTORE_BASE64 }}
         run: |
-          if [ -z "$KEYSTORE_BASE64" ]; then echo "::error::Add the OPENOBD_KEYSTORE_BASE64 secret (see docs/RELEASING.md)"; exit 1; fi
-          echo "$KEYSTORE_BASE64" | base64 -d > release.jks
+          if [ -z "$KEYSTORE_BASE64" ]; then
+            echo "::warning::No OPENOBD_KEYSTORE_BASE64 secret: publishing a test pre-release signed with a temporary key (see docs/RELEASING.md)"
+            echo "signed=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "$KEYSTORE_BASE64" | base64 -d > release.jks
+            echo "signed=true" >> "$GITHUB_OUTPUT"
+          fi
       - name: Test
         run: ./gradlew testDebugUnitTest
-      - name: Build signed APK and App Bundle
+      - name: Build APK and App Bundle
         env:
-          OPENOBD_KEYSTORE_FILE: release.jks
+          OPENOBD_KEYSTORE_FILE: ${{ steps.key.outputs.signed == 'true' && 'release.jks' || '' }}
           OPENOBD_KEYSTORE_PASSWORD: ${{ secrets.OPENOBD_KEYSTORE_PASSWORD }}
           OPENOBD_KEY_ALIAS: ${{ secrets.OPENOBD_KEY_ALIAS }}
           OPENOBD_KEY_PASSWORD: ${{ secrets.OPENOBD_KEY_PASSWORD }}
         run: ./gradlew assembleRelease bundleRelease
-      - name: Rename artifacts
+      - name: Collect files and release notes
+        env:
+          TAG: ${{ steps.v.outputs.tag }}
+          CODE: ${{ steps.v.outputs.code }}
+          SIGNED: ${{ steps.key.outputs.signed }}
         run: |
           mkdir dist
-          cp app/build/outputs/apk/release/app-release.apk "dist/OpenOBD-${GITHUB_REF_NAME}.apk"
-          cp app/build/outputs/bundle/release/app-release.aab "dist/OpenOBD-${GITHUB_REF_NAME}.aab"
+          cp app/build/outputs/apk/release/app-release.apk "dist/OpenOBD-$TAG.apk"
+          if [ "$SIGNED" = "true" ]; then cp app/build/outputs/bundle/release/app-release.aab "dist/OpenOBD-$TAG.aab"; fi
+          {
+            echo "## What's new"
+            cat "fastlane/metadata/android/en-US/changelogs/$CODE.txt" 2>/dev/null
+            echo
+            echo "## Novedades"
+            cat "fastlane/metadata/android/es-ES/changelogs/$CODE.txt" 2>/dev/null
+            echo
+            echo "## Install"
+            echo "Download **OpenOBD-$TAG.apk** on your Android phone (Android 8.0 or newer) and open it. Allow installing apps from your browser or file manager if asked."
+            if [ "$SIGNED" != "true" ]; then
+              echo
+              echo "> **Test build.** This APK is signed with a temporary key, so it cannot update a copy signed with a different key: uninstall the old copy first (back up in Settings → Backup to keep your garage and trips)."
+            fi
+          } > notes.md
+          cat notes.md
       - uses: softprops/action-gh-release@v2
         with:
+          tag_name: ${{ steps.v.outputs.tag }}
+          target_commitish: ${{ github.sha }}
+          name: OpenOBD ${{ steps.v.outputs.name }}
+          body_path: notes.md
+          prerelease: ${{ steps.key.outputs.signed != 'true' }}
           files: dist/*
-          generate_release_notes: true
       - name: Remove key
         if: always()
         run: rm -f release.jks

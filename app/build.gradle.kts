@@ -26,7 +26,7 @@ android {
     val keystoreProps = Properties().apply {
         rootProject.file("keystore.properties").takeIf { it.exists() }?.inputStream()?.use { load(it) }
     }
-    fun secret(prop: String, env: String): String? = keystoreProps.getProperty(prop) ?: System.getenv(env)
+    fun secret(prop: String, env: String): String? = (keystoreProps.getProperty(prop) ?: System.getenv(env))?.takeIf { it.isNotBlank() }
     val releaseStoreFile = secret("storeFile", "OPENOBD_KEYSTORE_FILE")
     signingConfigs {
         if (releaseStoreFile != null) create("release") {

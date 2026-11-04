@@ -62,6 +62,13 @@ git tag v1.3.0
 git push origin v1.3.0
 ```
 
+Or, without tagging locally: **Actions → Release → Run workflow**. It creates the tag from `versionName`
+(for example `v1.8.0`) and publishes the release with the APK and App Bundle.
+
+Without the signing secrets the workflow still runs, but publishes a **pre-release** signed with a
+temporary key. It installs fine for testing, but each such build has a different key, so a phone has to
+uninstall the previous copy before installing it, and it cannot go on Google Play.
+
 The `Release` workflow runs the tests, builds the signed APK and AAB, and attaches them to a GitHub release.
 
 ## 5. Google Play
