@@ -36,7 +36,6 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -78,7 +77,7 @@ fun DtcLookupScreen(onBack: () -> Unit) {
         LazyColumn {
             items(results, key = { it.code }) { d ->
                 ListItem(
-                    headlineContent = { Text(d.code, fontFamily = FontFamily.Monospace, fontWeight = FontWeight.Bold) },
+                    headlineContent = { Text(d.code, fontFamily = com.openobd.ui.theme.Inter, fontWeight = FontWeight.Bold) },
                     supportingContent = { Text(d.description) },
                     modifier = Modifier.clickable { detail = d },
                 )
@@ -117,7 +116,7 @@ fun HistoryScreen(onBack: () -> Unit) {
                     r.note?.let { Text(it, style = MaterialTheme.typography.bodySmall) }
                     r.codes.forEach { c ->
                         Row(Modifier.padding(top = 6.dp)) {
-                            Text(c.code, fontFamily = FontFamily.Monospace, fontWeight = FontWeight.Bold, modifier = Modifier.width(70.dp))
+                            Text(c.code, fontFamily = com.openobd.ui.theme.Inter, fontWeight = FontWeight.Bold, modifier = Modifier.width(70.dp))
                             Text("${c.description} (${c.type.lowercase()})", style = MaterialTheme.typography.bodySmall)
                         }
                     }
@@ -151,6 +150,7 @@ fun AboutScreen(onBack: () -> Unit) {
             }
             SectionCard(title = tr("Open-source licenses")) {
                 Text(tr("Built with Kotlin, Jetpack Compose, AndroidX and kotlinx libraries (Apache License 2.0)."), style = MaterialTheme.typography.bodySmall)
+                Text(tr("Inter typeface by Rasmus Andersson (SIL Open Font License 1.1)."), style = MaterialTheme.typography.bodySmall)
             }
         }
     }

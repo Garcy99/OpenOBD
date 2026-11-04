@@ -24,7 +24,6 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -84,7 +83,7 @@ fun MonitorTestsScreen(onBack: () -> Unit, onConnect: () -> Unit) {
                                     }
                                     Spacer(Modifier.width(8.dp))
                                     Column(horizontalAlignment = Alignment.End) {
-                                        Text("${num(t.value)} ${t.unit}", fontFamily = FontFamily.Monospace, fontWeight = FontWeight.Bold)
+                                        Text("${num(t.value)} ${t.unit}", fontFamily = com.openobd.ui.theme.Inter, fontWeight = FontWeight.Bold)
                                         Pill(if (t.passed) "PASS" else "FAIL", if (t.passed) Good else Bad)
                                     }
                                 }

@@ -88,8 +88,34 @@ class UiSmokeTest {
     @Test
     fun demoTourDark() = tour(ThemeMode.DARK, "dark")
 
+    /** The main tabs in the light theme, connected to the demo car. */
+    @Test
+    fun lightThemeTabs() {
+        val c = app.container
+        com.openobd.ui.screens.LivePages.selected = com.openobd.ui.screens.LivePages.GAUGES
+        runBlocking { c.settings.update { it.copy(connectionType = ConnectionType.DEMO, theme = ThemeMode.LIGHT, language = "en", tripGps = false, onboarded = true) } }
+        waitFor { c.settings.settings.value.theme == ThemeMode.LIGHT && I18n.language == "en" }
+        shot("50_home_light_disconnected")
+        c.session.connect()
+        waitFor { c.session.state.value is ConnectionState.Connected && c.session.dtcScan.value is Op.Done }
+        shot("51_home_light")
+        tab("Live")
+        waitFor { c.session.live.readings.value.containsKey("010C") }
+        Thread.sleep(1500)
+        shot("52_live_light")
+        tab("Diagnose")
+        shot("53_diagnose_light")
+        tab("Garage")
+        shot("54_garage_light")
+        tab("More")
+        shot("55_more_light")
+        c.session.disconnect()
+        waitFor { c.session.state.value is ConnectionState.Disconnected }
+    }
+
     private fun tour(theme: ThemeMode, suffix: String) {
         val c = app.container
+        com.openobd.ui.screens.LivePages.selected = com.openobd.ui.screens.LivePages.GAUGES
         // Pretend the user granted the runtime permissions requested on Connect.
         org.robolectric.Shadows.shadowOf(app).grantPermissions(
             android.Manifest.permission.ACCESS_FINE_LOCATION, android.Manifest.permission.ACCESS_COARSE_LOCATION,
@@ -104,12 +130,12 @@ class UiSmokeTest {
         waitFor { c.session.dtcScan.value is Op.Done }
         shot("02_home_connected_$suffix")
 
-        tab("Dashboard")
+        tab("Live")
         waitFor { c.session.live.readings.value.containsKey("010C") && c.session.live.readings.value.containsKey("0105") }
         Thread.sleep(1500)
         shot("03_dashboard_$suffix")
 
-        tab("Live data")
+        tab("Sensors")
         waitFor { c.session.live.readings.value.size > 15 }
         Thread.sleep(1000)
         shot("04_live_$suffix")
@@ -119,8 +145,13 @@ class UiSmokeTest {
         shot("05_chart_$suffix")
         rule.activityRule.scenario.onActivity { it.onBackPressedDispatcher.onBackPressed() }
 
-        tab("Codes")
-        tap("Scan")
+        tab("Trip")
+        Thread.sleep(1500)
+        shot("13_trip_$suffix")
+        tab("Gauges")
+
+        tab("Diagnose")
+        tap("Scan again")
         waitFor { c.session.dtcScan.value is Op.Done }
         shot("06_codes_$suffix")
         assertTrue(
@@ -133,9 +164,6 @@ class UiSmokeTest {
         shot("07_code_detail_$suffix")
         rule.activityRule.scenario.onActivity { it.onBackPressedDispatcher.onBackPressed() }
         rule.waitForIdle()
-
-        tab("More")
-        shot("08_more_$suffix")
 
         tap("Emission readiness (I/M)")
         waitFor { c.session.readiness.value is Op.Done }
@@ -157,10 +185,8 @@ class UiSmokeTest {
         shot("12_mode06_$suffix")
         rule.activityRule.scenario.onActivity { it.onBackPressedDispatcher.onBackPressed() }
 
-        tap("Trip computer")
-        Thread.sleep(1500)
-        shot("13_trip_$suffix")
-        rule.activityRule.scenario.onActivity { it.onBackPressedDispatcher.onBackPressed() }
+        tab("More")
+        shot("08_more_$suffix")
 
         tap("Terminal")
         shot("14_terminal_$suffix")
@@ -171,7 +197,7 @@ class UiSmokeTest {
         rule.activityRule.scenario.onActivity { it.onBackPressedDispatcher.onBackPressed() }
 
         // Clear codes end to end
-        tab("Codes")
+        tab("Diagnose")
         tap("Clear codes")
         rule.onAllNodesWithText("Clear codes").fetchSemanticsNodes() // dialog shown
         rule.onAllNodes(hasText("Clear codes"))[1].performClick()
@@ -181,7 +207,7 @@ class UiSmokeTest {
 
         // Brand features: pick Ford, scan modules, open ABS, discover, custom PIDs
         tab("More")
-        tap("Brand features & modules")
+        tap(c.session.brand.value?.let { "${it.name} features" } ?: "Brand features & modules")
         shot("17_brand_$suffix")
         runBlocking {
             c.garage.updateActive {
@@ -236,12 +262,14 @@ class UiSmokeTest {
             c.garage.upsertFuel(com.openobd.core.garage.FuelEntry("f2", vid, System.currentTimeMillis() - 8L * 86_400_000, 128_620.0, 36.4, 58.6))
             c.garage.upsertFuel(com.openobd.core.garage.FuelEntry("f3", vid, System.currentTimeMillis() - 1L * 86_400_000, 129_100.0, 33.1, 52.0))
         }
-        tab("Vehicle")
-        shot("23_home_garage_$suffix")
-        tap("Service")
+        tab("Home")
+        shot("23_home_after_drive_$suffix")
+        tab("Garage")
+        shot("23_garage_$suffix")
+        tap("Maintenance")
         shot("24_maintenance_$suffix")
         rule.activityRule.scenario.onActivity { it.onBackPressedDispatcher.onBackPressed() }
-        tap("Fuel")
+        tap("Fuel log")
         shot("25_fuel_$suffix")
         rule.activityRule.scenario.onActivity { it.onBackPressedDispatcher.onBackPressed() }
         tap("Trips")
@@ -324,12 +352,13 @@ class SpanishUiTest {
         rule.onAllNodes(hasText("Conectar") and hasClickAction())[0].performClick()
         waitFor { c.session.state.value is ConnectionState.Connected && c.session.dtcScan.value is Op.Done }
         shot("es_01_home")
-        rule.onAllNodes(hasText("Panel") and isSelectable())[0].performClick()
+        com.openobd.ui.screens.LivePages.selected = com.openobd.ui.screens.LivePages.GAUGES
+        rule.onAllNodes(hasText("En directo") and isSelectable())[0].performClick()
         waitFor { c.session.live.readings.value.containsKey("010C") }
         Thread.sleep(1000)
         shot("es_02_dashboard")
-        rule.onAllNodes(hasText("Códigos") and isSelectable())[0].performClick()
-        rule.onAllNodes(hasText("Escanear") and hasClickAction())[0].performClick()
+        rule.onAllNodes(hasText("Diagnosis") and isSelectable())[0].performClick()
+        rule.onAllNodes(hasText("Escanear de nuevo") and hasClickAction())[0].performClick()
         waitFor { c.session.dtcScan.value is Op.Done }
         shot("es_03_codes")
         rule.onAllNodes(hasText("Más") and isSelectable())[0].performClick()
@@ -482,9 +511,13 @@ class VehicleCheckUiTest {
         c.session.connect()
         waitFor { c.session.state.value is ConnectionState.Connected }
         waitFor { c.session.dtcScan.value is Op.Done }
-        rule.onAllNodes(hasText("More") and isSelectable())[0].performClick()
+        rule.onAllNodes(hasText("Diagnose") and isSelectable())[0].performClick()
         rule.waitForIdle()
-        rule.onAllNodes(hasScrollAction())[0].performScrollToNode(hasText("Used car & pre-ITV check"))
+        // During the tab cross-fade both screens exist: try every scrollable until the item is found.
+        rule.mainClock.advanceTimeBy(500); rule.waitForIdle()
+        rule.onAllNodes(hasScrollAction()).fetchSemanticsNodes().indices.forEach { i ->
+            runCatching { rule.onAllNodes(hasScrollAction())[i].performScrollToNode(hasText("Used car & pre-ITV check")) }
+        }
         rule.onAllNodesWithText("Used car & pre-ITV check")[0].performClick()
         rule.waitForIdle()
         rule.onAllNodes(hasText("Run the check") and hasClickAction())[0].performClick()
@@ -508,9 +541,13 @@ class VehicleCheckUiTest {
         waitFor { c.settings.settings.value.connectionType == ConnectionType.DEMO && I18n.language == "en" }
         c.session.connect()
         waitFor { c.session.state.value is ConnectionState.Connected }
-        rule.onAllNodes(hasText("More") and isSelectable())[0].performClick()
+        rule.onAllNodes(hasText("Diagnose") and isSelectable())[0].performClick()
         rule.waitForIdle()
-        rule.onAllNodes(hasScrollAction())[0].performScrollToNode(hasText("Battery & starting test"))
+        // During the tab cross-fade both screens exist: try every scrollable until the item is found.
+        rule.mainClock.advanceTimeBy(500); rule.waitForIdle()
+        rule.onAllNodes(hasScrollAction()).fetchSemanticsNodes().indices.forEach { i ->
+            runCatching { rule.onAllNodes(hasScrollAction())[i].performScrollToNode(hasText("Battery & starting test")) }
+        }
         rule.onAllNodesWithText("Battery & starting test")[0].performClick()
         rule.waitForIdle()
         rule.onAllNodes(hasText("Start test") and hasClickAction())[0].performClick()
@@ -571,7 +608,7 @@ class AssistantUiTest {
         c.session.connect()
         waitFor { c.session.state.value is ConnectionState.Connected }
         waitFor { c.session.dtcScan.value is Op.Done }
-        rule.onAllNodes(hasText("Códigos") and isSelectable())[0].performClick()
+        rule.onAllNodes(hasText("Diagnosis") and isSelectable())[0].performClick()
         rule.waitForIdle()
         rule.onAllNodesWithText("P0301")[0].performClick()
         waitFor { rule.onAllNodesWithText("¿Puedo seguir conduciendo?").fetchSemanticsNodes().isNotEmpty() }
@@ -619,7 +656,8 @@ class WelcomeAndDashboardUiTest {
         waitFor { c.settings.settings.value.onboarded }
         assertTrue(rule.onAllNodesWithText("Welcome to OpenOBD").fetchSemanticsNodes().isEmpty())
 
-        rule.onAllNodes(hasText("Dashboard") and isSelectable())[0].performClick()
+        com.openobd.ui.screens.LivePages.selected = com.openobd.ui.screens.LivePages.GAUGES
+        rule.onAllNodes(hasText("Live") and isSelectable())[0].performClick()
         rule.waitForIdle()
         rule.onAllNodesWithContentDescription("Edit")[0].performClick()
         rule.waitForIdle()
@@ -648,7 +686,8 @@ class TabletUiTest {
         while (c.settings.settings.value.theme != ThemeMode.AMOLED && System.currentTimeMillis() < end) { Thread.sleep(50); rule.mainClock.advanceTimeBy(50) }
         c.session.connect()
         while (c.session.state.value !is ConnectionState.Connected && System.currentTimeMillis() < end + 20_000) { Thread.sleep(50); rule.mainClock.advanceTimeBy(50) }
-        rule.onAllNodes(hasText("Dashboard") and isSelectable())[0].performClick()
+        com.openobd.ui.screens.LivePages.selected = com.openobd.ui.screens.LivePages.GAUGES
+        rule.onAllNodes(hasText("Live") and isSelectable())[0].performClick()
         Thread.sleep(1500); rule.mainClock.advanceTimeBy(1500); rule.waitForIdle()
         val dir = File(System.getProperty("screenshot.dir") ?: "build/screenshots").apply { mkdirs() }
         rule.activityRule.scenario.onActivity { act ->

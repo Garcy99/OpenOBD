@@ -79,6 +79,9 @@ class DemoSessionTest {
 
     private fun tap(text: String) = retrying { tapOnce(text) }
 
+    /** The scan button reads "Scan" before the first scan and "Scan again" after it. */
+    private fun tapScan() = tap(if (visible("Scan again")) "Scan again" else "Scan")
+
     private fun tapOnce(text: String) {
         if (compose.onAllNodesWithText(text).fetchSemanticsNodes().isEmpty()) {
             compose.onAllNodes(hasScrollAction()).fetchSemanticsNodes().indices.forEach { i ->
@@ -99,6 +102,7 @@ class DemoSessionTest {
     private fun visible(text: String) = retrying { compose.onAllNodesWithText(text).fetchSemanticsNodes().isNotEmpty() }
 
     private fun configure(protocol: ObdProtocol = ObdProtocol.ISO_15765_4_CAN_11_500, language: String = "en") = runBlocking {
+        com.openobd.ui.screens.LivePages.selected = com.openobd.ui.screens.LivePages.GAUGES
         c.settings.update {
             it.copy(
                 connectionType = ConnectionType.DEMO, language = language, autoConnect = false, tripGps = false,
@@ -129,13 +133,13 @@ class DemoSessionTest {
             app.getSystemService(NotificationManager::class.java).activeNotifications.any { it.id == 42 }
         }
 
-        tab("Dashboard")
+        tab("Live")
         waitFor("live data") { c.session.live.readings.value.containsKey("010C") && c.session.live.readings.value.containsKey("0105") }
         val rpm = c.session.live.latestValue("010C")!!
         assertTrue("rpm $rpm", rpm in 500.0..7000.0)
 
-        tab("Codes")
-        tap("Scan")
+        tab("Diagnose")
+        tapScan()
         waitFor("scan") { c.session.dtcScan.value is Op.Done }
         waitFor("P0301 on screen", 10_000) { visible("P0301") }
 
@@ -148,7 +152,7 @@ class DemoSessionTest {
         val report = c.diagnostics.writeReport(c.session.reports.debugSections(), includeCrash = false).readText()
         assertTrue(report.contains("> 04") && report.contains("Connection: DEMO"))
 
-        tab("Vehicle")
+        tab("Home")
         tap("Disconnect")
         waitFor("disconnected") { c.session.state.value is ConnectionState.Disconnected }
     }
@@ -177,10 +181,10 @@ class DemoSessionTest {
         val vehicle = (c.session.state.value as ConnectionState.Connected).vehicle
         assertEquals(ObdProtocol.ISO_9141_2, vehicle.elm.protocol)
         assertEquals("1HGCM82633A004352", vehicle.vin)
-        tab("Dashboard")
+        tab("Live")
         waitFor("live data") { c.session.live.readings.value.containsKey("010D") }
-        tab("Codes")
-        tap("Scan")
+        tab("Diagnose")
+        tapScan()
         waitFor("scan") { c.session.dtcScan.value is Op.Done }
         waitFor("P0420 on screen", 10_000) { visible("P0420") }
     }
@@ -191,7 +195,7 @@ class DemoSessionTest {
         waitFor("Spanish home", 20_000) { visible("Conectar") }
         tap("Conectar")
         waitFor("connection") { c.session.state.value is ConnectionState.Connected }
-        tab("Códigos")
+        tab("Diagnosis")
         waitFor("scan") { c.session.dtcScan.value is Op.Done }
         waitFor("P0301 on screen", 10_000) { visible("P0301") }
         configure(language = "en")

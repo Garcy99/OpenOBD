@@ -45,7 +45,6 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -119,11 +118,11 @@ fun CustomPidsScreen(onBack: () -> Unit, onPacks: () -> Unit = {}) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Column(Modifier.weight(1f)) {
                             Text(p.name, fontWeight = FontWeight.SemiBold)
-                            Text("${p.header.ifBlank { "7DF" }} · ${p.request} · ${p.equation}", fontFamily = FontFamily.Monospace,
+                            Text("${p.header.ifBlank { "7DF" }} · ${p.request} · ${p.equation}", fontFamily = com.openobd.ui.theme.Inter,
                                 style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                         }
                         val f = formatSensor(def, readings[p.key]?.value, settings.units)
-                        Text("${f.value} ${f.unit}", fontFamily = FontFamily.Monospace, fontWeight = FontWeight.Bold)
+                        Text("${f.value} ${f.unit}", fontFamily = com.openobd.ui.theme.Inter, fontWeight = FontWeight.Bold)
                     }
                 }
             }
@@ -151,7 +150,7 @@ fun CustomPidsScreen(onBack: () -> Unit, onPacks: () -> Unit = {}) {
             text = {
                 OutlinedTextField(text, { text = it }, Modifier.fillMaxWidth().heightIn(min = 200.dp),
                     placeholder = { Text(TorqueCsv.HEADER + tr("\nTrans temp,TFT,221E1C,((A*256)+B)/16,-40,150,°C,7E1")) },
-                    textStyle = MaterialTheme.typography.bodySmall.copy(fontFamily = FontFamily.Monospace))
+                    textStyle = MaterialTheme.typography.bodySmall.copy(fontFamily = com.openobd.ui.theme.Inter))
             },
             confirmButton = { TextButton(onClick = { pasting = false; import(text) }, enabled = text.isNotBlank()) { Text(tr("Import")) } },
             dismissButton = { TextButton(onClick = { pasting = false }) { Text(tr("Cancel")) } },
@@ -206,7 +205,7 @@ private fun PidEditor(initial: CustomPid, isNew: Boolean, onDismiss: () -> Unit,
                     OutlinedTextField(header, { header = it.uppercase() }, label = { Text(tr("Header")) }, singleLine = true, modifier = Modifier.weight(1f))
                 }
                 OutlinedTextField(equation, { equation = it }, label = { Text(tr("Equation (A, B, C … = bytes)")) }, singleLine = true, modifier = Modifier.fillMaxWidth(),
-                    textStyle = MaterialTheme.typography.bodyLarge.copy(fontFamily = FontFamily.Monospace))
+                    textStyle = MaterialTheme.typography.bodyLarge.copy(fontFamily = com.openobd.ui.theme.Inter))
                 Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                     OutlinedTextField(min, { min = it }, label = { Text(tr("Min")) }, singleLine = true, modifier = Modifier.weight(1f))
                     OutlinedTextField(max, { max = it }, label = { Text(tr("Max")) }, singleLine = true, modifier = Modifier.weight(1f))
@@ -228,7 +227,7 @@ private fun PidEditor(initial: CustomPid, isNew: Boolean, onDismiss: () -> Unit,
                         }
                     }) { Text(tr("Test on the car")) }
                 }
-                testResult?.let { Text(it, fontFamily = FontFamily.Monospace, style = MaterialTheme.typography.bodySmall) }
+                testResult?.let { Text(it, fontFamily = com.openobd.ui.theme.Inter, style = MaterialTheme.typography.bodySmall) }
                 if (!isNew) {
                     Spacer(Modifier.height(4.dp))
                     TextButton(onClick = onDelete) { Text(tr("Delete"), color = MaterialTheme.colorScheme.error) }

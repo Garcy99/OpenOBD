@@ -5,6 +5,8 @@ import com.openobd.ui.tr
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
@@ -21,7 +23,6 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -32,18 +33,19 @@ import com.openobd.ui.SubscribeSensors
 import com.openobd.ui.appSettings
 import com.openobd.ui.components.KeyValueRow
 import com.openobd.ui.components.NotConnected
-import com.openobd.ui.components.ScreenTopBar
+import com.openobd.ui.components.TopBar
+import com.openobd.ui.components.TopBarSlot
 import com.openobd.ui.components.SectionCard
 import com.openobd.ui.components.formatDuration
 import com.openobd.ui.connectedVehicle
 
 @Composable
-fun TripScreen(onBack: () -> Unit, onConnect: () -> Unit, onHistory: () -> Unit = {}) {
+fun TripScreen(onBack: () -> Unit, onConnect: () -> Unit, onHistory: () -> Unit = {}, topBar: TopBarSlot? = null) {
     val session = LocalApp.current.session
     val vehicle = connectedVehicle()
     val settings = appSettings()
     Column(Modifier.fillMaxSize()) {
-        ScreenTopBar(tr("Trip computer"), onBack, actions = {
+        TopBar(topBar, tr("Trip computer"), onBack, actions = {
             IconButton(onClick = onHistory) { Icon(Icons.Default.History, tr("Trip history")) }
             IconButton(onClick = session.trip::reset) { Icon(Icons.Default.RestartAlt, tr("Reset trip")) }
         })
@@ -86,7 +88,15 @@ private fun BigStat(label: String, value: String, modifier: Modifier = Modifier)
     SectionCard(modifier) {
         Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.fillMaxWidth()) {
             Text(label, style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
-            Text(value, style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold, fontFamily = FontFamily.Monospace, maxLines = 1)
+            Spacer(Modifier.height(4.dp))
+            // "11.5 L/100km": the number large, the unit small, so long units never get cut off.
+            val number = value.substringBefore(' ')
+            val unit = value.substringAfter(' ', "")
+            Row(verticalAlignment = Alignment.Bottom) {
+                Text(number, style = MaterialTheme.typography.headlineMedium.copy(fontFeatureSettings = "tnum"), maxLines = 1)
+                if (unit.isNotEmpty()) Text(" $unit", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 1, modifier = Modifier.padding(bottom = 4.dp))
+            }
         }
     }
 }

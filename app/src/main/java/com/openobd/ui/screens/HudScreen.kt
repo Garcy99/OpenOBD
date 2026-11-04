@@ -27,7 +27,6 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
-import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.unit.dp
@@ -59,14 +58,14 @@ fun HudScreen(onBack: () -> Unit) {
         ) {
             val sd = SensorCatalog.get(main)!!
             val f = formatSensor(sd, readings[main]?.value, settings.units)
-            Text(f.value, color = color, fontSize = 160.sp, fontWeight = FontWeight.Black, fontFamily = FontFamily.Monospace)
+            Text(f.value, color = color, fontSize = 160.sp, fontWeight = FontWeight.Black, fontFamily = com.openobd.ui.theme.Inter)
             Text(f.unit, color = color, fontSize = 32.sp)
             Row(Modifier.padding(top = 24.dp)) {
                 secondary.forEach { k ->
                     val d = SensorCatalog.get(k) ?: return@forEach
                     val v = formatSensor(d, readings[k]?.value, settings.units)
                     Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.padding(horizontal = 18.dp)) {
-                        Text(v.value, color = color, fontSize = 40.sp, fontWeight = FontWeight.Bold, fontFamily = FontFamily.Monospace)
+                        Text(v.value, color = color, fontSize = 40.sp, fontWeight = FontWeight.Bold, fontFamily = com.openobd.ui.theme.Inter)
                         Text(v.unit.ifEmpty { tr(d.shortName) }, color = color.copy(alpha = 0.7f), fontSize = 16.sp)
                     }
                 }

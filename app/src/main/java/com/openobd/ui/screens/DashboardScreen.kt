@@ -49,7 +49,8 @@ import com.openobd.ui.SubscribeSensors
 import com.openobd.ui.appSettings
 import com.openobd.ui.components.AnalogGauge
 import com.openobd.ui.components.NotConnected
-import com.openobd.ui.components.ScreenTopBar
+import com.openobd.ui.components.TopBar
+import com.openobd.ui.components.TopBarSlot
 import com.openobd.ui.components.SensorPickerDialog
 import com.openobd.ui.components.displayRange
 import com.openobd.ui.components.displayValue
@@ -68,7 +69,7 @@ fun redZone(key: String): Float? = when (key) {
 
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
-fun DashboardScreen(onConnect: () -> Unit, onHud: () -> Unit) {
+fun DashboardScreen(onConnect: () -> Unit, onHud: () -> Unit, topBar: TopBarSlot? = null) {
     val app = LocalApp.current
     val vehicle = connectedVehicle()
     val settings = appSettings()
@@ -77,7 +78,7 @@ fun DashboardScreen(onConnect: () -> Unit, onHud: () -> Unit) {
     var pickFor by remember { mutableStateOf<Int?>(null) }
 
     Column(Modifier.fillMaxSize()) {
-        ScreenTopBar(tr("Dashboard"), actions = {
+        TopBar(topBar, tr("Dashboard"), actions = {
             if (vehicle != null) {
                 IconButton(onClick = { app.session.live.resetStats() }) { Icon(Icons.Default.RestartAlt, tr("Reset min/max")) }
                 IconButton(onClick = onHud) { Icon(Icons.Default.Fullscreen, tr("HUD mode")) }

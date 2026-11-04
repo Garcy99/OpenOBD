@@ -83,6 +83,8 @@ class TranslationCoverageTest {
         keys += com.openobd.core.specs.CrossCheck.texts
         keys += com.openobd.core.voice.VoiceWatch.texts
         keys += com.openobd.core.trip.EcoScorer.texts
+        keys += com.openobd.core.report.CarScore.texts
+        keys += listOf("Good morning", "Good afternoon", "Good evening", "Home", "Live", "Diagnose", "Garage", "More")
         keys += com.openobd.core.battery.CrankAnalysis.texts + com.openobd.session.BatteryTestFeature.texts
         keys += listOf("Name is required", "Request must be hex bytes, e.g. 221E1C",
             "Only read requests are allowed (services 01, 02, 09, 21, 22, 1A, AA)", "Header must be a CAN ID like 7E0")

@@ -33,7 +33,6 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -147,7 +146,7 @@ fun ModuleScreen(moduleId: String, onBack: () -> Unit, onConnect: () -> Unit) {
                         }
                     }, enabled = busy == null && didText.length == 4) { Text(tr("Read")) }
                 }
-                didResult?.let { SelectionContainer { Text(it, fontFamily = FontFamily.Monospace, style = MaterialTheme.typography.bodySmall) } }
+                didResult?.let { SelectionContainer { Text(it, fontFamily = com.openobd.ui.theme.Inter, style = MaterialTheme.typography.bodySmall) } }
             }
         }
     }
@@ -180,7 +179,7 @@ private fun ModuleDtcCard(module: com.openobd.core.brand.EcuModule, d: ModuleDtc
     var open by remember { mutableStateOf(false) }
     SectionCard(Modifier) {
         Row {
-            Text(d.fullCode, fontFamily = FontFamily.Monospace, fontWeight = FontWeight.Bold, style = MaterialTheme.typography.titleLarge,
+            Text(d.fullCode, fontFamily = com.openobd.ui.theme.Inter, fontWeight = FontWeight.Bold, style = MaterialTheme.typography.titleLarge,
                 color = if (d.isActive || d.warningLamp) Bad else Warn, modifier = Modifier.weight(1f))
             desc.knowledge?.let { k -> Pill(tr(desc.severityLabel), when (k.severity) { 3 -> Bad; 2 -> Warn; else -> Good }); Spacer(Modifier.width(6.dp)) }
             Pill(tr(d.system.label), MaterialTheme.colorScheme.primary)
@@ -205,7 +204,7 @@ private fun ModuleDtcDialog(module: com.openobd.core.brand.EcuModule, d: ModuleD
     var error by remember { mutableStateOf<String?>(null) }
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text(d.fullCode, fontFamily = FontFamily.Monospace, fontWeight = FontWeight.Bold) },
+        title = { Text(d.fullCode, fontFamily = com.openobd.ui.theme.Inter, fontWeight = FontWeight.Bold) },
         text = {
             Column(Modifier.verticalScroll(rememberScrollState())) {
                 Text(desc.description, style = MaterialTheme.typography.titleMedium)
@@ -242,7 +241,7 @@ private fun ModuleDtcDialog(module: com.openobd.core.brand.EcuModule, d: ModuleD
                             dd.snapshots.forEach { snap ->
                                 Text(tr("Freeze frame #%1\$s", snap.record), fontWeight = FontWeight.SemiBold, modifier = Modifier.padding(top = 6.dp))
                                 snap.values.forEach { v -> KeyValueRow(v.name, v.value) }
-                                snap.undecoded?.let { Text(it, fontFamily = FontFamily.Monospace, style = MaterialTheme.typography.bodySmall) }
+                                snap.undecoded?.let { Text(it, fontFamily = com.openobd.ui.theme.Inter, style = MaterialTheme.typography.bodySmall) }
                             }
                             if (dd.extended.isNotEmpty()) {
                                 Text(tr("Extended data"), fontWeight = FontWeight.SemiBold, modifier = Modifier.padding(top = 6.dp))

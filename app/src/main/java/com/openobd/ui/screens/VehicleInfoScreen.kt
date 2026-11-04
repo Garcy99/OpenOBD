@@ -19,7 +19,6 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -57,7 +56,7 @@ fun VehicleInfoScreen(onBack: () -> Unit, onConnect: () -> Unit) {
                     Text(tr("This vehicle does not report its VIN over OBD (common before ~2005)."), color = MaterialTheme.colorScheme.onSurfaceVariant)
                 } else {
                     val d = VinDecoder.decode(vin)
-                    SelectionContainer { Text(d.vin, fontFamily = FontFamily.Monospace, fontWeight = FontWeight.Bold, style = MaterialTheme.typography.titleLarge) }
+                    SelectionContainer { Text(d.vin, fontFamily = com.openobd.ui.theme.Inter, fontWeight = FontWeight.Bold, style = MaterialTheme.typography.titleLarge) }
                     KeyValueRow(tr("Manufacturer"), d.manufacturer ?: tr("Unknown (%1\$s)", d.wmi))
                     KeyValueRow(tr("Model year"), d.modelYear?.toString() ?: tr("Unknown"))
                     KeyValueRow(tr("Country"), d.country ?: d.region)
@@ -99,7 +98,7 @@ fun VehicleInfoScreen(onBack: () -> Unit, onConnect: () -> Unit) {
             }
             SectionCard(title = tr("Supported PIDs (%1\$s)", (vehicle.supportedPids.count { it % 0x20 != 0 }))) {
                 Text(vehicle.supportedPids.filter { it % 0x20 != 0 }.joinToString("  ") { "%02X".format(it) },
-                    fontFamily = FontFamily.Monospace, style = MaterialTheme.typography.bodySmall)
+                    fontFamily = com.openobd.ui.theme.Inter, style = MaterialTheme.typography.bodySmall)
                 vehicle.supportedPids.filter { it % 0x20 != 0 }.forEach { p ->
                     Pids.all[p]?.let { KeyValueRow("%02X".format(p), it.description) }
                 }

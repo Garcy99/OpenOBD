@@ -53,7 +53,6 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
@@ -112,56 +111,6 @@ private fun toLiters(v: Double, units: UnitSystem) = if (units == UnitSystem.IMP
 private fun fromLiters(v: Double, units: UnitSystem) = if (units == UnitSystem.IMPERIAL) v * 0.264172 else v
 private fun distUnit(units: UnitSystem) = if (units == UnitSystem.IMPERIAL) "mi" else "km"
 private fun volUnit(units: UnitSystem) = if (units == UnitSystem.IMPERIAL) "gal" else "L"
-
-// ---------------------------------------------------------------- Home card
-
-@Composable
-fun MyCarCard(onNavigate: (String) -> Unit) {
-    val app = LocalApp.current
-    val settings = appSettings()
-    val g by app.garage.data.collectAsStateWithLifecycle()
-    val v = g.active ?: return
-    val now = System.currentTimeMillis()
-    val due = g.maintenance.filter { it.vehicleId == v.id }.map { it to Maintenance.status(it, v.odometerKm, now) }
-        .filter { it.second.overdue || it.second.dueSoon }
-    SectionCard {
-        Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.clickable { onNavigate(Routes.GARAGE) }) {
-            Icon(Icons.Default.DirectionsCar, null, tint = MaterialTheme.colorScheme.primary)
-            Spacer(Modifier.width(12.dp))
-            Column(Modifier.weight(1f)) {
-                Text(v.name, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
-                Text(tr("Odometer ") + fmtKm(v.odometerKm, settings.units) + if (g.vehicles.size > 1) tr(" · %1\$s cars in garage", g.vehicles.size) else "",
-                    style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-            }
-            TextButton(onClick = { onNavigate(Routes.GARAGE) }) { Text(tr("Garage")) }
-        }
-        val specs = v.specs
-        if (specs != null) {
-            Text(listOfNotNull(tr(specs.fuel.label), specs.engineLabel().ifBlank { null },
-                specs.consumptionL100?.let { fmtL100(it, settings.units) + " " + tr("official") }).joinToString(" · "),
-                style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.padding(top = 4.dp).clickable { onNavigate(Routes.findCar(v.id)) })
-        } else {
-            TextButton(onClick = { onNavigate(Routes.findCar(v.id)) }) { Text(tr("Identify your car (model & specs)")) }
-        }
-        if (due.isNotEmpty()) {
-            Spacer(Modifier.height(6.dp))
-            due.take(3).forEach { (item, st) ->
-                Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(vertical = 2.dp)) {
-                    Pill(if (st.overdue) tr("Overdue") else tr("Due soon"), if (st.overdue) Bad else Warn)
-                    Spacer(Modifier.width(8.dp))
-                    Text(item.name, style = MaterialTheme.typography.bodyMedium)
-                }
-            }
-        }
-        Spacer(Modifier.height(8.dp))
-        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            OutlinedButton(onClick = { onNavigate(Routes.MAINTENANCE) }, modifier = Modifier.weight(1f)) { Text(tr("Service"), maxLines = 1) }
-            OutlinedButton(onClick = { onNavigate(Routes.FUEL) }, modifier = Modifier.weight(1f)) { Text(tr("Fuel"), maxLines = 1) }
-            OutlinedButton(onClick = { onNavigate(Routes.TRIPS) }, modifier = Modifier.weight(1f)) { Text(tr("Trips"), maxLines = 1) }
-        }
-    }
-}
 
 // ---------------------------------------------------------------- Garage
 
@@ -484,7 +433,7 @@ fun FuelLogScreen(onBack: () -> Unit) {
                             Text("${fmtLiters(e.liters, settings.units)} · ${fmtMoney(e.totalCost)} · ${fmtKm(e.odometerKm, settings.units)}" + if (!e.fullTank) tr(" · partial") else "",
                                 style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                         }
-                        sum.perEntry[e.id]?.let { Text(fmtL100(it, settings.units), fontFamily = FontFamily.Monospace, fontWeight = FontWeight.Bold) }
+                        sum.perEntry[e.id]?.let { Text(fmtL100(it, settings.units), fontFamily = com.openobd.ui.theme.Inter, fontWeight = FontWeight.Bold) }
                     }
                 }
             }

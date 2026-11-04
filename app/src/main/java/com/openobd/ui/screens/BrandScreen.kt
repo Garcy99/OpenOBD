@@ -39,7 +39,6 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -205,7 +204,7 @@ fun BrandScreen(onBack: () -> Unit, onNavigate: (String) -> Unit) {
                 LazyColumn(Modifier.heightIn(max = 460.dp)) {
                     items(ManufacturerCodes.all(family).entries.sortedBy { it.key }.toList()) { (c, d) ->
                         Row(Modifier.padding(vertical = 6.dp)) {
-                            Text(c, fontFamily = FontFamily.Monospace, fontWeight = FontWeight.Bold, modifier = Modifier.width(64.dp))
+                            Text(c, fontFamily = com.openobd.ui.theme.Inter, fontWeight = FontWeight.Bold, modifier = Modifier.width(64.dp))
                             Text(d, style = MaterialTheme.typography.bodySmall)
                         }
                     }

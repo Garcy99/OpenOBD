@@ -1,0 +1,4 @@
+• Diseño premium totalmente nuevo: tipografía, indicadores, tarjetas y colores, claro y oscuro
+• Organización más clara: Inicio, En directo, Diagnosis, Garaje y Más
+• Puntuación del coche: el estado de tu coche en un número, con los motivos
+• El inicio muestra lo que requiere tu atención: códigos, mantenimiento, ITV

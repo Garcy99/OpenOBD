@@ -18,7 +18,6 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -33,18 +32,19 @@ import com.openobd.ui.SubscribeSensors
 import com.openobd.ui.appSettings
 import com.openobd.ui.components.KeyValueRow
 import com.openobd.ui.components.NotConnected
-import com.openobd.ui.components.ScreenTopBar
+import com.openobd.ui.components.TopBar
+import com.openobd.ui.components.TopBarSlot
 import com.openobd.ui.components.SectionCard
 import com.openobd.ui.connectedVehicle
 import com.openobd.ui.theme.Good
 
 @Composable
-fun PerformanceScreen(onBack: () -> Unit, onConnect: () -> Unit) {
+fun PerformanceScreen(onBack: () -> Unit, onConnect: () -> Unit, topBar: TopBarSlot? = null) {
     val session = LocalApp.current.session
     val vehicle = connectedVehicle()
     val settings = appSettings()
     Column(Modifier.fillMaxSize()) {
-        ScreenTopBar(tr("Performance timer"), onBack)
+        TopBar(topBar, tr("Performance timer"), onBack)
         if (vehicle == null) { NotConnected(onConnect); return@Column }
         SubscribeSensors("performance", listOf("010D"))
         val s by session.perf.state.collectAsStateWithLifecycle()
@@ -54,7 +54,7 @@ fun PerformanceScreen(onBack: () -> Unit, onConnect: () -> Unit) {
         Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
             SectionCard {
                 Column(Modifier.fillMaxWidth(), horizontalAlignment = Alignment.CenterHorizontally) {
-                    Text("%.2f s".format(s.elapsedS), fontSize = 56.sp, fontFamily = FontFamily.Monospace, fontWeight = FontWeight.Bold)
+                    Text("%.2f s".format(s.elapsedS), fontSize = 56.sp, fontFamily = com.openobd.ui.theme.Inter, fontWeight = FontWeight.Bold)
                     Text("%.0f %s · %s".format(speed.value, speed.unit.symbol, dist), style = MaterialTheme.typography.titleMedium)
                     Text(s.message, color = MaterialTheme.colorScheme.primary, modifier = Modifier.padding(top = 6.dp))
                 }

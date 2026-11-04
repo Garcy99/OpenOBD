@@ -20,18 +20,23 @@ import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
-import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.drawscope.rotate
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.openobd.ui.theme.Bad
+import com.openobd.ui.theme.Blue
+import com.openobd.ui.theme.Cyan
+import com.openobd.ui.theme.Violet
 import com.openobd.ui.theme.Warn
 import kotlin.math.cos
 import kotlin.math.sin
 
 /**
- * Analog gauge with a 240° sweep. [redFrom] marks the start of the red zone as a fraction (0..1).
+ * Arc gauge with a 270° sweep: a slim track, the value arc in the brand gradient with a glowing tip, and the
+ * reading in large tabular numerals. [redFrom] marks the start of the red zone as a fraction (0..1).
  */
 @Composable
 fun AnalogGauge(
@@ -45,51 +50,56 @@ fun AnalogGauge(
     maxText: String? = null,
     highlight: Boolean = false,
 ) {
-    val animated by animateFloatAsState((fraction ?: 0f).coerceIn(0f, 1f), tween(250), label = "needle")
+    val animated by animateFloatAsState((fraction ?: 0f).coerceIn(0f, 1f), tween(300), label = "arc")
     val track = MaterialTheme.colorScheme.surfaceVariant
-    val primary = if (highlight) Bad else MaterialTheme.colorScheme.primary
     val tick = MaterialTheme.colorScheme.onSurfaceVariant
-    val needle = MaterialTheme.colorScheme.secondary
+    val inRed = redFrom != null && fraction != null && fraction >= redFrom
+    val colors = if (highlight || inRed) listOf(Warn, Bad) else listOf(Cyan, Blue, Violet)
     Box(modifier.aspectRatio(1f), contentAlignment = Alignment.Center) {
-        Canvas(Modifier.fillMaxSize().padding(6.dp)) {
-            val stroke = size.minDimension * 0.07f
+        Canvas(Modifier.fillMaxSize().padding(10.dp)) {
+            val stroke = size.minDimension * 0.075f
             val inset = stroke / 2 + 2f
             val arcSize = Size(size.width - inset * 2, size.height - inset * 2)
             val topLeft = Offset(inset, inset)
-            val start = 150f
-            val sweep = 240f
-            drawArc(track, start, sweep, false, topLeft, arcSize, style = Stroke(stroke, cap = StrokeCap.Round))
-            redFrom?.let { rf ->
-                drawArc(Bad.copy(alpha = 0.45f), start + sweep * rf, sweep * (1 - rf), false, topLeft, arcSize, style = Stroke(stroke, cap = StrokeCap.Butt))
-            }
-            if (fraction != null) {
-                drawArc(primary, start, sweep * animated, false, topLeft, arcSize, style = Stroke(stroke, cap = StrokeCap.Round))
-            }
+            val start = 135f
+            val sweep = 270f
             val c = Offset(size.width / 2, size.height / 2)
             val r = arcSize.width / 2
-            for (i in 0..10) {
-                val a = Math.toRadians((start + sweep * i / 10f).toDouble())
-                val r1 = r - stroke * 0.9f
-                val r2 = r - stroke * (if (i % 5 == 0) 1.9f else 1.4f)
-                drawLine(tick.copy(alpha = 0.7f), Offset(c.x + r1 * cos(a).toFloat(), c.y + r1 * sin(a).toFloat()),
-                    Offset(c.x + r2 * cos(a).toFloat(), c.y + r2 * sin(a).toFloat()), strokeWidth = 2.5f)
+            drawArc(track, start, sweep, false, topLeft, arcSize, style = Stroke(stroke, cap = StrokeCap.Round))
+            redFrom?.let { rf ->
+                drawArc(Bad.copy(alpha = 0.35f), start + sweep * rf, sweep * (1 - rf), false, topLeft, arcSize, style = Stroke(stroke * 0.35f, cap = StrokeCap.Round))
             }
-            if (fraction != null) {
+            // Fine ticks inside the arc
+            for (i in 0..20) {
+                val a = Math.toRadians((start + sweep * i / 20f).toDouble())
+                val r1 = r - stroke * 1.15f
+                val r2 = r - stroke * (if (i % 5 == 0) 1.75f else 1.4f)
+                drawLine(tick.copy(alpha = if (i % 5 == 0) 0.55f else 0.25f), Offset(c.x + r1 * cos(a).toFloat(), c.y + r1 * sin(a).toFloat()),
+                    Offset(c.x + r2 * cos(a).toFloat(), c.y + r2 * sin(a).toFloat()), strokeWidth = if (i % 5 == 0) 3f else 2f, cap = StrokeCap.Round)
+            }
+            if (fraction != null && animated > 0.001f) {
+                val brush = Brush.sweepGradient(
+                    0f to colors.first(), (sweep / 360f * animated).coerceAtLeast(0.01f) to colors.last(), 1f to colors.last(), center = c,
+                )
+                rotate(start, c) {
+                    drawArc(brush, 0f, sweep * animated, false, topLeft, arcSize, style = Stroke(stroke, cap = StrokeCap.Round))
+                }
                 val a = Math.toRadians((start + sweep * animated).toDouble())
-                val len = r - stroke * 2.2f
-                drawLine(needle, c, Offset(c.x + len * cos(a).toFloat(), c.y + len * sin(a).toFloat()), strokeWidth = stroke * 0.32f, cap = StrokeCap.Round)
-                drawCircle(needle, stroke * 0.45f, c)
+                val tip = Offset(c.x + r * cos(a).toFloat(), c.y + r * sin(a).toFloat())
+                drawCircle(Brush.radialGradient(listOf(colors.last().copy(alpha = 0.55f), Color.Transparent), tip, stroke * 1.8f), stroke * 1.8f, tip)
+                drawCircle(Color.White, stroke * 0.32f, tip)
             }
         }
-        Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.padding(top = 36.dp)) {
-            Text(valueText, fontSize = 26.sp, fontWeight = FontWeight.Bold, fontFamily = FontFamily.Monospace, maxLines = 1,
-                color = if (highlight) Bad else MaterialTheme.colorScheme.onSurface)
+        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+            Text(valueText, fontSize = 30.sp, fontWeight = FontWeight.Bold, maxLines = 1, letterSpacing = (-0.5).sp,
+                style = MaterialTheme.typography.headlineMedium.copy(fontFeatureSettings = "tnum"),
+                color = if (highlight || inRed) Bad else MaterialTheme.colorScheme.onSurface)
             Text(unit, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
-        Column(Modifier.align(Alignment.BottomCenter).fillMaxWidth().padding(bottom = 4.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+        Column(Modifier.align(Alignment.BottomCenter).fillMaxWidth().padding(bottom = 2.dp), horizontalAlignment = Alignment.CenterHorizontally) {
             Text(label, style = MaterialTheme.typography.labelLarge, maxLines = 1, overflow = TextOverflow.Ellipsis)
             if (minText != null && maxText != null) {
-                Text("$minText – $maxText", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Text("$minText – $maxText", style = MaterialTheme.typography.labelSmall.copy(fontFeatureSettings = "tnum"), color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
         }
     }

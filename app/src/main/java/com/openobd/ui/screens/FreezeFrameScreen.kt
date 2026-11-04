@@ -18,7 +18,6 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -60,7 +59,7 @@ fun FreezeFrameScreen(onBack: () -> Unit, onConnect: () -> Unit) {
                             color = MaterialTheme.colorScheme.onSurfaceVariant)
                     } else {
                         SectionCard(title = tr("Triggered by")) {
-                            Text(ff.dtc ?: tr("Unknown"), fontFamily = FontFamily.Monospace, fontWeight = FontWeight.Bold, style = MaterialTheme.typography.headlineSmall)
+                            Text(ff.dtc ?: tr("Unknown"), fontFamily = com.openobd.ui.theme.Inter, fontWeight = FontWeight.Bold, style = MaterialTheme.typography.headlineSmall)
                             ff.dtc?.let { Text(session.describe(it).description) }
                         }
                         SectionCard(title = tr("Conditions at the time of the fault")) {

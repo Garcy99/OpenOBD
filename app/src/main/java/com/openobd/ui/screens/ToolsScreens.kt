@@ -38,7 +38,6 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -241,8 +240,8 @@ fun IdExplorerScreen(onBack: () -> Unit, onConnect: () -> Unit) {
                         Row(Modifier.fillMaxWidth().padding(vertical = 2.dp), verticalAlignment = Alignment.CenterVertically) {
                             Checkbox(watched[id] == true, { watched[id] = it })
                             Column(Modifier.weight(1f)) {
-                                Text(if (range.gmlan) "%02X".format(id) else "%04X".format(id), fontFamily = FontFamily.Monospace, fontWeight = FontWeight.Bold)
-                                Text(bytes.joinToString(" ") { "%02X".format(it) }.take(60), fontFamily = FontFamily.Monospace, style = MaterialTheme.typography.bodySmall,
+                                Text(if (range.gmlan) "%02X".format(id) else "%04X".format(id), fontFamily = com.openobd.ui.theme.Inter, fontWeight = FontWeight.Bold)
+                                Text(bytes.joinToString(" ") { "%02X".format(it) }.take(60), fontFamily = com.openobd.ui.theme.Inter, style = MaterialTheme.typography.bodySmall,
                                     color = if (changed) Good else MaterialTheme.colorScheme.onSurface,
                                     modifier = if (changed) Modifier.background(Good.copy(alpha = 0.12f), RoundedCornerShape(4.dp)) else Modifier)
                                 val ascii = bytes.filter { it in 0x20..0x7E }.map { it.toChar() }.joinToString("")

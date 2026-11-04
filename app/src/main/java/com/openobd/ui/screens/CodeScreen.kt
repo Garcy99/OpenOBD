@@ -43,7 +43,6 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -197,7 +196,7 @@ fun AssistantScreen(code: String, onBack: () -> Unit, onSettings: () -> Unit) {
                 Column {
                     Text(tr("Ask about this fault. The assistant sees the data below, read from your car."), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     TextButton(onClick = { showContext = !showContext }) { Text(if (showContext) tr("Hide the data sent") else tr("Show the data sent")) }
-                    if (showContext) Text(contextText, fontFamily = FontFamily.Monospace, style = MaterialTheme.typography.bodySmall)
+                    if (showContext) Text(contextText, fontFamily = com.openobd.ui.theme.Inter, style = MaterialTheme.typography.bodySmall)
                 }
             }
             items(turns) { t -> Bubble(t) }

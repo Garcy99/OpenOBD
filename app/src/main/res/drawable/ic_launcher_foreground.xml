@@ -7,7 +7,7 @@
     <path android:strokeColor="#FFFFFFFF" android:strokeWidth="3" android:strokeLineCap="round"
         android:pathData="M54,36 L54,41 M37.5,43 L41,46.5 M70.5,43 L67,46.5 M31,58 L36,58 M77,58 L72,58" />
     <!-- Needle -->
-    <path android:strokeColor="#FFF97316" android:strokeWidth="4" android:strokeLineCap="round"
+    <path android:strokeColor="#FF8B5CF6" android:strokeWidth="4" android:strokeLineCap="round"
         android:pathData="M54,60 L66,46" />
     <path android:fillColor="#FFFFFFFF" android:pathData="M54,60 m-4,0 a4,4 0 1,0 8,0 a4,4 0 1,0 -8,0" />
     <!-- OBD connector -->

@@ -35,7 +35,6 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -161,7 +160,7 @@ fun PacksScreen(onBack: () -> Unit) {
                     if (pack.description.isNotBlank()) Text(pack.description, style = MaterialTheme.typography.bodyMedium)
                     pack.pids.forEach { p ->
                         Text("• ${p.name}  ", fontWeight = FontWeight.Medium)
-                        Text("   ${p.header.ifBlank { "7DF" }} · ${p.request} · ${p.equation}", fontFamily = FontFamily.Monospace, style = MaterialTheme.typography.bodySmall)
+                        Text("   ${p.header.ifBlank { "7DF" }} · ${p.request} · ${p.equation}", fontFamily = com.openobd.ui.theme.Inter, style = MaterialTheme.typography.bodySmall)
                     }
                 }
             },

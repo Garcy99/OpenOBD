@@ -34,7 +34,6 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -107,7 +106,7 @@ fun ChartScreen(onBack: () -> Unit, onConnect: () -> Unit) {
                             style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
                     val f = formatSensor(d, r?.value, settings.units)
-                    Text("${f.value} ${f.unit}", fontFamily = FontFamily.Monospace, fontWeight = FontWeight.Bold)
+                    Text("${f.value} ${f.unit}", fontFamily = com.openobd.ui.theme.Inter, fontWeight = FontWeight.Bold)
                 }
             }
         }

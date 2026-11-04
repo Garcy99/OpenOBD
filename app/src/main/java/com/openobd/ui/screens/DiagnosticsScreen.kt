@@ -18,6 +18,32 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.CheckCircle
+import androidx.compose.material.icons.filled.BatteryChargingFull
+import androidx.compose.material.icons.filled.Checklist
+import androidx.compose.material.icons.filled.DirectionsCar
+import androidx.compose.material.icons.filled.FactCheck
+import androidx.compose.material.icons.filled.Flag
+import androidx.compose.material.icons.filled.Hub
+import androidx.compose.material.icons.filled.LinkOff
+import androidx.compose.material.icons.filled.LocalFireDepartment
+import androidx.compose.material.icons.filled.PhotoCamera
+import androidx.compose.material.icons.filled.Science
+import androidx.compose.material3.LinearProgressIndicator
+import com.openobd.ui.components.ActionGrid
+import com.openobd.ui.components.ActionTile
+import com.openobd.ui.components.GradientButton
+import com.openobd.ui.components.GroupCard
+import com.openobd.ui.components.GroupDivider
+import com.openobd.ui.components.HeroCard
+import com.openobd.ui.components.IconBadge
+import com.openobd.ui.components.NavRow
+import com.openobd.ui.components.NoticeCard
+import com.openobd.ui.components.ScreenColumn
+import com.openobd.ui.components.SectionLabel
+import com.openobd.ui.components.SoftButton
+import com.openobd.ui.components.TabHeader
+import com.openobd.ui.theme.Orange
+import com.openobd.ui.theme.Violet
 import androidx.compose.material.icons.filled.DeleteSweep
 import androidx.compose.material.icons.filled.History
 import androidx.compose.material.icons.filled.Search
@@ -42,7 +68,6 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -72,72 +97,75 @@ fun DiagnosticsScreen(onConnect: () -> Unit, onNavigate: (String) -> Unit) {
     val vehicle = connectedVehicle()
     val scan by session.dtcScan.collectAsStateWithLifecycle()
     val clear by session.clearResult.collectAsStateWithLifecycle()
+    val modules by session.modules.moduleScan.collectAsStateWithLifecycle()
+    val brand by session.brand.collectAsStateWithLifecycle()
     var confirmClear by remember { mutableStateOf(false) }
     var detail by remember { mutableStateOf<Dtc?>(null) }
+    val connected = vehicle != null
 
     Column(Modifier.fillMaxSize()) {
-        ScreenTopBar(tr("Trouble codes"), actions = {
-            IconButton(onClick = { onNavigate(Routes.LOOKUP) }) { Icon(Icons.Default.Search, tr("Code lookup")) }
-            IconButton(onClick = { onNavigate(Routes.HISTORY) }) { Icon(Icons.Default.History, tr("Scan history")) }
-            if (vehicle != null) IconButton(onClick = { shareText(context, tr("Vehicle diagnostic report"), session.reports.text()) }) {
+        TabHeader(tr("Diagnose"), actions = {
+            if (connected) IconButton(onClick = { shareText(context, tr("Vehicle diagnostic report"), session.reports.text()) }) {
                 Icon(Icons.Default.Share, tr("Share report"))
             }
         })
-        if (vehicle == null) { NotConnected(onConnect); return@Column }
-        Column(
-            Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = 16.dp),
-            verticalArrangement = Arrangement.spacedBy(12.dp),
-        ) {
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                Button(onClick = session::scanDtcs, enabled = scan !is Op.Loading, modifier = Modifier.weight(1f)) { Text(tr("Scan")) }
-                OutlinedButton(
-                    onClick = { confirmClear = true },
-                    enabled = scan !is Op.Loading && clear !is Op.Loading,
-                    modifier = Modifier.weight(1f),
-                    colors = ButtonDefaults.outlinedButtonColors(contentColor = MaterialTheme.colorScheme.error),
-                ) {
-                    Icon(Icons.Default.DeleteSweep, null, Modifier.size(18.dp)); Spacer(Modifier.width(6.dp)); Text(tr("Clear codes"))
-                }
-            }
+        ScreenColumn {
+            ScanHero(connected, scan, clear, onConnect, onScan = session::scanDtcs, onClear = { confirmClear = true })
             when (val c = clear) {
                 is Op.Loading -> LoadingBox(c.progress)
-                is Op.Done -> Text("✓ ${c.value}", color = Good, style = MaterialTheme.typography.bodyMedium)
+                is Op.Done -> NoticeCard(Icons.Default.CheckCircle, tr("Codes cleared"), c.value, Good)
                 is Op.Error -> ErrorText(c.message)
                 Op.Idle -> Unit
             }
-            when (val s = scan) {
-                is Op.Loading -> LoadingBox(s.progress)
-                is Op.Error -> ErrorText(s.message)
-                Op.Idle -> Text(tr("Press Scan to read stored, pending and permanent codes from every ECU."), color = MaterialTheme.colorScheme.onSurfaceVariant)
-                is Op.Done -> {
-                    val r = s.value.readiness
-                    SectionCard {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            val bad = r?.milOn == true
-                            Icon(if (bad) Icons.Default.Warning else Icons.Default.CheckCircle, null, tint = if (bad) Bad else Good, modifier = Modifier.size(40.dp))
-                            Spacer(Modifier.width(12.dp))
-                            Column {
-                                Text(if (bad) tr("Check engine light is ON") else tr("Check engine light is OFF"), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
-                                Text(tr("%1\$s code(s) found across %2\$s ECU(s)", s.value.codes.size, (s.value.codes.map { it.ecu }.distinct().size.coerceAtLeast(if (s.value.codes.isEmpty()) 0 else 1))),
-                                    style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                            }
-                        }
-                        if (s.value.codes.any { it.type == DtcType.STORED }) {
-                            Spacer(Modifier.height(8.dp))
-                            TextButton(onClick = { onNavigate(Routes.FREEZE) }) { Text(tr("View freeze frame (conditions when the fault occurred)")) }
-                        }
-                    }
-                    s.value.errors.forEach { (t, e) -> ErrorText(tr(t.label) + ": " + tr(e)) }
-                    for (type in DtcType.entries) {
-                        val codes = s.value.codes.filter { it.type == type }
-                        Text("${tr(type.label)} (${codes.size})", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold,
-                            modifier = Modifier.padding(top = 4.dp))
-                        Text(tr(type.description), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                        if (codes.isEmpty()) Text(tr("None"), style = MaterialTheme.typography.bodyMedium, color = Good)
-                        codes.forEach { d -> DtcCard(d, session.describe(d.code), session.client?.ecuName(d.ecu)?.let { tr(it) }) { detail = d } }
-                    }
-                    Spacer(Modifier.height(16.dp))
+            (scan as? Op.Done)?.value?.let { result ->
+                result.errors.forEach { (t, e) -> ErrorText(tr(t.label) + ": " + tr(e)) }
+                for (type in DtcType.entries) {
+                    val codes = result.codes.filter { it.type == type }
+                    if (codes.isEmpty()) continue
+                    SectionLabel("${tr(type.label)} (${codes.size})")
+                    codes.forEach { d -> DtcCard(d, session.describe(d.code), session.client?.ecuName(d.ecu)?.let { tr(it) }) { detail = d } }
                 }
+                if (result.codes.any { it.type == DtcType.STORED }) {
+                    NoticeCard(Icons.Default.Flag, tr("Freeze frame"), tr("View freeze frame (conditions when the fault occurred)"),
+                        MaterialTheme.colorScheme.primary) { onNavigate(Routes.FREEZE) }
+                }
+            }
+
+            SectionLabel(tr("Engine & emissions"))
+            GroupCard {
+                NavRow(Icons.Default.Checklist, tr("Emission readiness (I/M)"), tr("Smog check monitors, since clear and this drive cycle"), enabled = connected) { onNavigate(Routes.READINESS) }
+                GroupDivider()
+                NavRow(Icons.Default.Flag, tr("Freeze frame"), tr("Sensor snapshot captured when a fault was stored"), enabled = connected) { onNavigate(Routes.FREEZE) }
+                GroupDivider()
+                NavRow(Icons.Default.Science, tr("On-board monitor tests (Mode 06)"), tr("Catalyst, O2 sensors, misfire counts per cylinder, EVAP"), enabled = connected) { onNavigate(Routes.TESTS) }
+                GroupDivider()
+                NavRow(Icons.Default.DirectionsCar, tr("Vehicle information"), tr("VIN decoder, calibration IDs, CVN, ECU names, IPT counters"), enabled = connected) { onNavigate(Routes.VEHICLE) }
+            }
+
+            SectionLabel(tr("Other modules"))
+            GroupCard {
+                val done = (modules as? Op.Done)?.value
+                NavRow(Icons.Default.Hub, brand?.let { tr("%1\$s features", it.name) } ?: tr("Brand features & modules"),
+                    if (done != null) tr("%1\$s modules answered · %2\$s module code(s)", done.count { it.online }, done.sumOf { it.dtcs.size })
+                    else tr("ABS, airbag, body, EV battery modules · manufacturer codes · brand PIDs"),
+                    tint = Violet,
+                    trailing = { done?.sumOf { it.dtcs.size }?.takeIf { it > 0 }?.let { Pill("$it", Bad) } },
+                ) { onNavigate(Routes.BRAND) }
+            }
+
+            SectionLabel(tr("Inspections"))
+            ActionGrid(2, listOf(
+                { m -> ActionTile(Icons.Default.FactCheck, tr("Used car & pre-ITV check"), m, tint = Good) { onNavigate(Routes.CHECK) } },
+                { m -> ActionTile(Icons.Default.PhotoCamera, tr("Identify a warning light"), m, tint = Orange) { onNavigate(Routes.LIGHTS) } },
+                { m -> ActionTile(Icons.Default.BatteryChargingFull, tr("Battery & starting test"), m, tint = Good) { onNavigate(Routes.BATTERY) } },
+                { m -> ActionTile(Icons.Default.LocalFireDepartment, tr("Diesel particulate filter"), m, tint = Orange) { onNavigate(Routes.DIESEL) } },
+            ))
+
+            SectionLabel(tr("Reference"))
+            GroupCard {
+                NavRow(Icons.Default.Search, tr("Trouble code lookup"), tr("Offline database of 1300+ generic codes")) { onNavigate(Routes.LOOKUP) }
+                GroupDivider()
+                NavRow(Icons.Default.History, tr("Scan history"), tr("Every scan and clear, so you know when codes came back")) { onNavigate(Routes.HISTORY) }
             }
         }
     }
@@ -161,26 +189,79 @@ fun DiagnosticsScreen(onConnect: () -> Unit, onNavigate: (String) -> Unit) {
     detail?.let { d -> androidx.compose.runtime.LaunchedEffect(d) { detail = null; onNavigate(com.openobd.ui.Routes.code(d.code)) } }
 }
 
+/** Scan status and the two main actions. */
+@Composable
+private fun ScanHero(connected: Boolean, scan: Op<*>, clear: Op<*>, onConnect: () -> Unit, onScan: () -> Unit, onClear: () -> Unit) {
+    HeroCard {
+        if (!connected) {
+            IconBadge(Icons.Default.LinkOff, MaterialTheme.colorScheme.primary, 48.dp)
+            Spacer(Modifier.height(14.dp))
+            Text(tr("Connect to scan your car"), style = MaterialTheme.typography.titleLarge)
+            Text(tr("Read the trouble codes of the engine and every module. Code lookup, scan history and the warning light photo work offline."),
+                style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Spacer(Modifier.height(16.dp))
+            GradientButton(tr("Go to connection"), onConnect, Modifier.fillMaxWidth())
+            return@HeroCard
+        }
+        val done = (scan as? Op.Done<*>)?.value as? com.openobd.session.DtcScan
+        val mil = done?.readiness?.milOn == true
+        val count = done?.codes?.distinctBy { it.code }?.size ?: 0
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            val (icon, tint) = when {
+                scan is Op.Loading -> Icons.Default.Search to MaterialTheme.colorScheme.primary
+                done == null -> Icons.Default.Search to MaterialTheme.colorScheme.primary
+                mil || count > 0 -> Icons.Default.Warning to Bad
+                else -> Icons.Default.CheckCircle to Good
+            }
+            IconBadge(icon, tint, 52.dp)
+            Spacer(Modifier.width(14.dp))
+            Column(Modifier.weight(1f)) {
+                Text(
+                    when {
+                        scan is Op.Loading -> tr("Scanning…")
+                        done == null -> tr("Ready to scan")
+                        mil -> tr("Check engine light is ON")
+                        count > 0 -> tr("Trouble codes present")
+                        else -> tr("No trouble codes")
+                    },
+                    style = MaterialTheme.typography.titleLarge,
+                )
+                Text(
+                    when {
+                        scan is Op.Loading -> tr((scan as Op.Loading).progress ?: "Reading trouble codes")
+                        done == null -> tr("Press Scan to read stored, pending and permanent codes from every ECU.")
+                        else -> tr("%1\$s code(s) found across %2\$s ECU(s)", done.codes.size, done.codes.map { it.ecu }.distinct().size) +
+                            (if (mil) "" else " · " + tr("Check engine light is OFF"))
+                    },
+                    style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+        }
+        if (scan is Op.Loading) LinearProgressIndicator(Modifier.fillMaxWidth().padding(top = 14.dp))
+        (scan as? Op.Error)?.let { ErrorText(it.message) }
+        Spacer(Modifier.height(16.dp))
+        Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+            GradientButton(if (done == null) tr("Scan") else tr("Scan again"), onScan, Modifier.weight(1f), enabled = scan !is Op.Loading, icon = Icons.Default.Search)
+            SoftButton(tr("Clear codes"), onClear, Modifier.weight(1f), enabled = scan !is Op.Loading && clear !is Op.Loading,
+                icon = Icons.Default.DeleteSweep, color = MaterialTheme.colorScheme.error)
+        }
+    }
+}
+
 @Composable
 fun DtcCard(d: Dtc, desc: DtcDescription, ecuName: String?, onClick: () -> Unit) {
-    Card(
-        Modifier.fillMaxWidth().clickable(onClick = onClick),
-        shape = RoundedCornerShape(14.dp),
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainer),
-    ) {
-        Column(Modifier.padding(14.dp)) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Text(d.code, fontFamily = FontFamily.Monospace, fontWeight = FontWeight.Bold, style = MaterialTheme.typography.titleLarge,
-                    color = if (d.type == DtcType.PENDING) Warn else Bad)
-                Spacer(Modifier.width(10.dp))
-                Pill(tr(d.system.label), MaterialTheme.colorScheme.primary)
-                Spacer(Modifier.weight(1f))
-                desc.knowledge?.let { k -> Pill(tr(desc.severityLabel), when (k.severity) { 3 -> Bad; 2 -> Warn; else -> Good }) }
-            }
-            Spacer(Modifier.height(4.dp))
-            Text(desc.description, style = MaterialTheme.typography.bodyMedium)
-            if (ecuName != null) Text(ecuName, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+    val tint = if (d.type == DtcType.PENDING) Warn else Bad
+    SectionCard(Modifier.clickable(onClick = onClick)) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text(d.code, fontFamily = com.openobd.ui.theme.Inter, fontWeight = FontWeight.Bold, style = MaterialTheme.typography.titleLarge, color = tint)
+            Spacer(Modifier.width(10.dp))
+            Pill(tr(d.system.label), MaterialTheme.colorScheme.primary)
+            Spacer(Modifier.weight(1f))
+            desc.knowledge?.let { k -> Pill(tr(desc.severityLabel), when (k.severity) { 3 -> Bad; 2 -> Warn; else -> Good }) }
         }
+        Spacer(Modifier.height(6.dp))
+        Text(desc.description, style = MaterialTheme.typography.bodyMedium)
+        if (ecuName != null) Text(ecuName, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
     }
 }
 
@@ -189,7 +270,7 @@ fun DtcDetailDialog(code: String, desc: DtcDescription, subtitle: String?, onDis
     val context = LocalContext.current
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text(code, fontFamily = FontFamily.Monospace, fontWeight = FontWeight.Bold) },
+        title = { Text(code, fontFamily = com.openobd.ui.theme.Inter, fontWeight = FontWeight.Bold) },
         text = {
             Column(Modifier.verticalScroll(rememberScrollState())) {
                 Text(desc.description, style = MaterialTheme.typography.titleMedium)

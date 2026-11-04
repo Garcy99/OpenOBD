@@ -3,11 +3,28 @@ package com.openobd.ui
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Apps
-import androidx.compose.material.icons.filled.Build
-import androidx.compose.material.icons.filled.DirectionsCar
-import androidx.compose.material.icons.filled.ShowChart
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInHorizontally
+import androidx.compose.animation.slideOutHorizontally
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.material.icons.filled.Garage
+import androidx.compose.material.icons.filled.GridView
+import androidx.compose.material.icons.filled.Home
+import androidx.compose.material.icons.filled.MedicalServices
 import androidx.compose.material.icons.filled.Speed
+import androidx.compose.material.icons.outlined.Garage
+import androidx.compose.material.icons.outlined.GridView
+import androidx.compose.material.icons.outlined.Home
+import androidx.compose.material.icons.outlined.MedicalServices
+import androidx.compose.material.icons.outlined.Speed
+import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.NavigationBarItemDefaults
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.dp
 import androidx.compose.material3.Icon
 import androidx.compose.material3.NavigationBar
 import androidx.compose.material3.NavigationBarItem
@@ -35,17 +52,15 @@ import com.openobd.ui.screens.BrandScreen
 import com.openobd.ui.screens.ChartScreen
 import com.openobd.ui.screens.CustomPidsScreen
 import com.openobd.ui.screens.ModuleScreen
-import com.openobd.ui.screens.DashboardScreen
 import com.openobd.ui.screens.DiagnosticsScreen
 import com.openobd.ui.screens.DtcLookupScreen
 import com.openobd.ui.screens.FreezeFrameScreen
 import com.openobd.ui.screens.HistoryScreen
 import com.openobd.ui.screens.HomeScreen
 import com.openobd.ui.screens.HudScreen
-import com.openobd.ui.screens.LiveDataScreen
 import com.openobd.ui.screens.LogsScreen
-import com.openobd.ui.screens.MonitorTestsScreen
 import com.openobd.ui.screens.MoreScreen
+import com.openobd.ui.screens.MonitorTestsScreen
 import com.openobd.ui.screens.PerformanceScreen
 import com.openobd.ui.screens.ReadinessScreen
 import com.openobd.ui.screens.SettingsScreen
@@ -77,6 +92,7 @@ object Routes {
     const val ABOUT = "about"
     const val BRAND = "brand"
     const val GARAGE = "garage"
+    const val GARAGE_HUB = "garagehub"
     const val FINDCAR = "findcar/{id}"
     fun findCar(id: String) = "findcar/$id"
     const val MAINTENANCE = "maintenance"
@@ -104,15 +120,23 @@ object Routes {
     fun module(id: String) = "module/" + android.net.Uri.encode(id)
 }
 
-private data class Tab(val route: String, val label: String, val icon: ImageVector)
+private data class Tab(val route: String, val label: String, val icon: ImageVector, val selectedIcon: ImageVector)
 
 private val tabs = listOf(
-    Tab(Routes.HOME, "Vehicle", Icons.Default.DirectionsCar),
-    Tab(Routes.DASHBOARD, "Dashboard", Icons.Default.Speed),
-    Tab(Routes.LIVE, "Live data", Icons.Default.ShowChart),
-    Tab(Routes.DIAGNOSTICS, "Codes", Icons.Default.Build),
-    Tab(Routes.MORE, "More", Icons.Default.Apps),
+    Tab(Routes.HOME, "Home", Icons.Outlined.Home, Icons.Filled.Home),
+    Tab(Routes.LIVE, "Live", Icons.Outlined.Speed, Icons.Filled.Speed),
+    Tab(Routes.DIAGNOSTICS, "Diagnose", Icons.Outlined.MedicalServices, Icons.Filled.MedicalServices),
+    Tab(Routes.GARAGE_HUB, "Garage", Icons.Outlined.Garage, Icons.Filled.Garage),
+    Tab(Routes.MORE, "More", Icons.Outlined.GridView, Icons.Filled.GridView),
 )
+
+private val tabRoutes = tabs.map { it.route }.toSet()
+
+/** Opens a page of the Live tab (gauges, sensors, trip, performance). */
+fun NavHostController.openLive(page: Int) {
+    com.openobd.ui.screens.LivePages.selected = page
+    goTab(Routes.LIVE)
+}
 
 fun NavHostController.goTab(route: String) = navigate(route) {
     popUpTo(graph.findStartDestination().id) { saveState = true }
@@ -141,35 +165,61 @@ fun OpenObdNavHost() {
     Scaffold(
         snackbarHost = { SnackbarHost(snackbar) },
         bottomBar = {
-            if (current != Routes.HUD && !wide) NavigationBar {
-                tabs.forEach { t ->
-                    NavigationBarItem(
-                        selected = current == t.route,
-                        onClick = { nav.goTab(t.route) },
-                        icon = { Icon(t.icon, null) },
-                        label = { Text(tr(t.label), maxLines = 1) },
-                    )
+            if (current != Routes.HUD && !wide) Column {
+                HorizontalDivider(color = com.openobd.ui.theme.LocalExtras.current.hairline)
+                NavigationBar(containerColor = MaterialTheme.colorScheme.surfaceContainerLow, tonalElevation = 0.dp) {
+                    tabs.forEach { t ->
+                        val on = current == t.route
+                        NavigationBarItem(
+                            selected = on,
+                            onClick = { nav.goTab(t.route) },
+                            icon = { Icon(if (on) t.selectedIcon else t.icon, null) },
+                            label = { Text(tr(t.label), maxLines = 1, fontWeight = if (on) FontWeight.SemiBold else FontWeight.Medium) },
+                            colors = NavigationBarItemDefaults.colors(
+                                selectedIconColor = MaterialTheme.colorScheme.primary,
+                                selectedTextColor = MaterialTheme.colorScheme.onSurface,
+                                indicatorColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.14f),
+                                unselectedIconColor = MaterialTheme.colorScheme.onSurfaceVariant,
+                                unselectedTextColor = MaterialTheme.colorScheme.onSurfaceVariant,
+                            ),
+                        )
+                    }
                 }
             }
         },
+        containerColor = MaterialTheme.colorScheme.background,
+        contentWindowInsets = WindowInsets(0),
     ) { pad ->
         val back: () -> Unit = { nav.popBackStack() }
         val toHome: () -> Unit = { nav.goTab(Routes.HOME) }
         androidx.compose.foundation.layout.Row(Modifier.fillMaxSize()) {
-            if (wide && current != Routes.HUD) androidx.compose.material3.NavigationRail {
+            if (wide && current != Routes.HUD) androidx.compose.material3.NavigationRail(containerColor = MaterialTheme.colorScheme.surfaceContainerLow) {
                 tabs.forEach { t ->
                     androidx.compose.material3.NavigationRailItem(
                         selected = current == t.route,
                         onClick = { nav.goTab(t.route) },
-                        icon = { Icon(t.icon, null) },
+                        icon = { Icon(if (current == t.route) t.selectedIcon else t.icon, null) },
                         label = { Text(tr(t.label), maxLines = 1) },
                     )
                 }
             }
-            NavHost(nav, startDestination = Routes.HOME, modifier = Modifier.weight(1f).padding(bottom = pad.calculateBottomPadding())) {
-                composable(Routes.HOME) { HomeScreen(onNavigate = { nav.navigate(it) }, onTab = { nav.goTab(it) }) }
-                composable(Routes.DASHBOARD) { DashboardScreen(onConnect = toHome, onHud = { nav.navigate(Routes.HUD) }) }
-                composable(Routes.LIVE) { LiveDataScreen(onConnect = toHome, onChart = { nav.navigate(Routes.CHART) }) }
+            NavHost(
+                nav, startDestination = Routes.HOME, modifier = Modifier.weight(1f).padding(bottom = pad.calculateBottomPadding()),
+                // Tabs cross-fade; inner screens slide in slightly from the side, like a native push.
+                enterTransition = {
+                    if (targetState.destination.route in tabRoutes) fadeIn(tween(220))
+                    else fadeIn(tween(220)) + slideInHorizontally(tween(260)) { it / 8 }
+                },
+                exitTransition = { fadeOut(tween(160)) },
+                popEnterTransition = { fadeIn(tween(220)) },
+                popExitTransition = {
+                    if (initialState.destination.route in tabRoutes) fadeOut(tween(160))
+                    else fadeOut(tween(180)) + slideOutHorizontally(tween(240)) { it / 8 }
+                },
+            ) {
+                composable(Routes.HOME) { HomeScreen(onNavigate = { nav.navigate(it) }, onTab = { nav.goTab(it) }, onLive = { nav.openLive(it) }) }
+                composable(Routes.LIVE) { com.openobd.ui.screens.LiveHubScreen(onConnect = toHome, onNavigate = { nav.navigate(it) }) }
+                composable(Routes.GARAGE_HUB) { com.openobd.ui.screens.GarageHubScreen(onNavigate = { nav.navigate(it) }) }
                 composable(Routes.CHART) { ChartScreen(onBack = back, onConnect = toHome) }
                 composable(Routes.DIAGNOSTICS) { DiagnosticsScreen(onConnect = toHome, onNavigate = { nav.navigate(it) }) }
                 composable(Routes.MORE) { MoreScreen(onNavigate = { nav.navigate(it) }) }

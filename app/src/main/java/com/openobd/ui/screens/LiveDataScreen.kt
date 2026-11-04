@@ -43,7 +43,6 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -54,14 +53,15 @@ import com.openobd.ui.LocalApp
 import com.openobd.ui.SubscribeSensors
 import com.openobd.ui.appSettings
 import com.openobd.ui.components.NotConnected
-import com.openobd.ui.components.ScreenTopBar
+import com.openobd.ui.components.TopBar
+import com.openobd.ui.components.TopBarSlot
 import com.openobd.ui.components.Sparkline
 import com.openobd.ui.components.formatSensor
 import com.openobd.ui.connectedVehicle
 import com.openobd.ui.theme.Bad
 
 @Composable
-fun LiveDataScreen(onConnect: () -> Unit, onChart: () -> Unit) {
+fun LiveDataScreen(onConnect: () -> Unit, onChart: () -> Unit, topBar: TopBarSlot? = null) {
     val app = LocalApp.current
     val session = app.session
     val vehicle = connectedVehicle()
@@ -73,7 +73,7 @@ fun LiveDataScreen(onConnect: () -> Unit, onChart: () -> Unit) {
 
     if (vehicle == null) {
         Column(Modifier.fillMaxSize()) {
-            ScreenTopBar(tr("Live data"))
+            TopBar(topBar, tr("Live data"))
             NotConnected(onConnect)
         }
         return
@@ -87,7 +87,7 @@ fun LiveDataScreen(onConnect: () -> Unit, onChart: () -> Unit) {
 
     Scaffold(
         topBar = {
-            ScreenTopBar(tr("Live data"), actions = {
+            TopBar(topBar, tr("Live data"), actions = {
                 IconButton(onClick = { session.live.resetStats() }) { Icon(Icons.Default.RestartAlt, tr("Reset min/max")) }
                 IconButton(onClick = { if (recording) session.stopRecording() else session.startRecording(shown.map { it.key }) }) {
                     Icon(if (recording) Icons.Default.Stop else Icons.Default.FiberManualRecord, if (recording) tr("Stop recording") else tr("Record"), tint = Bad)
@@ -138,7 +138,7 @@ fun LiveDataScreen(onConnect: () -> Unit, onChart: () -> Unit) {
                             Column(horizontalAlignment = Alignment.End, modifier = Modifier.width(if (def.labeler != null) 120.dp else 92.dp)) {
                                 if (def.labeler != null) Text(f.value, fontWeight = FontWeight.SemiBold, style = MaterialTheme.typography.bodyMedium, maxLines = 2,
                                     textAlign = androidx.compose.ui.text.style.TextAlign.End)
-                                else Text(f.value, fontFamily = FontFamily.Monospace, fontWeight = FontWeight.Bold, style = MaterialTheme.typography.titleMedium, maxLines = 1)
+                                else Text(f.value, fontFamily = com.openobd.ui.theme.Inter, fontWeight = FontWeight.Bold, style = MaterialTheme.typography.titleMedium, maxLines = 1)
                                 Text(f.unit, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                             }
                         }
