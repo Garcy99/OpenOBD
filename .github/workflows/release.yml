@@ -59,7 +59,10 @@ jobs:
           OPENOBD_KEYSTORE_PASSWORD: ${{ secrets.OPENOBD_KEYSTORE_PASSWORD }}
           OPENOBD_KEY_ALIAS: ${{ secrets.OPENOBD_KEY_ALIAS }}
           OPENOBD_KEY_PASSWORD: ${{ secrets.OPENOBD_KEY_PASSWORD }}
-        run: ./gradlew assembleRelease bundleRelease
+        # The APK (GitHub, F-Droid) may show the donation button; the Play bundle is built with -Pplay, without it.
+        run: |
+          ./gradlew assembleRelease
+          ./gradlew bundleRelease -Pplay
       - name: Collect files and release notes
         env:
           TAG: ${{ steps.v.outputs.tag }}

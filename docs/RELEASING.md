@@ -86,3 +86,10 @@ The `Release` workflow runs the tests, builds the signed APK and AAB, and attach
    service types. Play asks for a short explanation and a video. If you'd rather avoid the location declaration,
    remove the `location` type and the GPS tracks option from the Play build.
 8. Complete the content rating questionnaire and target audience (adults).
+
+## Donations
+
+Set `openobd.donateUrl` in `gradle.properties` (for example `https://ko-fi.com/yourname`) to show an optional
+"Support OpenOBD" card in the More tab and in About. Builds for Google Play must leave it out, because Play's
+payments policy does not allow links to outside donation pages: build the bundle with `-Pplay`
+(`./gradlew bundleRelease -Pplay`). The release workflow already does this for the `.aab`.

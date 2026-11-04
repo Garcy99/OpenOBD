@@ -138,6 +138,7 @@ fun AboutScreen(onBack: () -> Unit) {
                 Text(tr("A free, open-source OBD-II scanner for ELM327 compatible adapters. %1\$s standard PIDs, ", Pids.all.size) +
                     tr("%1\$s sensors, trouble codes from every ECU, freeze frames, readiness, Mode 06, vehicle info, logging and more.", Pids.sensors.size))
             }
+            com.openobd.ui.components.DonateCard()
             SectionCard(title = tr("Supported adapters")) {
                 Text(tr("• ELM327 v1.4 / v1.5 / v2.x and clones (Bluetooth Classic, BLE, Wi-Fi)\n") +
                     tr("• OBDLink (STN11xx/STN21xx), Vgate iCar / vLinker, Veepeak, Konnwei, BAFX, Carista and similar\n") +

@@ -19,6 +19,10 @@ android {
         versionName = "1.8.0"
         vectorDrawables { useSupportLibrary = true }
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+        // Optional donation page (gradle.properties: openobd.donateUrl). Builds for Google Play pass -Pplay,
+        // which leaves it out: Play's payments policy does not allow links to outside donation pages.
+        val donateUrl = if (project.hasProperty("play")) "" else (project.findProperty("openobd.donateUrl") as String?).orEmpty().trim()
+        buildConfigField("String", "DONATE_URL", "\"$donateUrl\"")
     }
 
     // Release signing: keystore.properties (local, git-ignored) or OPENOBD_* environment variables (CI).

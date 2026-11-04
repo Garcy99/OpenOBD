@@ -229,6 +229,7 @@ fun MoreScreen(onNavigate: (String) -> Unit) {
                     }
                 }
             }
+            com.openobd.ui.components.DonateCard()
             SectionLabel(tr("For your car"))
             GroupCard {
                 NavRow(Icons.Default.Hub, brand?.let { tr("%1\$s features", it.name) } ?: tr("Brand features & modules"),
