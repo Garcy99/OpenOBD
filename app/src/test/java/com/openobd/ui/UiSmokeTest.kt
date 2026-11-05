@@ -440,6 +440,33 @@ class FindCarUiTest {
         }
         assertTrue(com.openobd.core.specs.Spain.dgtLabel(specs.fuel, 2019) == com.openobd.core.specs.DgtLabel.C)
     }
+
+    /** A 2004 car: the EU catalog starts later, so make and model come from its first year and the engine is typed in. */
+    @Test
+    fun carOlderThanTheCatalog() {
+        val c = (rule.activity.application as OpenObdApp).container
+        c.http = com.openobd.core.FixtureHttp(listOf(
+            "DISTINCT Year" to "eea_years.json", "UPPER(Mk) AS mk" to "eea_makes.json",
+            "UPPER(Cn) AS cn" to "eea_models.json", "GROUP BY UPPER(Ft)" to "eea_versions.json",
+        ))
+        runBlocking {
+            c.settings.update { it.copy(theme = ThemeMode.DARK, language = "es", specsCountry = "ES") }
+            c.garage.load(null)
+        }
+        waitFor { I18n.language == "es" && c.garage.data.value.active != null }
+        click("Identificar tu vehículo (modelo y especificaciones)")
+        waitFor { rule.onAllNodesWithText("SEAT").fetchSemanticsNodes().isNotEmpty() }
+        click("2004")
+        waitFor { rule.onAllNodesWithText("El catálogo europeo empieza en 2018", substring = true).fetchSemanticsNodes().isNotEmpty() }
+        click("SEAT")
+        click("Leon")
+        shot("es_14_older_car")
+        click("Continuar")
+        click("Guardar")
+        waitFor { c.garage.data.value.active?.specs != null }
+        val specs = c.garage.data.value.active!!.specs!!
+        assertTrue("$specs", specs.make == "SEAT" && specs.model == "Leon" && specs.year == 2004 && specs.source == "Manual" && specs.country == "ES")
+    }
 }
 
 /** An uncaught exception is written to disk, offered on the next start, shared and then forgotten. */

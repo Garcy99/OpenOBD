@@ -60,6 +60,7 @@ class TranslationCoverageTest {
         for (ftb in 0..0xEF) { FailureTypes.describe(ftb).takeIf { !it.startsWith("Failure type 0x") }?.let { keys += it }; FailureTypes.hint(ftb)?.let { keys += it } }
         keys += "Manufacturer-specific failure type"
         ElmError.entries.forEach { keys += it.userMessage }
+        keys += listOf(com.openobd.core.elm.Elm327.NO_PROTOCOL_MESSAGE, "Trying other protocols")
         keys += MS_CAN_BUSY
         com.openobd.core.specs.SpecFuel.entries.forEach { keys += it.label }
         com.openobd.core.specs.DgtLabel.entries.forEach { keys += it.label }

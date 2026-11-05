@@ -102,6 +102,8 @@ import java.util.TimeZone
 
 private fun countryName(code: String) = Locale("", code).displayCountry.ifBlank { code }
 private fun fmtDay(t: Long) = DateFormat.getDateInstance(DateFormat.MEDIUM).format(Date(t))
+/** Years before the catalog's first one, back to the start of OBD-II (1996). */
+private fun olderYears(catalogYears: List<Int>): List<Int> = catalogYears.minOrNull()?.let { ((it - 1) downTo 1996).toList() }.orEmpty()
 private fun yearOf(t: Long) = Calendar.getInstance(TimeZone.getTimeZone("UTC")).apply { timeInMillis = t }.get(Calendar.YEAR)
 
 /** Look up the car's model and specifications by licence plate, VIN or catalog, then review and save them. */
@@ -379,9 +381,14 @@ private fun EeaSection(country: String?, v: Vehicle, onFound: (VehicleSpecs) -> 
     val vinBrand = Brands.detect(v.vin)?.name?.uppercase()
     var years by remember(country) { mutableStateOf<List<Int>?>(null) }
     var year by remember(country) { mutableStateOf<Int?>(null) }
-    var makes by remember(country, year) { mutableStateOf<List<CatalogEntry>?>(null) }
+    // The EEA started collecting in 2010. Older cars still get the make and model lists (from the first year
+    // available; most names did not change) and then the engine is entered by hand.
+    val firstYear = years?.minOrNull()
+    val older = year != null && firstYear != null && year!! < firstYear
+    val catalogYear = if (older) firstYear else year
+    var makes by remember(country, catalogYear) { mutableStateOf<List<CatalogEntry>?>(null) }
     var make by remember(country, year) { mutableStateOf<String?>(null) }
-    var models by remember(country, year, make) { mutableStateOf<List<CatalogEntry>?>(null) }
+    var models by remember(country, catalogYear, make) { mutableStateOf<List<CatalogEntry>?>(null) }
     var model by remember(country, year, make) { mutableStateOf<String?>(null) }
     var versions by remember(country, year, make, model) { mutableStateOf<List<EeaVersion>?>(null) }
     var error by remember { mutableStateOf<String?>(null) }
@@ -390,21 +397,23 @@ private fun EeaSection(country: String?, v: Vehicle, onFound: (VehicleSpecs) -> 
         error = null
         runCatching { eea.years(country) }.onSuccess { ys ->
             years = ys
-            year = (v.specs?.year ?: vinInfo?.modelYear)?.takeIf { it in ys } ?: ys.firstOrNull()
+            val all = ys + olderYears(ys)
+            year = (v.specs?.year ?: vinInfo?.modelYear)?.takeIf { it in all } ?: ys.firstOrNull()
         }.onFailure { error = it.message }
     }
-    LaunchedEffect(country, year) {
-        val y = year ?: return@LaunchedEffect
+    LaunchedEffect(country, catalogYear) {
+        val y = catalogYear ?: return@LaunchedEffect
         runCatching { eea.makes(country, y) }.onSuccess { list ->
             makes = list
             if (make == null) make = list.firstOrNull { it.name == vinBrand || it.name == v.specs?.make?.uppercase() }?.name
         }.onFailure { error = it.message }
     }
-    LaunchedEffect(country, year, make) {
-        val y = year ?: return@LaunchedEffect; val mk = make ?: return@LaunchedEffect
+    LaunchedEffect(country, catalogYear, make) {
+        val y = catalogYear ?: return@LaunchedEffect; val mk = make ?: return@LaunchedEffect
         runCatching { eea.models(country, y, mk) }.onSuccess { models = it }.onFailure { error = it.message }
     }
     LaunchedEffect(country, year, make, model) {
+        if (older) return@LaunchedEffect
         val y = year ?: return@LaunchedEffect; val mk = make ?: return@LaunchedEffect; val md = model ?: return@LaunchedEffect
         runCatching { eea.versions(country, y, mk, md) }.onSuccess { versions = it }.onFailure { error = it.message }
     }
@@ -416,9 +425,11 @@ private fun EeaSection(country: String?, v: Vehicle, onFound: (VehicleSpecs) -> 
         if (ys.isEmpty()) { Text(tr("No data for this country.")); return@SectionCard }
         Text(tr("Year of first registration"), style = MaterialTheme.typography.labelLarge)
         Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-            ys.forEach { y -> FilterChip(year == y, { year = y; make = null; model = null }, label = { Text(y.toString()) }) }
+            (ys + olderYears(ys)).forEach { y -> FilterChip(year == y, { year = y; make = null; model = null }, label = { Text(y.toString()) }) }
         }
-        if (ys.first() < Calendar.getInstance().get(Calendar.YEAR) - 1) {
+        if (older) Text(tr("The European catalog starts in %1\$s. For older cars choose the make and model, then enter the engine from the registration certificate.", firstYear!!),
+            style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        if (!older && ys.first() < Calendar.getInstance().get(Calendar.YEAR) - 1) {
             Text(tr("Newer cars: choose the latest year available; the model's specifications rarely change."),
                 style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
@@ -432,6 +443,12 @@ private fun EeaSection(country: String?, v: Vehicle, onFound: (VehicleSpecs) -> 
                 when {
                     models == null -> LinearProgressIndicator(Modifier.fillMaxWidth().padding(top = 8.dp))
                     md == null -> PickList(tr("Model"), models!!) { model = it }
+                    older -> {
+                        StepHeader(tr("Model"), prettyName(md)) { model = null }
+                        Button(onClick = {
+                            onFound(VehicleSpecs(make = mk, model = md, year = year, country = country.orEmpty(), source = "Manual", lookupDate = System.currentTimeMillis()))
+                        }, modifier = Modifier.fillMaxWidth().padding(top = 8.dp)) { Text(tr("Continue")) }
+                    }
                     else -> {
                         StepHeader(tr("Model"), prettyName(md)) { model = null }
                         val vs = versions

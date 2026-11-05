@@ -1,0 +1,3 @@
+• Older cars: if the adapter's automatic search fails, every OBD protocol is tried in turn (K-line cars from before ~2008)
+• Cars that don't report their VIN: you're asked to choose the make and model
+• Find your car: years before 2010 can be chosen too

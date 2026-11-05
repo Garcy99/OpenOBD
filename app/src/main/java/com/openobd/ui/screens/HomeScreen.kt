@@ -432,6 +432,13 @@ private fun AttentionFeed(state: ConnectionState, onNavigate: (String) -> Unit, 
             NoticeCard(Icons.Default.Build, if (overdue > 0) tr("Service overdue") else tr("Service due soon"),
                 due.take(3).joinToString(" · ") { it.first.name }, if (overdue > 0) Bad else Warn) { onNavigate(Routes.MAINTENANCE) }
         }
+        // Connected, but the car keeps its VIN to itself and nobody told us what it is: ask once, it unlocks brand features.
+        val connected = state as? ConnectionState.Connected
+        if (connected != null && connected.vehicle.vin == null && !connected.vehicle.isDemo && car.vin == null && car.specs == null && car.brandId == null) notices += {
+            NoticeCard(Icons.Default.DirectionsCar, tr("Which car is this?"),
+                tr("This car does not report its VIN (normal for many cars before 2005). Choose the make and model to get its brand features and specifications."),
+                MaterialTheme.colorScheme.primary) { onNavigate(Routes.findCar(car.id)) }
+        }
         car.specs?.let { s ->
             val itv = s.inspectionDue ?: if (s.country == "ES" && s.firstRegistration != null) Spain.nextItv(s.firstRegistration, now) else null
             if (itv != null && itv - now < 45L * 86_400_000) notices += {

@@ -498,7 +498,8 @@ class ObdSession(
     private fun updateBrand() {
         val active = garage.data.value.active
         val chosen = active?.brandId?.let { Brands.byId[it] } ?: active?.specs?.make?.let { com.openobd.core.specs.brandForMake(it) }
-        val detected = Brands.detect(vehicle?.vin)
+        // Cars that do not report their VIN over OBD (common before ~2005) can still use the one typed in the garage.
+        val detected = Brands.detect(vehicle?.vin ?: active?.vin)
         _brand.value = chosen ?: detected
         _brandDetected.value = chosen == null && detected != null
     }

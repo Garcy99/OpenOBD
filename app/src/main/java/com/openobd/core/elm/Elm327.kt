@@ -276,21 +276,35 @@ class Elm327(
 
         progress("Connecting to vehicle (protocol search can take ~15s)")
         protocol = ObdProtocol.AUTO
+        fun answered(lines: List<String>) = interpret(lines) is ObdResult.Data
         var lines = command("0100", 20000)
-        var joined = lines.joinToString(" ").uppercase()
-        if (joined.contains("UNABLE TO CONNECT") || joined.contains("ERROR") || joined.contains("NO DATA")) {
+        if (!answered(lines)) {
             // Second attempt - first contact on KWP/ISO often fails.
             delay(1000)
             lines = command("0100", 20000)
-            joined = lines.joinToString(" ").uppercase()
-            if (joined.contains("UNABLE TO CONNECT")) throw ElmException(ElmError.UNABLE_TO_CONNECT.userMessage, ElmError.UNABLE_TO_CONNECT)
+        }
+        var found: ObdProtocol? = null
+        if (!answered(lines) && config.protocol == ObdProtocol.AUTO) {
+            // The automatic search of many clones misses the K-line protocols that most European cars
+            // used until ~2008 (or gives up too early), so try every protocol one by one.
+            progress("Trying other protocols")
+            search@ for (p in FALLBACK_ORDER) {
+                if (runCatching { expectOk("ATSP${p.code}") }.isFailure) continue
+                protocol = p // replies are parsed with this protocol's framing
+                // K-line ECUs often miss the first wake-up, so they get a second try.
+                for (attempt in 1..(if (p.isCan) 1 else 2)) {
+                    val r = runCatching { command("0100", if (p.isCan) 4000 else 9000) }.getOrNull()
+                    if (r != null && answered(r)) { lines = r; found = p; break@search }
+                }
+            }
+            if (found == null) { protocol = ObdProtocol.AUTO; runCatching { expectOk("ATSP0") } }
+        }
+        if (!answered(lines)) {
+            throw ElmException(if (config.protocol == ObdProtocol.AUTO) NO_PROTOCOL_MESSAGE else ElmError.UNABLE_TO_CONNECT.userMessage, ElmError.UNABLE_TO_CONNECT)
         }
         val dpn = runCatching { command("ATDPN").firstOrNull() }.getOrNull()
-        protocol = dpn?.let { ObdProtocol.fromDpn(it) }?.takeIf { it != ObdProtocol.AUTO }
+        protocol = found ?: dpn?.let { ObdProtocol.fromDpn(it) }?.takeIf { it != ObdProtocol.AUTO }
             ?: if (config.protocol != ObdProtocol.AUTO) config.protocol else ObdProtocol.ISO_15765_4_CAN_11_500
-        if (interpret(lines) !is ObdResult.Data) {
-            throw ElmException("The vehicle did not answer the first request: ${joined.ifBlank { "no reply" }}", ElmError.UNABLE_TO_CONNECT)
-        }
         baseProtocol = protocol
         // Lock the detected protocol so later switches (e.g. to MS-CAN and back) never trigger a slow re-search.
         if (config.protocol == ObdProtocol.AUTO) runCatching { expectOk("ATSP${protocol.code}") }
@@ -308,6 +322,17 @@ class Elm327(
     }
 
     companion object {
+        /** Order tried when the automatic search finds nothing: K-line first (older European and Asian cars), then CAN, then J1850 (older US cars). */
+        val FALLBACK_ORDER = listOf(
+            ObdProtocol.ISO_9141_2, ObdProtocol.ISO_14230_4_KWP_FAST, ObdProtocol.ISO_14230_4_KWP_5BAUD,
+            ObdProtocol.ISO_15765_4_CAN_11_500, ObdProtocol.ISO_15765_4_CAN_11_250, ObdProtocol.ISO_15765_4_CAN_29_500, ObdProtocol.ISO_15765_4_CAN_29_250,
+            ObdProtocol.J1850_VPW, ObdProtocol.J1850_PWM,
+        )
+
+        const val NO_PROTOCOL_MESSAGE = "The car did not answer on any OBD protocol. Check the ignition is on. " +
+            "Older European cars use the K-line, which some cheap adapters (often sold as \"v2.1\") lack; " +
+            "diesels from before 2004 may not have standard OBD at all."
+
         fun clean(text: String, cmd: String): List<String> = text
             .replace("\u0000", "")
             .replace("\r", "\n")

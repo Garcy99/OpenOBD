@@ -29,6 +29,10 @@ class DemoTransport(
     private val withTransmission: Boolean = true,
     /** The protocol the simulated car speaks. */
     val protocol: ObdProtocol = ObdProtocol.ISO_15765_4_CAN_11_500,
+    /** Like many clones on K-line cars: the automatic search (ATSP0) never finds the car, only an explicit protocol does. */
+    private val autoSearchMissesCar: Boolean = false,
+    /** False for cars without service 09 (no VIN over OBD), common in Europe before ~2005. */
+    private val reportsVin: Boolean = true,
 ) : ObdTransport() {
     override val description: String =
         if (protocol == ObdProtocol.ISO_15765_4_CAN_11_500) "Demo car (simulated)" else "Demo car (simulated, ${protocol.label})"
@@ -102,6 +106,8 @@ class DemoTransport(
     val permanent = mutableListOf("P0420")
     private var monitorsComplete = true
     var vin = "1HGCM82633A004352"
+    /** False simulates a car that is off or not answering at all. */
+    var carAnswers = true
 
     private val engineFreezeFrame = mapOf(
         0x04 to intArrayOf(0x8C), 0x05 to intArrayOf(0x7B), 0x06 to intArrayOf(0x8A), 0x07 to intArrayOf(0x84),
@@ -199,6 +205,8 @@ class DemoTransport(
         // With CAN auto formatting off the tester supplies the ISO-TP PCI byte itself.
         val bytes = hex.chunked(2).map { it.toInt(16) }.let { if (!caf && it.isNotEmpty() && it[0] in 1..7) it.drop(1).take(it[0]) else it }
         if (bytes.isEmpty()) return listOf("?")
+        if (!carAnswers && !onMsCan) return listOf(when (protocolCode) { '0' -> "UNABLE TO CONNECT"; '3', '4', '5' -> "BUS INIT: ...ERROR"; '1', '2' -> "NO DATA"; else -> "CAN ERROR" })
+        if (autoSearchMissesCar && protocolCode == '0' && !connectedToCar) return listOf("SEARCHING...", "UNABLE TO CONNECT")
         if (!onMsCan && protocolCode != '0' && protocolCode != protocol.code) {
             // Locked to a protocol this car does not speak.
             return listOf(when (protocolCode) { '3', '4', '5' -> "BUS INIT: ...ERROR"; '1', '2' -> "NO DATA"; else -> "CAN ERROR" })
@@ -294,7 +302,7 @@ class DemoTransport(
                 if (withTransmission) replies += trans to listOf(0x44)
             }
             0x06 -> if (legacy) return listOf("NO DATA") else replies += mode06(bytes.getOrElse(1) { 0 }) ?: return listOf("NO DATA")
-            0x09 -> replies += (if (legacy) legacyMode09(bytes.getOrElse(1) { 0 }) else mode09(bytes.getOrElse(1) { 0 })?.let { listOf(it) })
+            0x09 -> if (!reportsVin) return listOf("NO DATA") else replies += (if (legacy) legacyMode09(bytes.getOrElse(1) { 0 }) else mode09(bytes.getOrElse(1) { 0 })?.let { listOf(it) })
                 ?: return listOf("NO DATA")
             else -> return listOf("NO DATA")
         }

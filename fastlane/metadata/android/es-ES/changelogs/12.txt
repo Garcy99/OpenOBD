@@ -1,0 +1,3 @@
+• Coches antiguos: si la búsqueda automática del adaptador falla, se prueba cada protocolo OBD (coches con línea K anteriores a ~2008)
+• Coches que no envían su VIN: la app te pide elegir marca y modelo
+• Buscar tu coche: ya se pueden elegir años anteriores a 2010

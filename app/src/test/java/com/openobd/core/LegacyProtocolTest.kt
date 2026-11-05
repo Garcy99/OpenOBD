@@ -144,4 +144,46 @@ class LegacyProtocolTest {
         // 29-bit CAN: 18 DA F1 10 <PCI> ...
         assertTrue(raw(ObdProtocol.ISO_15765_4_CAN_29_500).startsWith("18 DA F1 10 06 41 00"))
     }
+
+    /** Clones whose automatic search misses K-line cars: OpenOBD tries each protocol in turn and finds it. */
+    @Test
+    fun findsTheCarWhenTheAutomaticSearchFails() = runTest {
+        for (p in listOf(ObdProtocol.ISO_9141_2, ObdProtocol.ISO_14230_4_KWP_FAST, ObdProtocol.ISO_14230_4_KWP_5BAUD, ObdProtocol.J1850_VPW)) {
+            val t = DemoTransport(latencyMs = 0, protocol = p, autoSearchMissesCar = true)
+            t.open()
+            val steps = mutableListOf<String>()
+            val elm = Elm327(t)
+            val info = elm.initialize(ElmConfig()) { steps += it }
+            assertEquals(p, info.protocol)
+            assertTrue(steps.toString(), "Trying other protocols" in steps)
+            assertTrue(0x0C in ObdClient(elm).discover())
+        }
+    }
+
+    /** Many European cars before ~2005 have no service 09: the session still works, just without a VIN. */
+    @Test
+    fun carWithoutVinStillConnects() = runTest {
+        val t = DemoTransport(latencyMs = 0, protocol = ObdProtocol.ISO_14230_4_KWP_FAST, reportsVin = false)
+        t.open()
+        val elm = Elm327(t)
+        elm.initialize(ElmConfig())
+        val client = ObdClient(elm)
+        assertTrue(0x0C in client.discover())
+        assertEquals(null, runCatching { client.readVin() }.getOrNull())
+        assertEquals(listOf("P0301", "P0420"), client.readDtcs(DtcType.STORED).codes.map { it.code })
+    }
+
+    /** Nothing answers on any protocol: the message explains the likely causes instead of a raw adapter reply. */
+    @Test
+    fun noProtocolGivesAHelpfulMessage() = runTest {
+        val t = DemoTransport(latencyMs = 0, protocol = ObdProtocol.ISO_9141_2, autoSearchMissesCar = true)
+        t.open()
+        t.carAnswers = false
+        try {
+            Elm327(t).initialize(ElmConfig())
+            fail("should not connect")
+        } catch (e: ElmException) {
+            assertEquals(Elm327.NO_PROTOCOL_MESSAGE, e.message)
+        }
+    }
 }
