@@ -29,6 +29,8 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.filled.BatteryChargingFull
 import androidx.compose.material.icons.filled.Bluetooth
+import androidx.compose.material.icons.filled.CheckCircle
+import androidx.compose.material.icons.filled.Usb
 import androidx.compose.material.icons.filled.BluetoothSearching
 import androidx.compose.material.icons.filled.Build
 import androidx.compose.material.icons.filled.BugReport
@@ -251,13 +253,15 @@ private fun CarHero(state: ConnectionState, onConnect: () -> Unit, onAdapter: ()
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 Icon(when (settings.connectionType) {
-                    ConnectionType.WIFI -> Icons.Default.Wifi; ConnectionType.DEMO -> Icons.Default.SettingsInputAntenna; else -> Icons.Default.Bluetooth
+                    ConnectionType.WIFI -> Icons.Default.Wifi; ConnectionType.DEMO -> Icons.Default.SettingsInputAntenna
+                    ConnectionType.USB -> Icons.Default.Usb; else -> Icons.Default.Bluetooth
                 }, null, Modifier.size(16.dp), tint = MaterialTheme.colorScheme.primary)
                 Spacer(Modifier.width(6.dp))
                 Text(
                     when (settings.connectionType) {
                         ConnectionType.DEMO -> tr("Demo car")
                         ConnectionType.WIFI -> settings.wifiHost
+                        ConnectionType.USB -> tr("USB cable")
                         else -> settings.deviceName ?: tr("Choose adapter")
                     },
                     style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.primary, maxLines = 1, overflow = TextOverflow.Ellipsis,
@@ -308,7 +312,7 @@ private fun CarHero(state: ConnectionState, onConnect: () -> Unit, onAdapter: ()
             }
             else -> {
                 if (state is ConnectionState.Failed) ErrorText(state.message)
-                val ready = settings.connectionType == ConnectionType.DEMO || settings.connectionType == ConnectionType.WIFI || settings.deviceAddress != null
+                val ready = settings.connectionType in setOf(ConnectionType.DEMO, ConnectionType.WIFI, ConnectionType.USB) || settings.deviceAddress != null
                 if (ready) GradientButton(if (state is ConnectionState.Failed) tr("Retry") else tr("Connect"), onConnect, Modifier.fillMaxWidth(),
                     icon = Icons.Default.PowerSettingsNew)
                 else GradientButton(tr("Choose adapter"), onAdapter, Modifier.fillMaxWidth(), icon = Icons.Default.Bluetooth)
@@ -522,7 +526,7 @@ private fun AdapterSheet(state: ConnectionState, onDismiss: () -> Unit, onPick: 
                         onClick = { scope.launch { app.settings.update { it.copy(connectionType = t) } } },
                         enabled = !busy,
                         shape = SegmentedButtonDefaults.itemShape(i, ConnectionType.entries.size),
-                        label = { Text(if (t == ConnectionType.BLE) "BLE" else tr(t.label), maxLines = 1) },
+                        label = { Text(if (t == ConnectionType.BLE) "BLE" else if (t == ConnectionType.BLUETOOTH) "BT" else tr(t.label), maxLines = 1) },
                     )
                 }
             }
@@ -555,12 +559,47 @@ private fun AdapterSheet(state: ConnectionState, onDismiss: () -> Unit, onPick: 
                     Text(tr("Join the adapter's Wi-Fi network (often \"WiFi_OBDII\" or \"V-LINK\") before connecting."),
                         style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
+                ConnectionType.USB -> UsbCablePanel(busy)
                 ConnectionType.DEMO -> Text(tr("Explore every feature with a simulated car: live data, trouble codes, freeze frames and more."),
                     style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
-            val ready = settings.connectionType == ConnectionType.DEMO || settings.connectionType == ConnectionType.WIFI || settings.deviceAddress != null
+            val ready = settings.connectionType in setOf(ConnectionType.DEMO, ConnectionType.WIFI, ConnectionType.USB) || settings.deviceAddress != null
             if (!busy) GradientButton(tr("Connect"), onConnect, Modifier.fillMaxWidth(), enabled = ready, icon = Icons.Default.PowerSettingsNew)
         }
+    }
+}
+
+/** ELM327 USB cables plugged in (car head units), with the one in use highlighted. */
+@Composable
+private fun UsbCablePanel(busy: Boolean) {
+    val app = LocalApp.current
+    val context = LocalContext.current
+    val scope = rememberCoroutineScope()
+    val settings = appSettings()
+    var refresh by remember { mutableStateOf(0) }
+    val cables = remember(refresh) { com.openobd.transport.UsbSerialTransport.find(context) }
+    if (cables.isEmpty()) {
+        Text(tr(com.openobd.transport.UsbSerialTransport.NO_CABLE), style = MaterialTheme.typography.bodyMedium)
+    }
+    cables.forEach { c ->
+        val chosen = c.key == settings.usbDevice || (settings.usbDevice == null && c == cables.first())
+        Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp))
+            .clickable(enabled = !busy) { scope.launch { app.settings.update { it.copy(usbDevice = c.key, usbBaud = if (c.key == it.usbDevice) it.usbBaud else null) } } }
+            .padding(vertical = 6.dp)) {
+            IconBadge(Icons.Default.Usb)
+            Spacer(Modifier.width(12.dp))
+            Column(Modifier.weight(1f)) {
+                Text(c.name, style = MaterialTheme.typography.titleSmall, fontWeight = if (chosen) FontWeight.Bold else FontWeight.Normal)
+                Text(listOfNotNull(c.chip, c.key, settings.usbBaud?.takeIf { chosen }?.let { "$it baud" }).joinToString(" · "),
+                    style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+            if (chosen) Icon(Icons.Default.CheckCircle, null, tint = MaterialTheme.colorScheme.primary)
+        }
+    }
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        Text(tr("For car head units: their Bluetooth often only talks to phones. The serial speed is detected automatically."),
+            style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.weight(1f))
+        TextButton(onClick = { refresh++ }, enabled = !busy) { Text(tr("Search again")) }
     }
 }
 

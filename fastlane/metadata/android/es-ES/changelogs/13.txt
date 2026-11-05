@@ -1,0 +1,2 @@
+• Pantallas de coche: se instala en Android 6.0 o superior (la mayoría de pantallas de AliExpress), con diseño para pantallas de 1024x600 y 1280x720
+• Cables ELM327 USB (FTDI, CH340, PL2303, CP210x): enchufa el cable y Android ofrece abrir OpenOBD; la velocidad se detecta sola

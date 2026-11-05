@@ -223,6 +223,9 @@ class ObdSession(
                 if (s.demoFaults) FaultyTransport(it, FaultPlan.NASTY.copy(jitterMs = 3), kotlin.random.Random(System.nanoTime())) else it
             }
             ConnectionType.WIFI -> WifiTransport(s.wifiHost, s.wifiPort)
+            ConnectionType.USB -> com.openobd.transport.UsbSerialTransport(context, s.usbDevice, s.usbBaud) { baud ->
+                if (baud != s.usbBaud) scope.launch { settingsRepo.update { it.copy(usbBaud = baud) } }
+            }
             ConnectionType.BLUETOOTH -> BluetoothClassicTransport(context, s.deviceAddress ?: throw IllegalStateException("Choose a Bluetooth adapter first"), s.deviceName)
             ConnectionType.BLE -> BleTransport(context, s.deviceAddress ?: throw IllegalStateException("Choose a Bluetooth LE adapter first"), s.deviceName)
         }

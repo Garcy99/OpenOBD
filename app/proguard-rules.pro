@@ -20,3 +20,6 @@
 -dontwarn com.github.victools.jsonschema.**
 -dontwarn java.lang.reflect.AnnotatedParameterizedType
 -dontwarn java.lang.reflect.AnnotatedType
+
+# USB serial drivers: the prober finds each driver's supported devices by reflection.
+-keep class com.hoho.android.usbserial.driver.** { *; }

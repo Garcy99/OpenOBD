@@ -22,7 +22,7 @@ import kotlinx.serialization.Serializable
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
 
-enum class ConnectionType(val label: String) { BLUETOOTH("Bluetooth"), BLE("Bluetooth LE"), WIFI("Wi-Fi"), DEMO("Demo") }
+enum class ConnectionType(val label: String) { BLUETOOTH("Bluetooth"), BLE("Bluetooth LE"), WIFI("Wi-Fi"), USB("USB"), DEMO("Demo") }
 
 enum class ThemeMode { SYSTEM, LIGHT, DARK, AMOLED }
 
@@ -51,6 +51,9 @@ data class AppSettings(
     val deviceName: String? = null,
     val wifiHost: String = "192.168.0.10",
     val wifiPort: Int = 35000,
+    /** USB cable chosen ("VID:PID") and the serial speed that worked with it. */
+    val usbDevice: String? = null,
+    val usbBaud: Int? = null,
     val protocol: ObdProtocol = ObdProtocol.AUTO,
     val adaptiveTiming: Int = 1,
     val elmTimeoutMs: Int = 0,
@@ -112,6 +115,8 @@ class SettingsRepository(private val context: Context, scope: CoroutineScope) {
         val deviceName = stringPreferencesKey("device_name")
         val wifiHost = stringPreferencesKey("wifi_host")
         val wifiPort = intPreferencesKey("wifi_port")
+        val usbDevice = stringPreferencesKey("usb_device")
+        val usbBaud = intPreferencesKey("usb_baud")
         val protocol = stringPreferencesKey("protocol")
         val adaptive = intPreferencesKey("adaptive_timing")
         val timeout = intPreferencesKey("elm_timeout")
@@ -154,6 +159,8 @@ class SettingsRepository(private val context: Context, scope: CoroutineScope) {
             deviceName = p[K.deviceName],
             wifiHost = p[K.wifiHost] ?: d.wifiHost,
             wifiPort = p[K.wifiPort] ?: d.wifiPort,
+            usbDevice = p[K.usbDevice],
+            usbBaud = p[K.usbBaud],
             protocol = enumOf(p[K.protocol], d.protocol),
             adaptiveTiming = p[K.adaptive] ?: d.adaptiveTiming,
             elmTimeoutMs = p[K.timeout] ?: d.elmTimeoutMs,
@@ -199,6 +206,8 @@ class SettingsRepository(private val context: Context, scope: CoroutineScope) {
             s.deviceName?.let { p[K.deviceName] = it } ?: p.remove(K.deviceName)
             p[K.wifiHost] = s.wifiHost
             p[K.wifiPort] = s.wifiPort
+            s.usbDevice?.let { p[K.usbDevice] = it } ?: p.remove(K.usbDevice)
+            s.usbBaud?.let { p[K.usbBaud] = it } ?: p.remove(K.usbBaud)
             p[K.protocol] = s.protocol.name
             p[K.adaptive] = s.adaptiveTiming
             p[K.timeout] = s.elmTimeoutMs

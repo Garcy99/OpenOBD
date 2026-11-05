@@ -218,7 +218,7 @@ private fun FitText(text: String, color: Color, style: androidx.compose.ui.text.
         val maxW = constraints.maxWidth
         val scale = remember(text, maxW, style) {
             // Scripts without spaces between words (Chinese) wrap anywhere, so they never need it.
-            if (maxW == androidx.compose.ui.unit.Constraints.Infinity || text.any { Character.UnicodeScript.of(it.code) == Character.UnicodeScript.HAN }) 1f
+            if (maxW == androidx.compose.ui.unit.Constraints.Infinity || text.any { it in '\u2E80'..'\u9FFF' || it in '\uF900'..'\uFAFF' }) 1f
             else {
                 val widest = text.split(' ').maxOf { measurer.measure(it, style, softWrap = false, maxLines = 1).size.width }
                 if (widest <= maxW) 1f else (maxW.toFloat() / widest).coerceAtLeast(0.72f)

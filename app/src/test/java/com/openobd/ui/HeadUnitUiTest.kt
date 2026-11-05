@@ -34,6 +34,8 @@ abstract class HeadUnitBase(private val tag: String) {
 
     private fun shot(name: String) {
         rule.waitForIdle()
+        // Robolectric only renders real pixels on Android 8+; older runs still check the screens work.
+        if (android.os.Build.VERSION.SDK_INT < 26) return
         val dir = File(System.getProperty("screenshot.dir") ?: "build/screenshots").apply { mkdirs() }
         rule.activityRule.scenario.onActivity { act ->
             val v = act.window.decorView
@@ -59,8 +61,23 @@ abstract class HeadUnitBase(private val tag: String) {
         rule.onAllNodes(hasText("Diagnose") and isSelectable())[0].performClick()
         shot("diagnose")
         c.session.disconnect()
+        waitFor { c.session.state.value is ConnectionState.Disconnected }
+        // USB cable chosen but not plugged in: the adapter sheet says so, and connecting fails with a clear message.
+        runBlocking { c.settings.update { it.copy(connectionType = ConnectionType.USB) } }
+        rule.onAllNodes(hasText("Home") and isSelectable())[0].performClick()
+        waitFor { rule.onAllNodes(hasText("USB cable")).fetchSemanticsNodes().isNotEmpty() }
+        rule.onAllNodes(hasText("USB cable"))[0].performClick()
+        waitFor { rule.onAllNodes(hasText(com.openobd.transport.UsbSerialTransport.NO_CABLE)).fetchSemanticsNodes().isNotEmpty() }
+        c.session.connect()
+        waitFor { (c.session.state.value as? ConnectionState.Failed)?.message == com.openobd.transport.UsbSerialTransport.NO_CABLE }
     }
 }
+
+/** Older head units (Rockchip PX3, MTK) still run Android 6: the app must start and work there too. */
+@RunWith(AndroidJUnit4::class)
+@GraphicsMode(GraphicsMode.Mode.NATIVE)
+@Config(sdk = [23], qualifiers = "w1024dp-h600dp-land-mdpi")
+class HeadUnitAndroid6Test : HeadUnitBase("android6")
 
 @RunWith(AndroidJUnit4::class)
 @GraphicsMode(GraphicsMode.Mode.NATIVE)

@@ -1,7 +1,7 @@
 # OpenOBD
 
 A complete, free and open-source **OBD-II car diagnostics app for Android**. It works with
-ELM327-compatible adapters over **Bluetooth Classic, Bluetooth LE and Wi-Fi**. Read and clear trouble
+ELM327-compatible adapters over **Bluetooth Classic, Bluetooth LE, Wi-Fi and USB**, on phones, tablets and Android car head units (Android 6.0+). Read and clear trouble
 codes, watch live sensors on configurable gauges, log data, check emissions readiness, and more,
 with no ads, subscriptions or paywalls.
 
@@ -102,6 +102,7 @@ To sign with your own key, publish GitHub releases or submit to Google Play, see
 
 1. Plug the adapter into the OBD-II port (under the dashboard, near the steering column) and switch the ignition **on**.
 2. **Bluetooth Classic**: pair the adapter in Android Bluetooth settings first (PIN 1234 or 0000). **BLE**: just scan in the app. **Wi-Fi**: join the adapter's network.
+   **USB** (car head units, whose Bluetooth usually only talks to phones): plug in an ELM327 USB cable (FTDI, CH340, PL2303 or CP210x); Android offers to open OpenOBD and the serial speed is detected automatically.
 3. Open OpenOBD, choose the connection type and adapter, then press **Connect**.
 
 If a cheap clone gives odd data, turn off *Multi-PID requests* and *Fast responses* in Settings.
@@ -118,7 +119,7 @@ app/src/main/java/com/openobd/
 │   ├── obd/              PID table, DTC decoding, readiness, freeze frame, Mode 06/09, VIN decoder,
 │   │                     calculated sensors, ObdClient (high-level services)
 │   └── dtc/              Trouble code description database
-├── transport/            Bluetooth Classic (SPP), BLE (GATT), Wi-Fi (TCP), device scanning
+├── transport/            Bluetooth Classic (SPP), BLE (GATT), Wi-Fi (TCP), USB serial, device scanning
 ├── session/              Connection lifecycle, live-data polling engine, trip computer, perf timer
 ├── data/                 Settings (DataStore), scan history, CSV logs
 ├── service/              Foreground service that keeps the connection alive
@@ -150,7 +151,7 @@ elm -n 35000 -s car -d
 ./gradlew testDebugUnitTest --tests '*ExternalEmulatorTest' -PelmEmulator=127.0.0.1:35000
 ```
 
-On a real device or emulator (CI runs API 26, 30 and 34): `./gradlew connectedDebugAndroidTest`.
+On a real device or emulator (CI runs API 23, 30 and 34): `./gradlew connectedDebugAndroidTest`.
 A nightly workflow checks the live vehicle data services (`-PliveSpecs=true`) and the newest emulator release.
 
 In the app, *Settings > Demo simulator* makes demo mode imitate an older car or an unreliable adapter, and

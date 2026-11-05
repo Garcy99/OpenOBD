@@ -26,10 +26,12 @@ class ObdService : LifecycleService() {
 
     override fun onCreate() {
         super.onCreate()
-        val nm = getSystemService(NotificationManager::class.java)
-        nm.createNotificationChannel(NotificationChannel(CHANNEL, "Vehicle connection", NotificationManager.IMPORTANCE_LOW).apply {
-            description = "Shown while OpenOBD is connected to your car"
-        })
+        if (android.os.Build.VERSION.SDK_INT >= 26) {
+            val nm = getSystemService(NotificationManager::class.java)
+            nm.createNotificationChannel(NotificationChannel(CHANNEL, "Vehicle connection", NotificationManager.IMPORTANCE_LOW).apply {
+                description = "Shown while OpenOBD is connected to your car"
+            })
+        }
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {

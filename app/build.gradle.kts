@@ -13,10 +13,11 @@ android {
 
     defaultConfig {
         applicationId = "com.openobd"
-        minSdk = 26
+        // Android 6.0+: many car head units (MTK, Rockchip PX3/PX5, Allwinner T3) still run Android 6-8.
+        minSdk = 23
         targetSdk = 35
-        versionCode = 12
-        versionName = "1.9.1"
+        versionCode = 13
+        versionName = "1.10.0"
         vectorDrawables { useSupportLibrary = true }
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         // Optional donation page (gradle.properties: openobd.donateUrl). Builds for Google Play pass -Pplay,
@@ -50,6 +51,8 @@ android {
         }
     }
     compileOptions {
+        // java.time and friends on Android 6-7 (used by the app and the Anthropic SDK)
+        isCoreLibraryDesugaringEnabled = true
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
     }
@@ -74,6 +77,7 @@ android {
 }
 
 dependencies {
+    coreLibraryDesugaring(libs.desugar.jdk.libs)
     implementation(libs.androidx.core.ktx)
     implementation(libs.androidx.lifecycle.runtime.ktx)
     implementation(libs.androidx.lifecycle.runtime.compose)
@@ -91,6 +95,7 @@ dependencies {
     implementation(libs.kotlinx.coroutines.android)
     implementation(libs.kotlinx.serialization.json)
     implementation(libs.osmdroid)
+    implementation(libs.usb.serial)
     debugImplementation(libs.androidx.ui.tooling)
 
     // Optional AI diagnosis assistant (user-supplied Claude API key)

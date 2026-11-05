@@ -61,6 +61,8 @@ class TranslationCoverageTest {
         keys += "Manufacturer-specific failure type"
         ElmError.entries.forEach { keys += it.userMessage }
         keys += listOf(com.openobd.core.elm.Elm327.NO_PROTOCOL_MESSAGE, "Trying other protocols")
+        keys += listOf(com.openobd.transport.UsbSerialTransport.NO_CABLE, com.openobd.transport.UsbSerialTransport.NO_PERMISSION,
+            com.openobd.transport.UsbSerialTransport.NO_ANSWER)
         keys += MS_CAN_BUSY
         com.openobd.core.specs.SpecFuel.entries.forEach { keys += it.label }
         com.openobd.core.specs.DgtLabel.entries.forEach { keys += it.label }

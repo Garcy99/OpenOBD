@@ -1,0 +1,2 @@
+• Car head units: installs on Android 6.0 and newer (most AliExpress head units), with a layout for 1024x600 and 1280x720 screens
+• ELM327 USB cables (FTDI, CH340, PL2303, CP210x): plug in the cable and Android offers to open OpenOBD; the speed is detected automatically

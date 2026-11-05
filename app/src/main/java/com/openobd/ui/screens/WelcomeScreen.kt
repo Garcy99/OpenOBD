@@ -80,6 +80,9 @@ fun WelcomeScreen(onDone: () -> Unit, onGarage: () -> Unit) {
                     Choice(tr("Wi-Fi"), tr("Join the adapter's Wi-Fi network first (usually 192.168.0.10:35000)."), s.connectionType == ConnectionType.WIFI) {
                         scope.launch { app.settings.update { it.copy(connectionType = ConnectionType.WIFI) } }
                     }
+                    Choice(tr("USB cable (car head units)"), tr("Plug the ELM327 USB cable in; Android offers to open OpenOBD."), s.connectionType == ConnectionType.USB) {
+                        scope.launch { app.settings.update { it.copy(connectionType = ConnectionType.USB) } }
+                    }
                     Choice(tr("Demo (no adapter)"), tr("A simulated car to try every feature."), s.connectionType == ConnectionType.DEMO) {
                         scope.launch { app.settings.update { it.copy(connectionType = ConnectionType.DEMO) } }
                     }

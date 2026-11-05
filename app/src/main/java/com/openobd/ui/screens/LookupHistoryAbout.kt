@@ -140,7 +140,7 @@ fun AboutScreen(onBack: () -> Unit) {
             }
             com.openobd.ui.components.DonateCard()
             SectionCard(title = tr("Supported adapters")) {
-                Text(tr("• ELM327 v1.4 / v1.5 / v2.x and clones (Bluetooth Classic, BLE, Wi-Fi)\n") +
+                Text(tr("• ELM327 v1.4 / v1.5 / v2.x and clones (Bluetooth Classic, BLE, Wi-Fi, USB)\n") +
                     tr("• OBDLink (STN11xx/STN21xx), Vgate iCar / vLinker, Veepeak, Konnwei, BAFX, Carista and similar\n") +
                     tr("• All OBD-II protocols: CAN 11/29-bit 250/500k, KWP2000, ISO 9141-2, J1850 PWM/VPW"))
             }
@@ -152,6 +152,8 @@ fun AboutScreen(onBack: () -> Unit) {
             SectionCard(title = tr("Open-source licenses")) {
                 Text(tr("Built with Kotlin, Jetpack Compose, AndroidX and kotlinx libraries (Apache License 2.0)."), style = MaterialTheme.typography.bodySmall)
                 Text(tr("Inter typeface by Rasmus Andersson (SIL Open Font License 1.1)."), style = MaterialTheme.typography.bodySmall)
+                Text(tr("Maps by osmdroid (Apache License 2.0). USB cables via usb-serial-for-android by Kai Morich, and the Anthropic Java SDK (MIT License)."),
+                    style = MaterialTheme.typography.bodySmall)
             }
         }
     }

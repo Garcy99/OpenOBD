@@ -19,7 +19,8 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - api-level: 26
+          # Oldest supported version (many car head units still run Android 6)
+          - api-level: 23
             target: default
           # Automated Test Device image: lighter and more reliable on CI than google_apis.
           - api-level: 30

@@ -22,7 +22,15 @@ class Speaker(private val context: Context) {
         .setUsage(AudioAttributes.USAGE_ASSISTANCE_NAVIGATION_GUIDANCE)
         .setContentType(AudioAttributes.CONTENT_TYPE_SPEECH)
         .build()
-    private val focus = AudioFocusRequest.Builder(AudioManager.AUDIOFOCUS_GAIN_TRANSIENT_MAY_DUCK).setAudioAttributes(attributes).build()
+    private val focus = if (android.os.Build.VERSION.SDK_INT >= 26)
+        AudioFocusRequest.Builder(AudioManager.AUDIOFOCUS_GAIN_TRANSIENT_MAY_DUCK).setAudioAttributes(attributes).build() else null
+    @Suppress("DEPRECATION")
+    private val legacyFocus = AudioManager.OnAudioFocusChangeListener { }
+
+    private fun abandonFocus() {
+        if (android.os.Build.VERSION.SDK_INT >= 26) focus?.let { audio?.abandonAudioFocusRequest(it) }
+        else @Suppress("DEPRECATION") audio?.abandonAudioFocus(legacyFocus)
+    }
 
     /** Language code of the app ("es", "de" ...); "system" follows the phone. */
     var language: String = "system"
@@ -34,9 +42,9 @@ class Speaker(private val context: Context) {
             it.setAudioAttributes(attributes)
             it.setOnUtteranceProgressListener(object : UtteranceProgressListener() {
                 override fun onStart(utteranceId: String?) {}
-                override fun onDone(utteranceId: String?) { if (tts?.isSpeaking != true) audio?.abandonAudioFocusRequest(focus) }
+                override fun onDone(utteranceId: String?) { if (tts?.isSpeaking != true) abandonFocus() }
                 @Deprecated("Deprecated in Java")
-                override fun onError(utteranceId: String?) { audio?.abandonAudioFocusRequest(focus) }
+                override fun onError(utteranceId: String?) { abandonFocus() }
             })
             tts = it
         }
@@ -56,7 +64,8 @@ class Speaker(private val context: Context) {
     }
 
     private fun say(engine: TextToSpeech, text: String) {
-        audio?.requestAudioFocus(focus)
+        if (android.os.Build.VERSION.SDK_INT >= 26) focus?.let { audio?.requestAudioFocus(it) }
+        else @Suppress("DEPRECATION") audio?.requestAudioFocus(legacyFocus, AudioManager.STREAM_MUSIC, AudioManager.AUDIOFOCUS_GAIN_TRANSIENT_MAY_DUCK)
         engine.speak(text, TextToSpeech.QUEUE_ADD, null, "openobd-" + ids.incrementAndGet())
     }
 

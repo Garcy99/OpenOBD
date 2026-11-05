@@ -114,6 +114,6 @@ class OpenObdApp : Application() {
 
     private fun startService() {
         val i = Intent(this, ObdService::class.java)
-        runCatching { startForegroundService(i) }
+        runCatching { androidx.core.content.ContextCompat.startForegroundService(this, i) }
     }
 }
