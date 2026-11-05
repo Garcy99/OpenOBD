@@ -145,8 +145,9 @@ fun HomeScreen(onNavigate: (String) -> Unit, onTab: (String) -> Unit, onLive: (I
     var pendingConnect by remember { mutableStateOf(false) }
 
     val needsBt = settings.connectionType == ConnectionType.BLUETOOTH || settings.connectionType == ConnectionType.BLE
+    val ble = settings.connectionType == ConnectionType.BLE
     val btLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) { result ->
-        val btOk = Permissions.bluetooth().all { result[it] ?: Permissions.granted(context, arrayOf(it)) }
+        val btOk = Permissions.bluetooth(ble).all { result[it] ?: Permissions.granted(context, arrayOf(it)) }
         if (btOk || (pendingConnect && !needsBt)) {
             if (pendingConnect) session.connect() else showPicker = true
         } else {
@@ -157,7 +158,7 @@ fun HomeScreen(onNavigate: (String) -> Unit, onTab: (String) -> Unit, onLive: (I
 
     fun connect() {
         // Ask for everything in one dialog sequence: Bluetooth (if needed), notifications, location for trip tracks.
-        val wanted = (if (needsBt) Permissions.bluetooth().toList() else emptyList()) + Permissions.notifications() +
+        val wanted = (if (needsBt) Permissions.bluetooth(ble).toList() else emptyList()) + Permissions.notifications() +
             (if (settings.tripGps) Permissions.location().toList() else emptyList())
         val missing = wanted.filter { !Permissions.granted(context, arrayOf(it)) }
         if (missing.isNotEmpty()) {
@@ -167,12 +168,12 @@ fun HomeScreen(onNavigate: (String) -> Unit, onTab: (String) -> Unit, onLive: (I
     }
 
     fun pick() {
-        if (!Permissions.granted(context, Permissions.bluetooth())) btLauncher.launch(Permissions.bluetooth()) else showPicker = true
+        if (!Permissions.granted(context, Permissions.bluetooth(ble))) btLauncher.launch(Permissions.bluetooth(ble)) else showPicker = true
     }
 
     LaunchedEffect(Unit) {
         if (settings.autoConnect && state is ConnectionState.Disconnected &&
-            (settings.deviceAddress != null || !needsBt) && (!needsBt || Permissions.granted(context, Permissions.bluetooth()))
+            (settings.deviceAddress != null || !needsBt) && (!needsBt || Permissions.granted(context, Permissions.bluetooth(ble)))
         ) session.connect()
     }
 

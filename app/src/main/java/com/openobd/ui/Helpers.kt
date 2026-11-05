@@ -40,9 +40,15 @@ fun appSettings(): AppSettings {
 }
 
 object Permissions {
-    fun bluetooth(): Array<String> = if (Build.VERSION.SDK_INT >= 31)
-        arrayOf(Manifest.permission.BLUETOOTH_CONNECT, Manifest.permission.BLUETOOTH_SCAN)
-    else arrayOf(Manifest.permission.ACCESS_FINE_LOCATION, Manifest.permission.ACCESS_COARSE_LOCATION)
+    /**
+     * Runtime permissions to use an adapter. Android 12+ has Bluetooth permissions; before that a paired
+     * classic adapter needs none (common on car head units, often without location), only a BLE scan needs location.
+     */
+    fun bluetooth(ble: Boolean): Array<String> = when {
+        Build.VERSION.SDK_INT >= 31 -> arrayOf(Manifest.permission.BLUETOOTH_CONNECT, Manifest.permission.BLUETOOTH_SCAN)
+        ble -> arrayOf(Manifest.permission.ACCESS_FINE_LOCATION, Manifest.permission.ACCESS_COARSE_LOCATION)
+        else -> emptyArray()
+    }
 
     fun location(): Array<String> = arrayOf(Manifest.permission.ACCESS_FINE_LOCATION, Manifest.permission.ACCESS_COARSE_LOCATION)
 
