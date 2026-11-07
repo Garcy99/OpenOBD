@@ -2,9 +2,9 @@ name: Device tests
 
 # Instrumented tests on real Android emulators: the demo car through the real UI, foreground service,
 # notifications and storage, on the oldest supported Android, a middle one and a recent one.
+# Emulators are the most expensive jobs (3 x ~15 min), so they only run on demand,
+# e.g. before a release: Actions tab > Device tests > Run workflow.
 on:
-  push:
-  pull_request:
   workflow_dispatch:
 
 concurrency:

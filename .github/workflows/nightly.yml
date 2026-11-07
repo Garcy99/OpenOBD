@@ -3,14 +3,10 @@ name: Nightly checks
 # Things outside our control that can break without a code change: the public vehicle data services
 # (EEA, RDW, EPA fueleconomy.gov, NHTSA vPIC) and the newest ELM327-emulator release.
 on:
+  # Weekly (Monday) instead of nightly, to save Actions minutes.
   schedule:
-    - cron: "17 3 * * *"
+    - cron: "17 3 * * 1"
   workflow_dispatch:
-  push:
-    paths:
-      - ".github/workflows/nightly.yml"
-      - "app/src/main/java/com/openobd/core/specs/**"
-      - "app/src/test/java/com/openobd/core/LiveSpecsTest.kt"
 
 jobs:
   live-services:
