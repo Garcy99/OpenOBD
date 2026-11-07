@@ -1,8 +1,7 @@
 name: Android CI
 
-# Runs on pull requests and on demand (Actions tab > Run workflow), not on every push: the private
-# repository has a monthly Actions minutes quota, and the full suite also runs before each push locally.
 on:
+  push:
   pull_request:
   workflow_dispatch:
 

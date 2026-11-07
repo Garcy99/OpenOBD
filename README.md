@@ -92,8 +92,8 @@ You need JDK 17+ and the Android SDK (Android Studio installs both).
 ```
 
 Install `app/build/outputs/apk/debug/app-debug.apk` on your phone (`adb install`, or copy it over
-and allow installs from unknown sources). GitHub Actions builds the APK on pull requests and on demand (Actions tab > Android CI > Run workflow),
-so you can download it from the run's artifacts. Releases are built by the release workflow.
+and allow installs from unknown sources). Every push also builds the APK on GitHub Actions, so you can
+download it from the run's artifacts.
 
 To sign with your own key, publish GitHub releases or submit to Google Play, see
 [docs/RELEASING.md](docs/RELEASING.md). Privacy policy: [docs/PRIVACY.md](docs/PRIVACY.md).
@@ -152,7 +152,7 @@ elm -n 35000 -s car -d
 ```
 
 On a real device or emulator (CI runs API 23, 30 and 34): `./gradlew connectedDebugAndroidTest`.
-A weekly workflow checks the live vehicle data services (`-PliveSpecs=true`) and the newest emulator release.
+A nightly workflow checks the live vehicle data services (`-PliveSpecs=true`) and the newest emulator release.
 
 In the app, *Settings > Demo simulator* makes demo mode imitate an older car or an unreliable adapter, and
 *Settings > Troubleshooting > Share debug report* exports the raw adapter traffic when something goes wrong with a real car.
