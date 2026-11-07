@@ -62,6 +62,7 @@ import com.openobd.core.garage.GarageData
 import com.openobd.core.garage.Maintenance
 import com.openobd.core.garage.MaintenanceItem
 import com.openobd.core.garage.Vehicle
+import com.openobd.core.garage.RealConsumption
 import com.openobd.core.obd.VinDecoder
 import com.openobd.core.specs.CatalogEntry
 import com.openobd.core.specs.CrossCheck
@@ -123,12 +124,13 @@ fun FindCarScreen(vehicleId: String, onBack: () -> Unit) {
         Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
             val current = draft
             when {
-                current != null -> SpecsEditor(current, onCancel = { draft = null }, onSave = { specs ->
+                current != null -> SpecsEditor(current, realConsumption(g, v.id), onCancel = { draft = null }, onSave = { specs ->
                     scope.launch { saveSpecs(app.garage, v, specs) }
                     draft = null; searching = false
                 })
                 !searching && v.specs != null -> {
-                    SpecsSummary(v.specs, settings.units)
+                    SpecsSummary(v.specs, settings.units, realConsumption(g, v.id),
+                        Maintenance.nextInspection(v.specs, g.maintenance.filter { it.vehicleId == v.id }, System.currentTimeMillis(), tr(Maintenance.INSPECTION)))
                     CrossCheckCard(v, v.specs, isActive = v.id == g.activeVehicleId)
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         FilledTonalButton(onClick = { draft = v.specs }, modifier = Modifier.weight(1f)) { Text(tr("Edit")) }
@@ -141,16 +143,22 @@ fun FindCarScreen(vehicleId: String, onBack: () -> Unit) {
     }
 }
 
+/** Real consumption of a car from its fill-ups, or else its recorded trips. */
+private fun realConsumption(g: GarageData, vehicleId: String): RealConsumption.Result? =
+    RealConsumption.average(g.fuel.filter { it.vehicleId == vehicleId }, g.trips.filter { it.vehicleId == vehicleId })
+
 private suspend fun saveSpecs(garage: com.openobd.data.GarageRepository, v: Vehicle, specs: VehicleSpecs) {
     val autoNamed = v.name == GarageData.DEFAULT_NAME || Regex("^(\\d{4} )?[\\p{L}-]+$").matches(v.name) || Regex("^Car \\d+$").matches(v.name)
     val newName = listOfNotNull(specs.year?.toString(), specs.title.ifBlank { null }).joinToString(" ")
     val now = System.currentTimeMillis()
     garage.updateVehicle(v.id) { it.copy(specs = specs, name = if (autoNamed && newName.isNotBlank()) newName else it.name) }
-    // Inspection reminder from the registry date, or from the Spanish ITV calendar
-    val due = specs.inspectionDue ?: if (specs.country == "ES" && specs.firstRegistration != null) Spain.nextItv(specs.firstRegistration, now) else null
+    // Inspection reminder from the registry date, or from the Spanish ITV calendar, unless the reminder already
+    // knows when the inspection was last passed (that date wins).
+    val id = "inspection_${v.id}"
+    val existing = garage.data.value.maintenance.firstOrNull { it.id == id }
+    val due = if (existing?.lastDate != null) null
+        else specs.inspectionDue ?: if (specs.country == "ES" && specs.firstRegistration != null) Spain.nextItv(specs.firstRegistration, now) else null
     if (due != null) {
-        val id = "inspection_${v.id}"
-        val existing = garage.data.value.maintenance.firstOrNull { it.id == id }
         val age = specs.firstRegistration?.let { (now - it) / (365.25 * 86_400_000) } ?: 0.0
         val months = if (specs.country == "ES" && age < 10) 24 else 12
         garage.upsertMaintenance((existing ?: MaintenanceItem(id, v.id, tr(Maintenance.presets.last().first))).copy(dueDate = due, intervalMonths = months))
@@ -556,7 +564,7 @@ private val dgtColors = mapOf(
 )
 
 @Composable
-fun SpecsSummary(s: VehicleSpecs, units: com.openobd.core.obd.UnitSystem) {
+fun SpecsSummary(s: VehicleSpecs, units: com.openobd.core.obd.UnitSystem, real: RealConsumption.Result? = null, nextItv: Long? = null) {
     SectionCard {
         Text(listOfNotNull(s.year?.toString(), s.title.ifBlank { null }).joinToString(" "), style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
         if (s.version.isNotBlank()) Text(s.version, color = MaterialTheme.colorScheme.onSurfaceVariant)
@@ -565,6 +573,7 @@ fun SpecsSummary(s: VehicleSpecs, units: com.openobd.core.obd.UnitSystem) {
         if (s.engineLabel().isNotEmpty()) KeyValueRow(tr("Engine"), s.engineLabel())
         s.consumptionL100?.let { KeyValueRow(tr("Official consumption"), fmtL100(it, units) + if (s.consumptionEstimated) " (" + tr("estimated from CO₂") + ")" else "") }
         s.cityL100?.let { c -> KeyValueRow(tr("City / highway"), fmtL100(c, units) + " / " + fmtL100(s.highwayL100, units)) }
+        real?.let { r -> KeyValueRow(tr("Real consumption"), fmtL100(r.l100, units) + " · " + if (r.fromFuelLog) tr("from fill-ups") else tr("from your trips")) }
         s.electricKwh100?.let { KeyValueRow(tr("Electric consumption"), "%.1f kWh/100 km".format(it)) }
         s.electricRangeKm?.let { KeyValueRow(tr("Electric range"), fmtKm(it.toDouble(), units)) }
         s.tankL?.let { KeyValueRow(tr("Fuel tank"), "%.0f L".format(it)) }
@@ -583,7 +592,7 @@ fun SpecsSummary(s: VehicleSpecs, units: com.openobd.core.obd.UnitSystem) {
                     Text(tr(label.label), color = Color.White, fontWeight = FontWeight.Bold)
                 }
             }
-            s.firstRegistration?.let { KeyValueRow(tr("Next ITV"), fmtDay(Spain.nextItv(it, System.currentTimeMillis()))) }
+            nextItv?.let { KeyValueRow(tr("Next ITV"), fmtDay(it)) }
                 ?: Text(tr("Add the first registration date to get your next ITV date."), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
         Text(tr("Source: %1\$s", s.source), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -593,7 +602,7 @@ fun SpecsSummary(s: VehicleSpecs, units: com.openobd.core.obd.UnitSystem) {
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun SpecsEditor(initial: VehicleSpecs, onCancel: () -> Unit, onSave: (VehicleSpecs) -> Unit) {
+private fun SpecsEditor(initial: VehicleSpecs, real: RealConsumption.Result?, onCancel: () -> Unit, onSave: (VehicleSpecs) -> Unit) {
     var make by remember { mutableStateOf(prettyName(initial.make)) }
     var model by remember { mutableStateOf(prettyName(initial.model)) }
     var version by remember { mutableStateOf(initial.version) }
@@ -630,7 +639,15 @@ private fun SpecsEditor(initial: VehicleSpecs, onCancel: () -> Unit, onSave: (Ve
         }
         if (fuel != SpecFuel.ELECTRIC) field(tr("Engine size (cm³)"), cc, true) { cc = it.filter(Char::isDigit) }
         field(tr("Power (kW)") + (num(kw)?.let { " = %.0f CV".format(it * 1.35962) } ?: ""), kw, true) { kw = it }
-        if (fuel != SpecFuel.ELECTRIC) field(tr("Official consumption (L/100 km)"), cons, true) { cons = it }
+        if (fuel != SpecFuel.ELECTRIC) {
+            field(tr("Official consumption (L/100 km)"), cons, true) { cons = it }
+            // Typing it is optional: the fill-ups or recorded trips already know the real figure.
+            real?.let { r ->
+                TextButton(onClick = { cons = "%.1f".format(Locale.US, r.l100) }) {
+                    Text(tr("Use your real consumption (%1\$s)", "%.1f L/100 km".format(r.l100)) + " · " + if (r.fromFuelLog) tr("from fill-ups") else tr("from your trips"))
+                }
+            }
+        }
         if (fuel == SpecFuel.ELECTRIC || fuel.isPlugIn) {
             field(tr("Electric consumption (kWh/100 km)"), kwh, true) { kwh = it }
             field(tr("Electric range (km)"), range, true) { range = it.filter(Char::isDigit) }

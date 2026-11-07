@@ -66,6 +66,8 @@ data class AppSettings(
     val fuel: FuelKind = FuelKind.AUTO,
     val displacementL: Float = 2.0f,
     val dashboard: List<String> = DEFAULT_DASHBOARD,
+    /** Look of the live gauges (see GaugeTheme). */
+    val dashboardTheme: String = "neon",
     val alerts: List<AlertRule> = emptyList(),
     val shiftLightRpm: Int = 0,
     val fuelPricePerL: Float = 0f,
@@ -96,7 +98,7 @@ data class AppSettings(
     val voiceAlerts: Boolean = false,
 ) {
     companion object {
-        val DEFAULT_DASHBOARD = listOf("010C", "010D", "0105", "0104", "0111", "CALC_FUEL", "0142", "CALC_BOOST")
+        val DEFAULT_DASHBOARD = listOf("010C", "010D", "0105", "0104", "CALC_PEDAL", "CALC_FUEL", "0142", "CALC_BOOST")
 
         /** Protocols the demo simulator can speak. */
         val DEMO_PROTOCOLS = listOf(
@@ -129,6 +131,7 @@ class SettingsRepository(private val context: Context, scope: CoroutineScope) {
         val fuel = stringPreferencesKey("fuel")
         val displacement = floatPreferencesKey("displacement")
         val dashboard = stringPreferencesKey("dashboard")
+        val dashboardTheme = stringPreferencesKey("dashboard_theme")
         val alerts = stringPreferencesKey("alerts")
         val shiftLight = intPreferencesKey("shift_light")
         val fuelPrice = floatPreferencesKey("fuel_price")
@@ -173,6 +176,7 @@ class SettingsRepository(private val context: Context, scope: CoroutineScope) {
             fuel = enumOf(p[K.fuel], d.fuel),
             displacementL = p[K.displacement] ?: d.displacementL,
             dashboard = p[K.dashboard]?.split(',')?.filter { it.isNotBlank() } ?: d.dashboard,
+            dashboardTheme = p[K.dashboardTheme] ?: d.dashboardTheme,
             alerts = p[K.alerts]?.let { runCatching { json.decodeFromString<List<AlertRule>>(it) }.getOrNull() } ?: d.alerts,
             shiftLightRpm = p[K.shiftLight] ?: d.shiftLightRpm,
             fuelPricePerL = p[K.fuelPrice] ?: d.fuelPricePerL,
@@ -220,6 +224,7 @@ class SettingsRepository(private val context: Context, scope: CoroutineScope) {
             p[K.fuel] = s.fuel.name
             p[K.displacement] = s.displacementL
             p[K.dashboard] = s.dashboard.joinToString(",")
+            p[K.dashboardTheme] = s.dashboardTheme
             p[K.alerts] = json.encodeToString(s.alerts)
             p[K.shiftLight] = s.shiftLightRpm
             p[K.fuelPrice] = s.fuelPricePerL

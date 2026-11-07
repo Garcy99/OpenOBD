@@ -5,7 +5,7 @@ enum class ObdUnit(val symbol: String) {
     GRAMS_PER_SEC("g/s"), VOLTS("V"), MILLIAMPS("mA"), SECONDS("s"), MINUTES("min"), KM("km"), LAMBDA("λ"),
     LITERS_PER_HOUR("L/h"), NEWTON_METERS("N·m"), L_PER_100KM("L/100km"), KILOWATTS("kW"), PPM("ppm"),
     KG_PER_HOUR("kg/h"), MG_PER_STROKE("mg/st"), COUNT(""), RATIO(":1"), LITERS("L"), GEAR(""), AFR("AFR"),
-    G_FORCE("g"),
+    G_FORCE("g"), BAR("bar"),
 
     // Imperial counterparts
     FAHRENHEIT("°F"), MPH("mph"), PSI("psi"), INH2O("inH₂O"), MILES("mi"), MPG("mpg"), GAL_PER_HOUR("gal/h"),
@@ -16,6 +16,7 @@ enum class ObdUnit(val symbol: String) {
         CELSIUS -> v * 9.0 / 5.0 + 32.0 to FAHRENHEIT
         KMH -> v * 0.621371 to MPH
         KPA -> v * 0.145038 to PSI
+        BAR -> v * 14.5038 to PSI
         PA -> v * 0.00401865 to INH2O
         KM -> v * 0.621371 to MILES
         L_PER_100KM -> (if (v > 0.01) 235.215 / v else 0.0) to MPG

@@ -444,8 +444,7 @@ private fun AttentionFeed(state: ConnectionState, onNavigate: (String) -> Unit, 
                 tr("This car does not report its VIN (normal for many cars before 2005). Choose the make and model to get its brand features and specifications."),
                 MaterialTheme.colorScheme.primary) { onNavigate(Routes.findCar(car.id)) }
         }
-        car.specs?.let { s ->
-            val itv = s.inspectionDue ?: if (s.country == "ES" && s.firstRegistration != null) Spain.nextItv(s.firstRegistration, now) else null
+        Maintenance.nextInspection(car.specs, garage.maintenance.filter { it.vehicleId == car.id }, now, tr(Maintenance.INSPECTION)).let { itv ->
             if (itv != null && itv - now < 45L * 86_400_000) notices += {
                 NoticeCard(Icons.Default.CalendarMonth, tr("Inspection due"), DateFormat.getDateInstance(DateFormat.MEDIUM).format(Date(itv)), Warn) {
                     onNavigate(Routes.CHECK)
@@ -611,8 +610,10 @@ private fun DevicePickerDialog(ble: Boolean, onDismiss: () -> Unit, onPick: (Fou
     var error by remember { mutableStateOf<String?>(null) }
     var scanning by remember { mutableStateOf(false) }
     val btOn = DeviceScanner.bluetoothEnabled(context)
-    LaunchedEffect(ble) {
+    var attempt by remember { mutableStateOf(0) }
+    LaunchedEffect(ble, attempt) {
         devices.clear()
+        error = null
         if (!btOn) return@LaunchedEffect
         devices += DeviceScanner.bondedDevices(context).filter { !ble || it.ble }
         if (ble) {
@@ -642,7 +643,11 @@ private fun DevicePickerDialog(ble: Boolean, onDismiss: () -> Unit, onPick: (Fou
                 } else {
                     if (scanning) LinearProgressIndicator(Modifier.fillMaxWidth().padding(bottom = 8.dp))
                     error?.let { ErrorText(it) }
+                    if (ble && DeviceScanner.bleNeedsLocationOn(context)) Text(tr("On Android 11 and older, Bluetooth LE searching only works with Location turned on (quick settings)."),
+                        style = MaterialTheme.typography.bodySmall, color = Warn)
                     if (devices.isEmpty() && !scanning) Text(if (ble) tr("No BLE devices found.") else tr("No paired devices. Pair your adapter in Bluetooth settings first."))
+                    if (ble && !scanning) Text(tr("Most ELM327 adapters are Bluetooth Classic: if yours does not show up, pair it in Android's Bluetooth settings and choose BT instead."),
+                        style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(top = 6.dp))
                     LazyColumn(Modifier.heightIn(max = 360.dp)) {
                         items(devices, key = { it.address }) { d ->
                             Row(
@@ -665,6 +670,7 @@ private fun DevicePickerDialog(ble: Boolean, onDismiss: () -> Unit, onPick: (Fou
         confirmButton = { TextButton(onClick = onDismiss) { Text(tr("Close")) } },
         dismissButton = {
             if (!ble) TextButton(onClick = { runCatching { context.startActivity(Intent(Settings.ACTION_BLUETOOTH_SETTINGS)) } }) { Text(tr("Pair new")) }
+            else if (!scanning && btOn) TextButton(onClick = { attempt++ }) { Text(tr("Search again")) }
         },
     )
 }

@@ -82,7 +82,7 @@ class LiveDataManager(private val scope: CoroutineScope) {
     private var job: Job? = null
 
     /** Sensors selected for the chart screen (kept across navigation). */
-    val chartKeys = MutableStateFlow(listOf("010C", "010D", "0111"))
+    val chartKeys = MutableStateFlow(listOf("010C", "010D", "CALC_PEDAL"))
 
     fun subscribe(owner: String, keys: Collection<String>) {
         subscriptions.value = subscriptions.value + (owner to keys.toSet())
@@ -133,7 +133,7 @@ class LiveDataManager(private val scope: CoroutineScope) {
             val keys = subscriptions.value.values.flatten().toSet()
             val sensorKeys = HashSet<String>()
             for (k in keys) {
-                if (k.startsWith("CALC_")) DerivedSensors.requirements(k, supported)?.let { sensorKeys += it }
+                if (k.startsWith("CALC_")) DerivedSensors.requirements(k, supported, params.diesel)?.let { sensorKeys += it }
                 else sensorKeys += k
             }
             val pids = sensorKeys.mapNotNull { k -> Pids.sensors[k]?.pid }.filter { it in supported }.distinct()

@@ -77,7 +77,8 @@ fun TripScreen(onBack: () -> Unit, onConnect: () -> Unit, onHistory: () -> Unit 
                 KeyValueRow(tr("Idle time"), formatDuration(t.idleS))
             }
             Text(tr("Fuel is calculated from the fuel-rate PID or from mass air flow. Accuracy is typically within 5-10%; ") +
-                tr("set your fuel type and engine size in Settings for best results."),
+                tr("set your fuel type and engine size in Settings for best results.") + " " +
+                tr("Log full-tank fill-ups in the fuel log and the estimate learns your car's real consumption."),
                 style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
     }

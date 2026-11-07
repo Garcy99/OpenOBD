@@ -690,7 +690,10 @@ class WelcomeAndDashboardUiTest {
         rule.waitForIdle()
         click("Diesel")
         waitFor { c.settings.settings.value.dashboard == com.openobd.ui.screens.DashboardPresets.all.first { it.first == "Diesel" }.second }
-        rule.onAllNodesWithContentDescription("Switch gauge style")[0].performClick()
+        rule.onAllNodesWithContentDescription("Customise gauge")[0].performClick()
+        waitFor { rule.onAllNodes(hasText("Number") and hasClickAction()).fetchSemanticsNodes().isNotEmpty() }
+        rule.onAllNodes(hasText("Number") and hasClickAction())[0].performClick()
+        click("Save")
         waitFor { c.settings.settings.value.dashboard.first() == "010C@d" }
         rule.onAllNodesWithContentDescription("Move later")[0].performClick()
         waitFor { c.settings.settings.value.dashboard.take(2) == listOf("CALC_BOOST@d", "010C@d") }

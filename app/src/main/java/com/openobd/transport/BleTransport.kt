@@ -17,6 +17,7 @@ import com.openobd.core.transport.TransportException
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.withTimeoutOrNull
 import java.util.UUID
 
@@ -42,11 +43,16 @@ class BleTransport(
     private var mtuChanged = CompletableDeferred<Int>()
     private var descriptorWritten = CompletableDeferred<Boolean>()
     @Volatile private var writeDone: CompletableDeferred<Boolean>? = null
+    @Volatile private var lastStatus = 0
 
     private val callback = object : BluetoothGattCallback() {
         override fun onConnectionStateChange(g: BluetoothGatt, status: Int, newState: Int) {
             if (newState == BluetoothProfile.STATE_CONNECTED && status == BluetoothGatt.GATT_SUCCESS) {
                 connected.complete(true)
+            } else if (status != BluetoothGatt.GATT_SUCCESS && !connected.isCompleted) {
+                // e.g. 133 (GATT_ERROR), very common on a first attempt: open() retries
+                lastStatus = status
+                connected.complete(false)
             } else if (newState == BluetoothProfile.STATE_DISCONNECTED) {
                 connected.complete(false)
                 servicesDiscovered.complete(false)
@@ -88,12 +94,33 @@ class BleTransport(
             ?: throw TransportException("This device has no Bluetooth")
         if (!adapter.isEnabled) throw TransportException("Bluetooth is turned off")
         val device = adapter.getRemoteDevice(address)
-        connected = CompletableDeferred(); servicesDiscovered = CompletableDeferred()
+        runCatching { adapter.cancelDiscovery() }
+        // Android often fails the first GATT connection (status 133) and sometimes serves a stale list of
+        // services from its cache, so retry a few times and refresh the cache before the last tries.
+        var lastError: Exception? = null
+        for (attempt in 1..3) {
+            if (attempt > 1) delay(700L * attempt)
+            try {
+                connectOnce(device, refreshCache = attempt > 1)
+                return
+            } catch (e: TransportException) {
+                lastError = e
+            }
+        }
+        throw lastError ?: TransportException("BLE adapter ${name ?: address} did not connect")
+    }
+
+    private suspend fun connectOnce(device: BluetoothDevice, refreshCache: Boolean) {
+        connected = CompletableDeferred(); servicesDiscovered = CompletableDeferred(); lastStatus = 0
         val g = device.connectGatt(context, false, callback, BluetoothDevice.TRANSPORT_LE)
             ?: throw TransportException("Could not start BLE connection")
         gatt = g
         try {
-            if (withTimeoutOrNull(15_000) { connected.await() } != true) throw TransportException("BLE adapter ${name ?: address} did not connect")
+            if (withTimeoutOrNull(15_000) { connected.await() } != true) {
+                throw TransportException("BLE adapter ${name ?: address} did not connect" + if (lastStatus != 0) " (status $lastStatus)" else "")
+            }
+            if (refreshCache) refreshGattCache(g)
+            delay(300) // some stacks drop a discovery started right after connecting
             mtuChanged = CompletableDeferred()
             if (g.requestMtu(247)) withTimeoutOrNull(3_000) { mtuChanged.await() }
             if (!g.discoverServices() || withTimeoutOrNull(10_000) { servicesDiscovered.await() } != true) {
@@ -107,8 +134,13 @@ class BleTransport(
         } catch (e: Exception) {
             runCatching { g.disconnect(); g.close() }
             gatt = null
-            throw e
+            throw if (e is TransportException) e else TransportException(e.message ?: "BLE error", e)
         }
+    }
+
+    /** Clears Android's cached service list for the device (hidden but long-standing API). */
+    private fun refreshGattCache(g: BluetoothGatt) {
+        runCatching { g.javaClass.getMethod("refresh").invoke(g) }
     }
 
     private fun pickCharacteristics(services: List<BluetoothGattService>): Pair<BluetoothGattCharacteristic, BluetoothGattCharacteristic>? {

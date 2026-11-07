@@ -176,7 +176,7 @@ class ObdSession(
                 live.params = fuelParams(settingsRepo.settings.value, vehicle)
             }
         }
-        location.speedProvider = { live.latestValue("010D") }
+        location.valueProvider = { key -> live.latestValue(key) }
         live.addListener(demoGpsListener())
         live.addListener { values, _, now -> health.onCycle(values, now) }
         live.addListener { values, _, now -> diesel.onCycle(values, now) }
@@ -248,6 +248,8 @@ class ObdSession(
         val supported = c.discover()
         _state.value = ConnectionState.Connecting("Reading VIN")
         val vin = runCatching { c.readVin() }.getOrNull()
+        // Compression ignition flag of the monitor status (PID 01, byte B bit 3): tells diesels apart for the fuel estimate.
+        compressionIgnition = runCatching { c.readPids(listOf(0x01))[0x01]?.getOrNull(1)?.let { (it shr 3) and 1 == 1 } }.getOrNull()
         val voltage = e.readVoltage()
         val snapshot = VehicleSnapshot(t.description, info, supported, c.ecus, vin, voltage, s.connectionType == ConnectionType.DEMO)
         selectVehicleFor(vin)
@@ -267,10 +269,15 @@ class ObdSession(
         tripStart = System.currentTimeMillis()
         tripActive = true
         if (s.tripGps && s.connectionType != ConnectionType.DEMO) location.start()
+        // Values stored with each point of the GPS track (shown when the map is tapped)
+        if (s.tripGps || s.connectionType == ConnectionType.DEMO) live.subscribe("track", com.openobd.core.garage.TrackPoint.KEYS)
         startVoltageMonitor()
         // Pre-load monitor status for the home screen
         scope.launch { runCatching { scanDtcsInternal(record = false) } }
     }
+
+    /** From the car's monitor status at connection; null when unknown. */
+    @Volatile private var compressionIgnition: Boolean? = null
 
     private fun fuelParams(s: AppSettings, v: VehicleSnapshot?): DerivedSensors.Params {
         val specs = garage.data.value.active?.specs
@@ -287,9 +294,21 @@ class ObdSession(
         val displacement = specs?.displacementL ?: s.displacementL.toDouble()
         val kind = if (s.fuel == FuelKind.AUTO && specKind != null) specKind else if (s.fuel == FuelKind.AUTO) {
             val ft = live.latestValue("0151")?.toInt()
+            if (ft == null && compressionIgnition == true) return dieselParams(displacement, specs?.powerKw)
             when (ft) { 4, 19, 23 -> FuelKind.DIESEL; 3, 11, 18 -> FuelKind.E85; 5, 12 -> FuelKind.LPG; 6, 13 -> FuelKind.CNG; else -> FuelKind.GASOLINE }
         } else s.fuel
-        return DerivedSensors.Params(kind.afr, kind.densityGPerL, displacement)
+        return DerivedSensors.Params(kind.afr, kind.densityGPerL, displacement, diesel = kind == FuelKind.DIESEL,
+            maxPowerKw = specs?.powerKw, calibration = fuelCalibration())
+    }
+
+    private fun dieselParams(displacement: Double, powerKw: Double?) = DerivedSensors.Params(FuelKind.DIESEL.afr, FuelKind.DIESEL.densityGPerL, displacement,
+        diesel = true, maxPowerKw = powerKw, calibration = fuelCalibration())
+
+    /** Real / estimated consumption of the active car, learnt from its fuel log. */
+    private fun fuelCalibration(): Double {
+        val g = garage.data.value
+        val car = g.active ?: return 1.0
+        return com.openobd.core.garage.RealConsumption.calibration(g.fuel.filter { it.vehicleId == car.id }, g.trips.filter { it.vehicleId == car.id }) ?: 1.0
     }
 
     private fun startVoltageMonitor() {
@@ -325,6 +344,7 @@ class ObdSession(
     }
 
     private suspend fun cleanup() {
+        compressionIgnition = null
         health.finish()
         finishTrip()
         live.stop()
@@ -470,6 +490,8 @@ class ObdSession(
                 idleS = st.idleS, maxRpm = st.maxRpm, cost = fuel?.let { f -> if (price > 0) f * price else null }, trackPoints = track.size,
                 harshAccel = st.eco.harshAccel, harshBrake = st.eco.harshBrake, highRpmS = st.eco.highRpmS, longIdleS = st.eco.longIdleS,
                 ecoScore = st.ecoScore,
+                fuelModel = DerivedSensors.FUEL_MODEL, fuelCalibration = live.params.calibration,
+                fuelMeasured = 0x5E in (this.vehicle?.supportedPids ?: emptySet()),
             ),
             track,
         )
@@ -492,7 +514,7 @@ class ObdSession(
                 lon += d * Math.sin(heading) / (111_320.0 * Math.cos(Math.toRadians(lat)))
             }
             if (now - last >= 2000 || last == 0L) {
-                location.addSynthetic(com.openobd.core.garage.TrackPoint(now, lat, lon, speed.toFloat()))
+                location.addSynthetic(com.openobd.core.garage.TrackPoint.of(now, lat, lon, speed.toFloat()) { k -> values[k] })
             }
             last = now
         }

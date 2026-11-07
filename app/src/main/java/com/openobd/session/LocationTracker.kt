@@ -15,7 +15,8 @@ import com.openobd.core.garage.TrackPoint
 class LocationTracker(private val context: Context) {
     private val points = mutableListOf<TrackPoint>()
     private var listener: LocationListener? = null
-    @Volatile var speedProvider: () -> Double? = { null }
+    /** Latest live value for a sensor key, stored with each GPS point. */
+    @Volatile var valueProvider: (String) -> Double? = { null }
 
     fun hasPermission(): Boolean = ContextCompat.checkSelfPermission(context, Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED
 
@@ -28,7 +29,7 @@ class LocationTracker(private val context: Context) {
         if (!lm.isProviderEnabled(LocationManager.GPS_PROVIDER)) return false
         val l = LocationListener { loc: Location ->
             synchronized(points) {
-                points += TrackPoint(loc.time, loc.latitude, loc.longitude, speedProvider()?.toFloat() ?: (loc.speed * 3.6f).takeIf { loc.hasSpeed() })
+                points += TrackPoint.of(loc.time, loc.latitude, loc.longitude, (loc.speed * 3.6f).takeIf { loc.hasSpeed() }, valueProvider)
             }
         }
         return runCatching {

@@ -223,6 +223,7 @@ private fun VehicleEditor(v: Vehicle, isNew: Boolean, units: UnitSystem, onDismi
 
 // ---------------------------------------------------------------- Maintenance
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun MaintenanceScreen(onBack: () -> Unit) {
     val app = LocalApp.current
@@ -233,6 +234,7 @@ fun MaintenanceScreen(onBack: () -> Unit) {
     var editing by remember { mutableStateOf<MaintenanceItem?>(null) }
     var presets by remember { mutableStateOf(false) }
     var odoDialog by remember { mutableStateOf(false) }
+    var inspectionPassed by remember { mutableStateOf<MaintenanceItem?>(null) }
     Scaffold(
         topBar = { ScreenTopBar(tr("Maintenance"), onBack) },
         floatingActionButton = {
@@ -283,11 +285,35 @@ fun MaintenanceScreen(onBack: () -> Unit) {
                     Text(tr("Every ") + listOfNotNull(item.intervalKm?.let { fmtKm(it.toDouble(), settings.units) }, item.intervalMonths?.let { "$it months" }).joinToString(" / ") +
                         (item.lastDate?.let { tr(" · last done %1\$s", (fmtDate(it))) } ?: "") + (item.lastKm?.let { " at ${fmtKm(it, settings.units)}" } ?: ""),
                         style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                    TextButton(onClick = {
-                        scope.launch { app.garage.upsertMaintenance(item.copy(lastDate = System.currentTimeMillis(), lastKm = v.odometerKm ?: item.lastKm, dueDate = null)) }
-                    }) { Icon(Icons.Default.CheckCircle, null); Spacer(Modifier.width(6.dp)); Text(tr("Mark done today")) }
+                    val inspection = Maintenance.isInspection(item, tr(Maintenance.INSPECTION))
+                    Row {
+                        TextButton(onClick = {
+                            scope.launch {
+                                app.garage.upsertMaintenance(
+                                    if (inspection) Maintenance.inspectionPassed(item, v.specs, System.currentTimeMillis(), v.odometerKm)
+                                    else item.copy(lastDate = System.currentTimeMillis(), lastKm = v.odometerKm ?: item.lastKm, dueDate = null),
+                                )
+                            }
+                        }) { Icon(Icons.Default.CheckCircle, null); Spacer(Modifier.width(6.dp)); Text(tr("Mark done today")) }
+                        // The next inspection counts from the day it was passed, which is often not today.
+                        if (inspection) TextButton(onClick = { inspectionPassed = item }) { Text(tr("Passed on…")) }
+                    }
                 }
             }
+        }
+    }
+    inspectionPassed?.let { item ->
+        val state = rememberDatePickerState(initialSelectedDateMillis = item.lastDate ?: System.currentTimeMillis())
+        DatePickerDialog(onDismissRequest = { inspectionPassed = null },
+            confirmButton = {
+                TextButton(onClick = {
+                    val day = state.selectedDateMillis
+                    if (day != null && v != null) scope.launch { app.garage.upsertMaintenance(Maintenance.inspectionPassed(item, v.specs, day, null)) }
+                    inspectionPassed = null
+                }) { Text("OK") }
+            },
+            dismissButton = { TextButton(onClick = { inspectionPassed = null }) { Text(tr("Cancel")) } }) {
+            DatePicker(state, title = { Text(tr("Day you passed the inspection"), Modifier.padding(start = 24.dp, end = 12.dp, top = 16.dp)) })
         }
     }
     if (presets && v != null) AlertDialog(
@@ -532,6 +558,22 @@ fun TripsScreen(onBack: () -> Unit, onOpen: (String) -> Unit) {
     }
 }
 
+/** What the car was doing at one point of a trip's route. */
+@Composable
+private fun TrackPointCard(p: TrackPoint, tripStart: Long, units: UnitSystem) {
+    SectionCard(title = java.text.DateFormat.getTimeInstance(java.text.DateFormat.MEDIUM).format(java.util.Date(p.t)) +
+        "  ·  " + tr("%1\$s into the trip", formatDuration(((p.t - tripStart) / 1000.0).coerceAtLeast(0.0)))) {
+        p.speedKmh?.let { KeyValueRow(tr("Speed"), ObdUnit.KMH.display(it.toDouble(), units).let { d -> "%.0f %s".format(d.value, d.unit.symbol) }) }
+        p.rpm?.let { KeyValueRow(tr("Engine RPM"), "%.0f".format(it)) }
+        p.l100?.let { KeyValueRow(tr("Instant fuel consumption"), fmtL100(it.toDouble(), units)) }
+        p.pedal?.let { KeyValueRow(tr("Accelerator"), "%.0f %%".format(it)) }
+        p.boostBar?.let { KeyValueRow(tr("Boost"), ObdUnit.BAR.display(it.toDouble(), units).let { d -> "%.2f %s".format(d.value, d.unit.symbol) }) }
+        p.coolantC?.let { KeyValueRow(tr("Coolant"), ObdUnit.CELSIUS.display(it.toDouble(), units).let { d -> "%.0f %s".format(d.value, d.unit.symbol) }) }
+        if (p.rpm == null && p.l100 == null) Text(tr("Trips recorded with older versions only stored the speed."),
+            style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+    }
+}
+
 @Composable
 fun TripDetailScreen(tripId: String, onBack: () -> Unit) {
     val app = LocalApp.current
@@ -541,6 +583,7 @@ fun TripDetailScreen(tripId: String, onBack: () -> Unit) {
     val t = g.trips.firstOrNull { it.id == tripId }
     var track by remember { mutableStateOf<List<TrackPoint>?>(null) }
     var confirmDelete by remember { mutableStateOf(false) }
+    var point by remember { mutableStateOf<TrackPoint?>(null) }
     LaunchedEffect(tripId) { track = app.garage.loadTrack(tripId) }
     Column(Modifier.fillMaxSize()) {
         ScreenTopBar(tr("Trip"), onBack, actions = {
@@ -550,8 +593,10 @@ fun TripDetailScreen(tripId: String, onBack: () -> Unit) {
         Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
             val pts = track.orEmpty()
             if (pts.size >= 2) {
-                SectionCard { TrackMap(pts, Modifier.fillMaxWidth().height(300.dp)) }
-                Text(tr("Map data © OpenStreetMap contributors"), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                SectionCard { TrackMap(pts, Modifier.fillMaxWidth().height(300.dp), selected = point) { point = it } }
+                Text(tr("Map data © OpenStreetMap contributors") + " · " + tr("Tap the route to see what the car was doing there."),
+                    style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                point?.let { TrackPointCard(it, t.start, settings.units) }
             }
             SectionCard(title = fmtDateTime(t.start)) {
                 KeyValueRow(tr("Distance"), fmtKm(t.distanceKm, settings.units, 2))

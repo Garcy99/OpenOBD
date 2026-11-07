@@ -114,6 +114,21 @@ object Spain {
         return due
     }
 
+    /** Months until the next ITV for a car of this age: 2 years until 10 years old, then every year. */
+    fun itvIntervalMonths(firstRegistration: Long?, at: Long): Int =
+        if (firstRegistration != null && yearsBetween(firstRegistration, at) < 10) 24 else 12
+
+    /**
+     * Next ITV once one has been passed: counted from the day it was passed, except that passing it in the
+     * month before it was due counts from the due date (Real Decreto 920/2017), so passing early loses nothing.
+     */
+    fun nextItvAfter(passed: Long, firstRegistration: Long?, previousDue: Long?): Long {
+        val months = itvIntervalMonths(firstRegistration, passed)
+        val early = previousDue != null && passed <= previousDue && previousDue - passed <= 31L * 86_400_000
+        val from = if (early) previousDue!! else passed
+        return Calendar.getInstance(utc).apply { timeInMillis = from; add(Calendar.MONTH, months) }.timeInMillis
+    }
+
     private fun yearsBetween(a: Long, b: Long): Int {
         val ca = Calendar.getInstance(utc).apply { timeInMillis = a }
         val cb = Calendar.getInstance(utc).apply { timeInMillis = b }

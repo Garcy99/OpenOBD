@@ -93,7 +93,7 @@ fun LogsScreen(onBack: () -> Unit, onOpen: (String) -> Unit = {}) {
             sensors = available,
             title = tr("Sensors to record"),
             onDismiss = { picking = false },
-            selected = settings.dashboard.filter { k -> available.any { it.key == k } }.toSet(),
+            selected = settings.dashboard.map { com.openobd.ui.components.GaugeSpec.parse(it).key }.filter { k -> available.any { it.key == k } }.toSet(),
             onConfirm = { keys -> picking = false; if (keys.isNotEmpty()) session.startRecording(keys.toList()) },
         )
     }

@@ -23,7 +23,7 @@ import androidx.compose.material.icons.filled.Fullscreen
 import androidx.compose.material.icons.filled.PictureInPictureAlt
 import androidx.compose.material.icons.filled.RestartAlt
 import androidx.compose.material.icons.filled.Speed
-import androidx.compose.material.icons.filled.Pin
+import androidx.compose.material.icons.filled.Tune
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowLeft
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material3.Card
@@ -47,7 +47,9 @@ import com.openobd.data.AppSettings
 import com.openobd.ui.LocalApp
 import com.openobd.ui.SubscribeSensors
 import com.openobd.ui.appSettings
-import com.openobd.ui.components.AnalogGauge
+import com.openobd.ui.components.GaugeSpec
+import com.openobd.ui.components.GaugeTheme
+import androidx.compose.ui.graphics.Color
 import com.openobd.ui.components.NotConnected
 import com.openobd.ui.components.TopBar
 import com.openobd.ui.components.TopBarSlot
@@ -76,6 +78,7 @@ fun DashboardScreen(onConnect: () -> Unit, onHud: () -> Unit, topBar: TopBarSlot
     val scope = rememberCoroutineScope()
     var editing by remember { mutableStateOf(false) }
     var pickFor by remember { mutableStateOf<Int?>(null) }
+    var customise by remember { mutableStateOf<Int?>(null) }
 
     Column(Modifier.fillMaxSize()) {
         TopBar(topBar, tr("Dashboard"), actions = {
@@ -92,10 +95,10 @@ fun DashboardScreen(onConnect: () -> Unit, onHud: () -> Unit, topBar: TopBarSlot
         }
         val supported = vehicle?.supportedPids ?: emptySet()
         val available = remember(supported) { SensorCatalog.available(supported) }
-        // Entries are sensor keys, optionally with "@d" for a large digital tile.
-        val entries = settings.dashboard
-        val keys = entries.map { it.substringBefore('@') }
-        SubscribeSensors("dashboard", keys)
+        // Each entry is a sensor key plus how it is drawn (GaugeSpec); "@d" from older versions means a big number.
+        val specs = settings.dashboard.map { GaugeSpec.parse(it) }
+        val theme = GaugeTheme.of(settings.dashboardTheme)
+        SubscribeSensors("dashboard", specs.map { it.key })
         fun updateEntries(t: (MutableList<String>) -> Unit) {
             scope.launch { app.settings.update { s -> s.copy(dashboard = s.dashboard.toMutableList().also(t)) } }
         }
@@ -116,43 +119,37 @@ fun DashboardScreen(onConnect: () -> Unit, onHud: () -> Unit, topBar: TopBarSlot
                             androidx.compose.material3.AssistChip(onClick = { scope.launch { app.settings.update { it.copy(dashboard = list) } } }, label = { Text(tr(name)) })
                         }
                     }
-                    Text(tr("Tap a gauge to change it; use the arrows to move it and the dial button to switch between gauge and big number."),
+                    Text(tr("Theme"), style = MaterialTheme.typography.labelLarge, modifier = Modifier.padding(top = 6.dp))
+                    androidx.compose.foundation.lazy.LazyRow(horizontalArrangement = androidx.compose.foundation.layout.Arrangement.spacedBy(6.dp)) {
+                        items(GaugeTheme.entries.size) { i ->
+                            val t = GaugeTheme.entries[i]
+                            androidx.compose.material3.FilterChip(
+                                selected = t == theme,
+                                onClick = { scope.launch { app.settings.update { it.copy(dashboardTheme = t.id) } } },
+                                label = { Text(tr(t.label)) },
+                                leadingIcon = { Swatch(t.accent.last(), t.face) },
+                            )
+                        }
+                    }
+                    Text(tr("Tap a gauge to change its sensor, style, colour, range and warning; use the arrows to move it."),
                         style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
             }
-            itemsIndexed(keys, key = { i, k -> "$i$k" }) { index, key ->
-                val digital = entries.getOrNull(index)?.endsWith("@d") == true
+            itemsIndexed(specs, key = { i, sp -> "$i${sp.key}" }) { index, spec ->
+                val key = spec.key
                 val def = SensorCatalog.get(key)
-                val reading = readings[key]
                 Card(
                     shape = RoundedCornerShape(20.dp),
-                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainer),
-                    modifier = Modifier.combinedClickable(onClick = { if (editing) pickFor = index }, onLongClick = { pickFor = index }),
+                    colors = CardDefaults.cardColors(containerColor = theme.face?.let { Color(it) } ?: MaterialTheme.colorScheme.surfaceContainer),
+                    modifier = Modifier.combinedClickable(onClick = { if (editing) customise = index }, onLongClick = { customise = index }),
                 ) {
                     Box {
                         if (def == null) {
                             Text(tr("Unknown sensor %1\$s", key), Modifier.padding(16.dp))
                         } else {
-                            val units = settings.units
-                            val (lo, hi) = displayRange(def, units)
-                            val v = reading?.value
-                            val fraction = v?.let { ((displayValue(def, it, units) - lo) / (hi - lo)).toFloat() }
-                            val f = formatSensor(def, v, units)
                             val supportedHere = vehicle == null || (def.pid < 0 && available.any { it.key == key }) || def.pid in supported
-                            if (digital) DigitalTile(
-                                label = tr(def.name), valueText = if (supportedHere) f.value else "N/A", unit = f.unit,
-                                minText = reading?.let { formatSensor(def, it.min, units).value }, maxText = reading?.let { formatSensor(def, it.max, units).value },
-                            ) else AnalogGauge(
-                                label = tr(def.shortName),
-                                valueText = if (supportedHere) f.value else "N/A",
-                                unit = f.unit,
-                                fraction = if (def.labeler != null) null else fraction,
-                                redFrom = redZone(key),
-                                minText = reading?.let { formatSensor(def, it.min, units).value },
-                                maxText = reading?.let { formatSensor(def, it.max, units).value },
-                                highlight = key == "010C" && settings.shiftLightRpm > 0 && (v ?: 0.0) >= settings.shiftLightRpm,
-                                modifier = Modifier.fillMaxWidth(),
-                            )
+                            GaugeView(spec, theme, def, readings[key], settings.units, supportedHere,
+                                shift = key == "010C" && settings.shiftLightRpm > 0 && (readings[key]?.value ?: 0.0) >= settings.shiftLightRpm)
                         }
                         if (editing) {
                             IconButton(
@@ -163,10 +160,8 @@ fun DashboardScreen(onConnect: () -> Unit, onHud: () -> Unit, topBar: TopBarSlot
                                 IconButton(onClick = { updateEntries { l -> if (index > 0) java.util.Collections.swap(l, index, index - 1) } }, enabled = index > 0) {
                                     Icon(Icons.AutoMirrored.Filled.KeyboardArrowLeft, tr("Move earlier"))
                                 }
-                                IconButton(onClick = { updateEntries { l -> if (index < l.size) l[index] = if (digital) key else "$key@d" } }) {
-                                    Icon(if (digital) Icons.Default.Speed else Icons.Default.Pin, tr("Switch gauge style"))
-                                }
-                                IconButton(onClick = { updateEntries { l -> if (index < l.size - 1) java.util.Collections.swap(l, index, index + 1) } }, enabled = index < keys.size - 1) {
+                                IconButton(onClick = { customise = index }) { Icon(Icons.Default.Tune, tr("Customise gauge")) }
+                                IconButton(onClick = { updateEntries { l -> if (index < l.size - 1) java.util.Collections.swap(l, index, index + 1) } }, enabled = index < specs.size - 1) {
                                     Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, tr("Move later"))
                                 }
                             }
@@ -196,6 +191,17 @@ fun DashboardScreen(onConnect: () -> Unit, onHud: () -> Unit, topBar: TopBarSlot
             }
         }
 
+        customise?.let { slot ->
+            val spec = specs.getOrNull(slot)
+            if (spec == null) customise = null
+            else GaugeEditor(spec, theme, settings.units,
+                onChangeSensor = { pickFor = slot },
+                onDismiss = { customise = null },
+                onSave = { updated -> customise = null; updateEntries { l -> if (slot < l.size) l[slot] = updated.encode() } },
+                onRemove = { customise = null; scope.launch { app.settings.update { it.copy(dashboard = it.dashboard.filterIndexed { i, _ -> i != slot }) } } },
+            )
+        }
+
         pickFor?.let { slot ->
             SensorPickerDialog(
                 sensors = if (vehicle == null) SensorCatalog.available((0..0xFF).toSet()) else available,
@@ -206,7 +212,9 @@ fun DashboardScreen(onConnect: () -> Unit, onHud: () -> Unit, topBar: TopBarSlot
                     scope.launch {
                         app.settings.update {
                             val list = it.dashboard.toMutableList()
-                            if (slot < 0 || slot >= list.size) list += def.key else list[slot] = def.key
+                            // A new sensor keeps the gauge's style and colour; its range and warnings belonged to the old one.
+                            if (slot < 0 || slot >= list.size) list += def.key
+                            else list[slot] = GaugeSpec.parse(list[slot]).let { old -> GaugeSpec(def.key, old.style, old.color) }.encode()
                             it.copy(dashboard = list)
                         }
                     }
@@ -219,25 +227,12 @@ fun DashboardScreen(onConnect: () -> Unit, onHud: () -> Unit, topBar: TopBarSlot
 /** Ready-made dashboard layouts. */
 object DashboardPresets {
     val all = listOf(
-        "Everyday" to listOf("010C", "010D", "0105", "0104", "0111", "CALC_FUEL", "0142", "CALC_BOOST"),
+        "Everyday" to listOf("010C", "010D", "0105", "0104", "CALC_PEDAL", "CALC_FUEL", "0142", "CALC_BOOST"),
         "Diesel" to listOf("010C", "CALC_BOOST@d", "0105", "0123", "012C", "017A_D", "0178_1", "CALC_FUEL"),
-        "Economy" to listOf("CALC_FUEL@d", "CALC_CONS@d", "010D", "010C", "0104", "0111"),
-        "Performance" to listOf("010C", "010D", "CALC_POWER", "CALC_TORQUE", "CALC_BOOST", "0111", "010F", "0105"),
+        "Economy" to listOf("CALC_FUEL@d", "CALC_CONS@d", "010D", "010C", "0104", "CALC_PEDAL"),
+        "Performance" to listOf("010C", "010D", "CALC_POWER", "CALC_TORQUE", "CALC_BOOST", "CALC_PEDAL", "010F", "0105"),
         "Temperatures" to listOf("0105@d", "010F", "015C", "0146", "013C", "0105"),
     )
-}
-
-/** Large number tile: easier to read at a glance than a dial. */
-@Composable
-private fun DigitalTile(label: String, valueText: String, unit: String, minText: String?, maxText: String?) {
-    Column(Modifier.fillMaxWidth().aspectRatio(1f).padding(14.dp), verticalArrangement = androidx.compose.foundation.layout.Arrangement.SpaceBetween) {
-        Text(label, style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 2)
-        Row(verticalAlignment = Alignment.Bottom) {
-            Text(valueText, style = MaterialTheme.typography.displayMedium, fontWeight = androidx.compose.ui.text.font.FontWeight.Bold, maxLines = 1)
-            Text(" $unit", style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(bottom = 8.dp))
-        }
-        Text(listOfNotNull(minText?.let { "↓ $it" }, maxText?.let { "↑ $it" }).joinToString("   "), style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-    }
 }
 
 /** Formats a reading compactly for small displays. */

@@ -1,0 +1,7 @@
+• Relojes en directo a tu gusto: 7 temas, estilos de aguja, arco, barra o número, colores, rangos y avisos en rojo
+• Corregido el consumo de los diésel (podía marcar 85 L/100 km); la estimación aprende de tus repostajes con depósito lleno
+• Consumo real (de repostajes o viajes) en las especificaciones de tu coche
+• Turbo en bar desde el mejor sensor y reloj de Acelerador (la mariposa de un diésel apenas se mueve)
+• Toca el mapa de un viaje para ver velocidad, revoluciones, consumo y más en ese punto
+• La próxima ITV se cuenta desde el día en que la pasaste
+• Bluetooth LE: corregido el error 2 al buscar y reintentos al conectar

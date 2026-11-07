@@ -1,6 +1,7 @@
 package com.openobd.transport
 
 import android.annotation.SuppressLint
+import android.bluetooth.BluetoothAdapter
 import android.bluetooth.BluetoothDevice
 import android.bluetooth.BluetoothManager
 import android.bluetooth.le.ScanCallback
@@ -30,29 +31,59 @@ object DeviceScanner {
         val adapter = context.getSystemService(BluetoothManager::class.java)?.adapter ?: return emptyList()
         return runCatching {
             adapter.bondedDevices.orEmpty().map {
-                FoundDevice(it.name, it.address, it.type == BluetoothDevice.DEVICE_TYPE_LE)
+                // Dual-mode adapters (e.g. vLinker MC+) can be reached over BLE too.
+                FoundDevice(it.name, it.address, it.type == BluetoothDevice.DEVICE_TYPE_LE || it.type == BluetoothDevice.DEVICE_TYPE_DUAL)
             }.sortedByDescending { it.looksLikeObd }
         }.getOrDefault(emptyList())
     }
 
-    /** Emits BLE devices as they are found. Collection cancels the scan. */
+    /** Shown when Android refuses to start a BLE scan. */
+    const val SCAN_BUSY = "Android could not start the Bluetooth LE search (too many searches in a row, or Bluetooth is stuck). " +
+        "Wait 30 seconds or turn Bluetooth off and on, then search again."
+    const val SCAN_UNSUPPORTED = "This device cannot search for Bluetooth LE devices."
+
+    /**
+     * Emits BLE devices as they are found. Collection cancels the scan.
+     * When the modern scanner refuses to start (error 2 "registration failed" is common on phones and car
+     * head units with a busy Bluetooth stack, 6 is "scanning too frequently"), falls back to the older API,
+     * which takes a different path through the stack and often still works.
+     */
     fun scanBle(context: Context): Flow<FoundDevice> = callbackFlow {
-        val scanner = context.getSystemService(BluetoothManager::class.java)?.adapter?.bluetoothLeScanner
-        if (scanner == null) {
+        val adapter = context.getSystemService(BluetoothManager::class.java)?.adapter
+        val scanner = adapter?.bluetoothLeScanner
+        if (adapter == null || scanner == null) {
             close(IllegalStateException("Bluetooth LE scanner unavailable (is Bluetooth on?)"))
             return@callbackFlow
         }
+        @Suppress("DEPRECATION")
+        val legacy = BluetoothAdapter.LeScanCallback { d, rssi, _ -> trySend(FoundDevice(d.name, d.address, true, rssi)) }
+        var legacyRunning = false
         val cb = object : ScanCallback() {
             override fun onScanResult(callbackType: Int, result: ScanResult) {
                 val d = result.device
                 trySend(FoundDevice(result.scanRecord?.deviceName ?: d.name, d.address, true, result.rssi))
             }
 
+            override fun onBatchScanResults(results: MutableList<ScanResult>) { results.forEach { onScanResult(0, it) } }
+
             override fun onScanFailed(errorCode: Int) {
-                close(IllegalStateException("BLE scan failed (error $errorCode)"))
+                if (errorCode == SCAN_FAILED_FEATURE_UNSUPPORTED) { close(IllegalStateException(SCAN_UNSUPPORTED)); return }
+                @Suppress("DEPRECATION")
+                legacyRunning = runCatching { adapter.startLeScan(legacy) }.getOrDefault(false)
+                if (!legacyRunning) close(IllegalStateException(SCAN_BUSY))
             }
         }
+        runCatching { scanner.stopScan(cb) } // clears a scan left over from an earlier attempt
         scanner.startScan(null, ScanSettings.Builder().setScanMode(ScanSettings.SCAN_MODE_LOW_LATENCY).build(), cb)
-        awaitClose { runCatching { scanner.stopScan(cb) } }
+        awaitClose {
+            runCatching { scanner.stopScan(cb) }
+            @Suppress("DEPRECATION")
+            if (legacyRunning) runCatching { adapter.stopLeScan(legacy) }
+        }
     }
+
+    /** Before Android 12 a BLE scan finds nothing while the system Location switch is off. */
+    fun bleNeedsLocationOn(context: Context): Boolean =
+        android.os.Build.VERSION.SDK_INT < 31 &&
+            context.getSystemService(android.location.LocationManager::class.java)?.let { !androidx.core.location.LocationManagerCompat.isLocationEnabled(it) } == true
 }

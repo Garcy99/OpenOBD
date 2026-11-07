@@ -1,0 +1,7 @@
+• Live gauges you can make your own: 7 themes, needle, arc, bar or number styles, colours, ranges and red warnings
+• Diesel fuel consumption fixed (it could read 85 L/100 km); the estimate now learns from your full-tank fill-ups
+• Real consumption from fill-ups or trips in your car's specifications
+• Boost in bar from the best sensor, and an Accelerator gauge (diesels' throttle barely moves)
+• Tap the trip map to see speed, RPM, consumption and more at that point
+• Next ITV counted from the day you passed it
+• Bluetooth LE: fixes 'scan failed, error 2' and retries connections
