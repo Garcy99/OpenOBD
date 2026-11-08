@@ -90,6 +90,7 @@ class TranslationCoverageTest {
         keys += com.openobd.core.trip.routeExportTexts + com.openobd.ui.screens.RouteFormat.texts + com.openobd.ui.screens.route3dTexts
         keys += com.openobd.core.brand.Coding.texts + com.openobd.core.brand.CodingEngine.texts + com.openobd.core.brand.WriteSafety.texts
         keys += listOf("Applied", "Undone", "Not changed", "Restored", "Needs restore", "Interrupted", "Started", "Failed", "Identifier explorer", "Typed in")
+        keys += com.openobd.data.GoogleSync.texts
         keys += com.openobd.core.specs.CrossCheck.texts
         keys += com.openobd.core.voice.VoiceWatch.texts
         keys += com.openobd.core.trip.EcoScorer.texts

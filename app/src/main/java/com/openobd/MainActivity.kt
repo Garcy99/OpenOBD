@@ -49,6 +49,13 @@ class MainActivity : ComponentActivity() {
         }
     }
 
+    /** Leaving the app: send this phone's changes to the user's Drive (when connected; at most every few minutes). */
+    override fun onStop() {
+        super.onStop()
+        val c = (application as OpenObdApp).container
+        c.scope.launch { c.sync.syncIfConnected() }
+    }
+
     override fun onNewIntent(intent: android.content.Intent) {
         super.onNewIntent(intent)
         handleUsbAttach(intent)

@@ -41,6 +41,13 @@ class HistoryRepository(context: Context) {
         runCatching { file.writeText(json.encodeToString(list)) }
     }
 
+    /** Replaces the history with [transform] of it (used when syncing with other devices). */
+    suspend fun replace(transform: (List<ScanRecord>) -> List<ScanRecord>) = withContext(Dispatchers.IO) {
+        val list = transform(_records.value).take(500)
+        _records.value = list
+        runCatching { file.writeText(json.encodeToString(list)) }
+    }
+
     suspend fun clear() = withContext(Dispatchers.IO) {
         _records.value = emptyList()
         file.delete()

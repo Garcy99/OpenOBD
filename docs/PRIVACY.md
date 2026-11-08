@@ -39,6 +39,14 @@ Only in these cases, and only when you trigger them:
   that area from Terrain Tiles (AWS Open Data, s3.amazonaws.com). Amazon sees your IP address and which map tiles are
   requested (so roughly where the trip was); nothing else is sent. Tiles are kept in the app's cache. AWS privacy
   notice: https://aws.amazon.com/privacy/
+- **Google account sync** (optional, off until you connect your Google account in Settings): your cars, maintenance,
+  fuel log, trips with their GPS routes, health samples, battery tests, coding history, scan history and some
+  preferences are stored in a private app folder of **your own Google Drive** (appDataFolder) and read back on your
+  other devices. Sign-in goes through Google Play services; the app only gets permission for its own folder, never
+  for your other Drive files, and never sees your password. No OpenOBD server receives anything. API keys, adapter
+  settings and recorded logs are not uploaded. Disconnect in Settings to stop and withdraw the app's access; you can
+  delete the folder's data from Google Drive → Settings → Manage apps → OpenOBD → Delete hidden app data. Google's
+  privacy policy: https://policies.google.com/privacy
 - **Map data for 3D maps**: when you open the 3D map of a trip, the app asks the Overpass API (overpass-api.de, or
   overpass.kumi.systems if that one fails) for the lakes, main roads and buildings inside a rectangle around the trip.
   The server sees your IP address and that rectangle (so roughly where the trip was); the route itself, your car and

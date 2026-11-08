@@ -142,6 +142,9 @@ No adapter yet? Choose **Demo** as the connection: a simulated car with codes, m
   its filament and the altitude bands painted (set each filament's colour as the list shows); it can merge colours to fit
   6 or 4 filaments, or use five spools (cyan, magenta, yellow, black, white) mixed as a fine halftone on the ground
   for a continuous range of shades
+- **Google account sync** (optional): cars, trips with their routes, maintenance, fuel, health and scan history stay
+  the same on every phone, kept in a private folder of the user's own Google Drive, with no OpenOBD server
+  ([how it works and how to set it up](docs/GOOGLE_SYNC.md))
 - **Home-screen widget**, backup and restore
 
 ### Connection

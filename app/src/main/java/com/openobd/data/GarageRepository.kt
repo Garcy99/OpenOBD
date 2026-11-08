@@ -138,6 +138,21 @@ class GarageRepository(context: Context) {
         runCatching { json.decodeFromString<List<TrackPoint>>(trackFile(tripId).readText()) }.getOrDefault(emptyList())
     }
 
+    /** Trips with a GPS track on this phone (for syncing). */
+    suspend fun trackIds(): Set<String> = withContext(Dispatchers.IO) {
+        trackDir.listFiles { f -> f.isFile && f.extension == "json" }?.map { it.nameWithoutExtension }?.toSet().orEmpty()
+    }
+
+    suspend fun trackBytes(tripId: String): ByteArray? = withContext(Dispatchers.IO) { trackFile(tripId).takeIf { it.isFile }?.readBytes() }
+
+    /** Stores a track from another device (as received; the trip itself comes with the garage). */
+    suspend fun putTrack(tripId: String, bytes: ByteArray) = withContext(Dispatchers.IO) {
+        val f = trackFile(tripId); val tmp = File(trackDir, "$tripId.tmp")
+        tmp.writeBytes(bytes); if (!tmp.renameTo(f)) { f.delete(); tmp.renameTo(f) }
+    }
+
+    suspend fun removeTrack(tripId: String) = withContext(Dispatchers.IO) { trackFile(tripId).delete() }
+
     suspend fun renameTrip(id: String, name: String) = update { d -> d.copy(trips = d.trips.map { if (it.id == id) it.copy(name = name.trim()) else it }) }
 
     suspend fun deleteTrip(id: String) {

@@ -64,6 +64,9 @@ class AppContainer(private val app: Application) {
         c.files
     }
 
+    /** Sync with the user's own Google Drive (off until they connect). */
+    val sync = com.openobd.data.GoogleSync(app, garage, history, settings)
+
     val session by lazy { ObdSession(app, scope, settings, history, logs, dtcDatabase, garage, diagnostics.log) }
 }
 
@@ -81,6 +84,7 @@ class OpenObdApp : Application() {
             container.history.load()
             container.logs.refresh()
             container.dtcDatabase.size // warm up off the main thread
+            container.sync.syncIfConnected(force = true)
         }
         keepWidgetUpdated()
         speakAlerts()

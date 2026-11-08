@@ -3,6 +3,8 @@ package com.openobd.ui.screens
 import com.openobd.ui.tr
 import com.openobd.ui.shareFile
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.compose.ui.platform.testTag
+import com.openobd.ui.components.ErrorText
 
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -128,6 +130,7 @@ fun SettingsScreen(onBack: () -> Unit) {
                     if (s.claudeApiKey.isNotEmpty()) TextButton(onClick = { key = ""; update { it.copy(claudeApiKey = "") } }) { Text(tr("Remove key")) }
                 }
             }
+            SectionCard(title = tr("Google account and sync")) { SyncSection() }
             SectionCard(title = tr("Backup")) { BackupSection() }
             SectionCard(title = tr("Troubleshooting")) { DebugReportSection() }
             SectionCard(title = tr("Voice")) {
@@ -274,6 +277,67 @@ private fun AdapterCheck() {
             confirmButton = { TextButton(onClick = { result = null }) { Text("OK") } },
         )
     }
+}
+
+/**
+ * Connects the user's Google account so cars, trips and history sync with a private folder in their own Drive,
+ * across phones (and a future desktop program).
+ */
+@Composable
+fun SyncSection() {
+    val app = LocalApp.current
+    val context = androidx.compose.ui.platform.LocalContext.current
+    val scope = rememberCoroutineScope()
+    val st by app.sync.state.collectAsStateWithLifecycle()
+    var problem by remember { mutableStateOf<String?>(null) }
+    val consent = androidx.activity.compose.rememberLauncherForActivityResult(androidx.activity.result.contract.ActivityResultContracts.StartIntentSenderForResult()) { r ->
+        val token = app.sync.auth.fromConsent(context, r.data)
+        if (token != null) scope.launch { app.sync.connect(token) } else problem = tr("Google access was not given.")
+    }
+    fun signIn() {
+        problem = null
+        scope.launch {
+            runCatching { app.sync.auth.authorize(context) }.fold({ res ->
+                when {
+                    res.token != null -> app.sync.connect(res.token)
+                    res.consent != null -> consent.launch(androidx.activity.result.IntentSenderRequest.Builder(res.consent.intentSender).build())
+                    else -> problem = tr("Google access was not given.")
+                }
+            }, { e ->
+                // 10 = DEVELOPER_ERROR: this build is not registered for Google sign-in (see docs/GOOGLE_SYNC.md).
+                val code = (e as? com.google.android.gms.common.api.ApiException)?.statusCode
+                problem = when (code) {
+                    10 -> tr("Google sign-in is not set up for this build of the app yet.")
+                    null -> tr("Google sign-in needs Google Play services, which this device does not have.")
+                    else -> tr("Could not connect to Google: %1\$s", e.message ?: code.toString())
+                }
+            })
+        }
+    }
+    Text(tr("Sign in with Google to keep your cars, maintenance, fuel log, trips with their GPS routes, health and scan history the same on every phone. Everything goes to a private folder of OpenOBD in your own Google Drive that only this app can see; no OpenOBD server is involved. API keys, the adapter and recorded logs stay on each phone."),
+        style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+    if (!st.connected) {
+        androidx.compose.material3.Button(onClick = { signIn() }, modifier = Modifier.testTag("googleSignIn")) { Text(tr("Connect Google account")) }
+    } else {
+        Text(tr("Connected as %1\$s", st.email ?: "Google"), fontWeight = androidx.compose.ui.text.font.FontWeight.SemiBold, modifier = Modifier.testTag("syncAccount"))
+        Text(
+            when {
+                st.syncing -> tr("Syncing…")
+                st.lastSync > 0 -> tr("Last sync: %1\$s", java.text.DateFormat.getDateTimeInstance(java.text.DateFormat.SHORT, java.text.DateFormat.SHORT).format(java.util.Date(st.lastSync)))
+                else -> tr("Not synced yet.")
+            },
+            style = MaterialTheme.typography.bodySmall, modifier = Modifier.testTag("syncStatus"),
+        )
+        st.error?.let { ErrorText(tr(it, app.sync.lastErrorDetail ?: "")) }
+        Row {
+            if (st.needsSignIn) TextButton(onClick = { signIn() }) { Text(tr("Sign in again")) }
+            else TextButton(onClick = { scope.launch { app.sync.syncIfConnected(force = true) } }, enabled = !st.syncing, modifier = Modifier.testTag("syncNow")) { Text(tr("Sync now")) }
+            TextButton(onClick = { scope.launch { app.sync.disconnect() } }) { Text(tr("Disconnect")) }
+        }
+        Text(tr("It syncs when you open and leave the app. Disconnecting keeps your data on this phone and in Drive."),
+            style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+    }
+    problem?.let { ErrorText(it) }
 }
 
 @Composable

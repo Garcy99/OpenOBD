@@ -1,0 +1,3 @@
+• Cuenta de Google opcional: coches, viajes con sus rutas, mantenimiento, repostajes, salud e historial sincronizados entre tus móviles
+• Los datos van a una carpeta privada de tu propio Google Drive que solo ve OpenOBD; sin servidores de OpenOBD
+• Se sincroniza al abrir y salir de la app, fusionando los cambios de cada dispositivo

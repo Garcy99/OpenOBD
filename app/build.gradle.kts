@@ -16,8 +16,8 @@ android {
         // Android 6.0+: many car head units (MTK, Rockchip PX3/PX5, Allwinner T3) still run Android 6-8.
         minSdk = 23
         targetSdk = 35
-        versionCode = 22
-        versionName = "1.14.0"
+        versionCode = 23
+        versionName = "1.15.0"
         vectorDrawables { useSupportLibrary = true }
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         // Optional donation page (gradle.properties: openobd.donateUrl). Builds for Google Play pass -Pplay,
@@ -80,6 +80,8 @@ dependencies {
     coreLibraryDesugaring(libs.desugar.jdk.libs)
     implementation(libs.androidx.core.ktx)
     implementation(libs.androidx.lifecycle.runtime.ktx)
+    // Google sign-in for syncing with the user's own Drive (optional: the app works without Play services).
+    implementation(libs.play.services.auth)
     implementation(libs.androidx.lifecycle.runtime.compose)
     implementation(libs.androidx.lifecycle.viewmodel.compose)
     implementation(libs.androidx.lifecycle.service)
