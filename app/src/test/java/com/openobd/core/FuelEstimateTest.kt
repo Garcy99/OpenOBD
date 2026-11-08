@@ -61,7 +61,7 @@ class FuelEstimateTest {
 
     private val day = 86_400_000L
     private fun trip(id: String, startDay: Int, km: Double, litres: Double, model: Int = DerivedSensors.FUEL_MODEL) =
-        TripRecord(id, "car", startDay * day, startDay * day + 3_600_000, km, litres, fuelModel = model)
+        TripRecord(id = id, vehicleId = "car", start = startDay * day, end = startDay * day + 3_600_000, distanceKm = km, fuelL = litres, fuelModel = model)
 
     @Test
     fun calibrationFromFullToFullFillUps() {

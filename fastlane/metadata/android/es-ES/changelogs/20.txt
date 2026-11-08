@@ -1,0 +1,4 @@
+• Modelo 3D con el terreno real alrededor de la ruta (datos abiertos de elevación), recortado en hexágono, círculo o cuadrado
+• El nombre del viaje va en relieve en una placa del modelo y es el título de todas las exportaciones
+• Exageración del relieve ×1 a ×5; la ruta se pega al terreno y cada pieza (terreno, ruta por velocidad, marcas, placa, título) lleva su color
+• Pon nombre a tus viajes desde su pantalla

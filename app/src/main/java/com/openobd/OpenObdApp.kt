@@ -28,6 +28,10 @@ class AppContainer(private val app: Application) {
     var assistantBackend: (String) -> com.openobd.data.ChatBackend = { key -> com.openobd.data.ClaudeBackend(key) }
     /** Network client for vehicle lookups; replaceable in tests. */
     var http: com.openobd.core.specs.Http = com.openobd.core.specs.UrlHttp("OpenOBD/${com.openobd.BuildConfig.VERSION_NAME} (Android; open source)")
+    /** Elevation around a route for 3D models; replaceable in tests. */
+    var terrain: suspend (List<com.openobd.core.garage.TrackPoint>, (Int, Int) -> Unit) -> com.openobd.core.trip.Terrain? = { pts, progress ->
+        com.openobd.data.TerrainDownloader(app, "OpenOBD/${com.openobd.BuildConfig.VERSION_NAME} (Android; open source)").around(pts, progress)
+    }
     val dtcDatabase: DtcDatabase by lazy {
         DtcDatabase(
             runCatching { app.assets.open("dtc/generic.tsv") }.getOrNull(),

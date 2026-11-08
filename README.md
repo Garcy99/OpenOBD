@@ -132,8 +132,9 @@ No adapter yet? Choose **Demo** as the connection: a simulated car with codes, m
   consumption and time there
 - **Export a trip**: **GPX** for any GPS (Garmin, OsmAnd, Komoot, Google Earth) with the car's values in every point;
   an **interactive HTML map** anyone can open in a browser to tap the route, see the same data and save the GPX;
-  a vector **poster** (PDF A3 / SVG) to print sharp at any size; and a **multicolour 3D model** (3MF) with the route
-  raised on a base, coloured by speed, rising and falling with the road
+  a vector **poster** (PDF A3 / SVG) to print sharp at any size; and a **multicolour 3D model** (3MF): the route on
+  the real terrain around it (open elevation data, exaggeration ×1 to ×5), cut as a hexagon, circle or square, coloured
+  by speed, with the trip's name embossed on a plaque, each part ready for its own filament
 - **Home-screen widget**, backup and restore
 
 ### Connection
@@ -281,4 +282,6 @@ app/src/main/java/com/openobd/
     the phone; packs made from it keep that attribution and licence.
     `app/src/main/assets/obdb/index.json` (the list of makes and models) is derived from it.
   - Maps: © [OpenStreetMap](https://www.openstreetmap.org/copyright) contributors.
+  - Elevation for 3D models: [Terrain Tiles](https://registry.opendata.aws/terrain-tiles/) on AWS Open Data (SRTM,
+    GMTED, ETOPO and national elevation models).
   - Vehicle data: European Environment Agency, RDW, DVLA, NHTSA vPIC and US EPA fueleconomy.gov open data.

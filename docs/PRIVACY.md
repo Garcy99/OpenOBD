@@ -35,6 +35,10 @@ Only in these cases, and only when you trigger them:
   downloads that file from GitHub (raw.githubusercontent.com). GitHub sees your IP address and which file is
   requested; nothing about you or your car is sent. Its privacy statement:
   https://docs.github.com/site-policy/privacy-policies/github-general-privacy-statement
+- **Terrain for 3D models**: when you create a 3D model of a trip with terrain, the app downloads elevation tiles of
+  that area from Terrain Tiles (AWS Open Data, s3.amazonaws.com). Amazon sees your IP address and which map tiles are
+  requested (so roughly where the trip was); nothing else is sent. Tiles are kept in the app's cache. AWS privacy
+  notice: https://aws.amazon.com/privacy/
 - **AI assistant** (optional, off until you enter your own Anthropic API key): when you ask a question or send a
   photo of a warning light, the question, the trouble codes and values involved, the car's make / model / year and
   the photo go to Anthropic's API under your key. The VIN and your location are never sent. Anthropic's privacy

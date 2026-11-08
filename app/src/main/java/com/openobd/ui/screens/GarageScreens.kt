@@ -19,6 +19,8 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.ui.platform.testTag
+import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Share
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.CheckCircle
@@ -582,13 +584,21 @@ fun TripDetailScreen(tripId: String, onBack: () -> Unit) {
     var exporting by remember { mutableStateOf(false) }
     LaunchedEffect(tripId) { track = app.garage.loadTrack(tripId) }
     Column(Modifier.fillMaxSize()) {
-        ScreenTopBar(tr("Trip"), onBack, actions = {
+        ScreenTopBar(t?.name?.takeIf { it.isNotBlank() } ?: tr("Trip"), onBack, actions = {
             if (t != null && track.orEmpty().size >= 2) IconButton(onClick = { exporting = true }) { Icon(Icons.Default.Share, tr("Export route")) }
             if (t != null) IconButton(onClick = { confirmDelete = true }) { Icon(Icons.Default.Delete, tr("Delete trip")) }
         })
         if (t == null) { CenteredMessage(null, tr("Trip not found.")); return@Column }
         Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
             val pts = track.orEmpty()
+            var name by remember(t.id) { mutableStateOf(t.name) }
+            val saveName = { scope.launch { app.garage.renameTrip(t.id, name) }; Unit }
+            OutlinedTextField(name, { name = it.take(60) }, singleLine = true, label = { Text(tr("Name of the trip")) },
+                placeholder = { Text(tr("For example: Sunday drive to the mountains")) },
+                trailingIcon = { if (name.trim() != t.name) IconButton(onClick = saveName) { Icon(Icons.Default.Check, tr("Save")) } },
+                keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(imeAction = androidx.compose.ui.text.input.ImeAction.Done),
+                keyboardActions = androidx.compose.foundation.text.KeyboardActions(onDone = { saveName() }),
+                modifier = Modifier.fillMaxWidth().testTag("tripName"))
             if (pts.size >= 2) {
                 SectionCard { TrackMap(pts, Modifier.fillMaxWidth().height(300.dp), selected = point) { point = it } }
                 Text(tr("Map data © OpenStreetMap contributors") + " · " + tr("Tap the route to see what the car was doing there."),

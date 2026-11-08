@@ -6,8 +6,11 @@ import androidx.compose.ui.test.isSelectable
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.onAllNodesWithContentDescription
 import androidx.compose.ui.test.onAllNodesWithText
+import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performScrollTo
+import androidx.compose.ui.test.performTextReplacement
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.openobd.MainActivity
 import com.openobd.OpenObdApp
@@ -55,7 +58,7 @@ class RouteExportUiTest {
         runBlocking { c.settings.update { it.copy(connectionType = ConnectionType.DEMO, language = "en") } }
         waitFor { c.garage.loaded && I18n.language == "en" }
         val car = c.garage.data.value.active!!
-        val trip = TripRecord("trip1", car.id, points.first().t, points.last().t, 3.2, fuelL = 0.2, maxSpeed = 149.0, avgSpeed = 60.0, trackPoints = points.size)
+        val trip = TripRecord(id = "trip1", vehicleId = car.id, start = points.first().t, end = points.last().t, distanceKm = 3.2, fuelL = 0.2, maxSpeed = 149.0, avgSpeed = 60.0, trackPoints = points.size)
         runBlocking { c.garage.saveTrip(trip, points) }
 
         rule.onAllNodes(hasText("Garage") and isSelectable())[0].performClick()
@@ -67,18 +70,40 @@ class RouteExportUiTest {
 
         val reports = File(rule.activity.cacheDir, "reports")
         val shadow = shadowOf(rule.activity.application)
-        // The PDF needs Android's native PDF engine, which Robolectric lacks: the device tests cover it (DemoSessionTest).
-        for ((ext, mime) in listOf("gpx" to "application/gpx+xml", "html" to "text/html", "svg" to "image/svg+xml", "3mf" to "model/3mf")) {
+        fun openDialog() {
             rule.onAllNodesWithContentDescription("Export route")[0].performClick()
             waitFor { rule.onAllNodesWithText("Export route").fetchSemanticsNodes().isNotEmpty() }
-            rule.onNodeWithTag("export_$ext").performClick()
+        }
+        fun shared(ext: String, mime: String): File {
             waitFor { reports.listFiles().orEmpty().any { it.name.endsWith(".$ext") } && rule.onAllNodesWithText("Export route").fetchSemanticsNodes().isEmpty() }
             val chooser = shadow.nextStartedActivity
             val sent = chooser.getParcelableExtra<android.content.Intent>(android.content.Intent.EXTRA_INTENT)!!
             assertEquals(mime, sent.type)
-            val file = reports.listFiles()!!.first { it.name.endsWith(".$ext") }
-            assertTrue("$ext is empty", file.length() > 500)
+            return reports.listFiles()!!.first { it.name.endsWith(".$ext") }.also { assertTrue("$ext is empty", it.length() > 500) }
         }
+        // The PDF needs Android's native PDF engine, which Robolectric lacks: the device tests cover it (DemoSessionTest).
+        for ((ext, mime) in listOf("gpx" to "application/gpx+xml", "html" to "text/html", "svg" to "image/svg+xml")) {
+            openDialog()
+            rule.onNodeWithTag("export_$ext").performClick()
+            shared(ext, mime)
+        }
+
+        // 3D: a title, a circle, terrain (a fake hill instead of the download) and the title on a plaque.
+        c.terrain = { _, _ -> com.openobd.core.trip.Terrain { lat, lon -> 600 + 3000 * (lat - 40.4) + 2000 * (lon + 3.7) } }
+        // The trip's name is the title of every export.
+        rule.onNodeWithTag("tripName").performTextReplacement("Sierra loop")
+        rule.onNodeWithContentDescription("Save").performClick()
+        waitFor { c.garage.data.value.trips.first { it.id == "trip1" }.name == "Sierra loop" }
+        openDialog()
+        assertTrue(rule.onAllNodesWithText("Sierra loop").fetchSemanticsNodes().isNotEmpty())
+        rule.onNodeWithTag("export_3mf").performClick()
+        rule.waitForIdle()
+        rule.onNodeWithTag("shape_CIRCLE").performClick()
+        rule.onNodeWithTag("make3d").performScrollTo().performClick()
+        val model = shared("3mf", "model/3mf")
+        val xml = java.util.zip.ZipFile(model).use { z -> z.getInputStream(z.getEntry("3D/3dmodel.model")).readBytes().toString(Charsets.UTF_8) }
+        assertTrue(xml.contains("name=\"Terrain\"") && xml.contains("name=\"Plaque\"") && xml.contains("name=\"Title\"") && xml.contains("Sierra loop"))
+        assertTrue(model.name.startsWith("OpenOBD "))
     }
 
 }

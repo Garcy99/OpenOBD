@@ -138,6 +138,8 @@ class GarageRepository(context: Context) {
         runCatching { json.decodeFromString<List<TrackPoint>>(trackFile(tripId).readText()) }.getOrDefault(emptyList())
     }
 
+    suspend fun renameTrip(id: String, name: String) = update { d -> d.copy(trips = d.trips.map { if (it.id == id) it.copy(name = name.trim()) else it }) }
+
     suspend fun deleteTrip(id: String) {
         update { d -> d.copy(trips = d.trips.filter { it.id != id }) }
         withContext(Dispatchers.IO) { trackFile(id).delete() }

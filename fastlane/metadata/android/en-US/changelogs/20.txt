@@ -1,0 +1,4 @@
+• 3D model with the real terrain around the route (open elevation data), cut as a hexagon, circle or square
+• The trip's name is embossed on a plaque on the model and is the title of every export
+• Relief exaggeration ×1 to ×5; the route follows the ground and every part (terrain, route by speed, markers, plaque, title) has its own colour
+• Name your trips on their screen

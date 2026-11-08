@@ -8,9 +8,12 @@ import java.util.Locale
 import java.util.TimeZone
 import java.util.zip.ZipEntry
 import java.util.zip.ZipOutputStream
+import kotlin.math.abs
+import kotlin.math.ceil
 import kotlin.math.cos
 import kotlin.math.max
 import kotlin.math.min
+import kotlin.math.sin
 import kotlin.math.sqrt
 
 /** What a route export says about the trip besides the track itself. */
@@ -352,18 +355,33 @@ object RoutePoster {
 }
 
 /**
- * A 3D-printable model of the route as a 3MF file (millimetres), with separate parts so a multi-colour printer
- * can give each its own filament: the base plate, the route split by speed band, and start / end markers.
- * With altitude, the route rises and falls with the road. Single-colour printers simply print it all in one.
+ * A 3D-printable model of the route as a 3MF file (millimetres): one object made of coloured parts, so a
+ * multi-colour printer gives each its own filament and a single-colour one prints it all in one.
+ *
+ * - The ground around the route, cut to a [Shape] (hexagon, circle or square), with real relief from a [Terrain]
+ *   (exaggerated so it shows), or flat when there is none.
+ * - The route on top of the ground, split by speed band, following the relief (or the GPS altitude on flat ground).
+ * - Start and end markers, and an optional plaque in front with the title embossed.
  */
 object Route3mf {
+    enum class Shape(val label: String) { HEXAGON("Hexagon"), CIRCLE("Circle"), SQUARE("Square") }
+
     data class Options(
+        val shape: Shape = Shape.HEXAGON,
         val sizeMm: Double = 150.0,
-        val marginMm: Double = 8.0,
+        /** Ground thickness under its lowest point. */
         val baseMm: Double = 3.0,
-        val routeWidthMm: Double = 2.4,
-        val routeHeightMm: Double = 2.0,
-        val reliefMm: Double = 6.0,
+        val routeWidthMm: Double = 2.2,
+        val routeHeightMm: Double = 1.2,
+        /** Vertical exaggeration of the terrain (real scale is usually too flat to see). */
+        val exaggeration: Double = 2.0,
+        val maxReliefMm: Double = 40.0,
+        /** Route relief from GPS altitude when there is no terrain. */
+        val gpsReliefMm: Double = 6.0,
+        /** Space around the route inside the shape, as a fraction of its extent. */
+        val margin: Double = 0.12,
+        val rings: Int = 90,
+        val boundaryPoints: Int = 360,
     )
 
     class Mesh(val name: String, val color: String) {
@@ -372,54 +390,160 @@ object Route3mf {
         fun vertex(x: Double, y: Double, z: Double): Int { v += doubleArrayOf(x, y, z); return v.size - 1 }
         fun tri(a: Int, b: Int, c: Int) { t += intArrayOf(a, b, c) }
         fun quad(a: Int, b: Int, c: Int, d: Int) { tri(a, b, c); tri(a, c, d) }
+        fun translate(dx: Double, dy: Double) { v.forEach { it[0] += dx; it[1] += dy } }
     }
 
-    fun meshes(points: List<TrackPoint>, o: Options = Options()): List<Mesh> {
+    private const val GROUND = "#C9C1AE"
+    private const val FLAT_BASE = "#2B2D31"
+
+    /**
+     * [title]: outlines of the title text (any units, y up), drawn by the app with a real font; empty = no plaque.
+     */
+    fun meshes(points: List<TrackPoint>, o: Options = Options(), terrain: Terrain? = null, title: List<List<Pair<Double, Double>>> = emptyList()): List<Mesh> {
+        if (points.size < 2) return emptyList()
+        val origin = points.first()
+        val kx = 111_320.0 * cos(Math.toRadians(origin.lat)); val ky = 110_540.0
         val raw = RouteGeometry.metres(points)
-        if (raw.size < 2) return emptyList()
-        val spanM = max(raw.maxOf { it.first } - raw.minOf { it.first }, raw.maxOf { it.second } - raw.minOf { it.second }).coerceAtLeast(1.0)
-        val inner = o.sizeMm - 2 * o.marginMm
-        // Keep detail the printer can show (~0.3 mm), which also removes GPS jitter.
-        val simple = RouteGeometry.simplify(points, 0.3 * spanM / inner)
-        val m = RouteGeometry.metres(simple)
-        val minX = m.minOf { it.first }; val minY = m.minOf { it.second }
-        val scale = inner / spanM
-        val xy = m.map { (o.marginMm + (it.first - minX) * scale) to (o.marginMm + (it.second - minY) * scale) }
-        val w = xy.maxOf { it.first } + o.marginMm; val h = xy.maxOf { it.second } + o.marginMm
-        // Relief: route height follows altitude, interpolated where it is missing.
-        val alts = simple.map { it.alt?.toDouble() }
-        val known = alts.filterNotNull()
-        val range = if (known.size >= 2) known.max() - known.min() else 0.0
-        val relief = DoubleArray(simple.size) { i ->
-            if (range < 5) 0.0 else {
-                val a = alts[i] ?: run {
-                    val before = (i downTo 0).firstOrNull { alts[it] != null }; val after = (i until alts.size).firstOrNull { alts[it] != null }
-                    when {
-                        before != null && after != null && after != before -> alts[before]!! + (alts[after]!! - alts[before]!!) * (i - before) / (after - before)
-                        before != null -> alts[before]!!
-                        else -> alts[after!!]!!
-                    }
-                }
-                (a - known.min()) / range * o.reliefMm
+        val cx = (raw.minOf { it.first } + raw.maxOf { it.first }) / 2; val cy = (raw.minOf { it.second } + raw.maxOf { it.second }) / 2
+        // Footprint around the route, in metres from its centre.
+        val d = raw.map { (it.first - cx) to (it.second - cy) }
+        val minExtent = 150.0
+        val boundary: List<Pair<Double, Double>> = when (o.shape) {
+            Shape.CIRCLE -> {
+                val r = max(d.maxOf { sqrt(it.first * it.first + it.second * it.second) }, minExtent) * (1 + o.margin)
+                (0 until o.boundaryPoints).map { val an = 2 * Math.PI * it / o.boundaryPoints; r * cos(an) to r * sin(an) }
+            }
+            Shape.SQUARE -> {
+                val h = max(d.maxOf { max(abs(it.first), abs(it.second)) }, minExtent) * (1 + o.margin)
+                val n = o.boundaryPoints / 4
+                val corners = listOf(h to -h, h to h, -h to h, -h to -h)
+                (0 until 4).flatMap { side -> val (x0, y0) = corners[(side + 3) % 4]; val (x1, y1) = corners[side]; (0 until n).map { k -> (x0 + (x1 - x0) * k / n) to (y0 + (y1 - y0) * k / n) } }
+            }
+            Shape.HEXAGON -> {
+                // Flat top and bottom: edge normals at 90°, 30° and -30°.
+                val normals = listOf(0.0 to 1.0, cos(Math.PI / 6) to sin(Math.PI / 6), cos(Math.PI / 6) to -sin(Math.PI / 6))
+                val apothem = max(d.maxOf { p -> normals.maxOf { abs(p.first * it.first + p.second * it.second) } }, minExtent) * (1 + o.margin)
+                val r = apothem / cos(Math.PI / 6)
+                val corners = (0 until 6).map { val an = Math.PI / 3 * it; r * cos(an) to r * sin(an) }
+                val n = o.boundaryPoints / 6
+                (0 until 6).flatMap { side -> val (x0, y0) = corners[side]; val (x1, y1) = corners[(side + 1) % 6]; (0 until n).map { k -> (x0 + (x1 - x0) * k / n) to (y0 + (y1 - y0) * k / n) } }
             }
         }
+        val spanM = max(boundary.maxOf { it.first } - boundary.minOf { it.first }, boundary.maxOf { it.second } - boundary.minOf { it.second })
+        val s = o.sizeMm / spanM // mm per metre
+        fun elevationAt(xm: Double, ym: Double): Double? = terrain?.elevation(origin.lat + (ym + cy) / ky, origin.lon + (xm + cx) / kx)
+
+        // Ground surface: rings from the centre out to the boundary (works for any convex shape).
+        val ringPts = (1..o.rings).map { k -> boundary.map { (bx, by) -> bx * k / o.rings to by * k / o.rings } }
+        val centreElev = elevationAt(0.0, 0.0)
+        val ringElev = ringPts.map { ring -> ring.map { (x, y) -> elevationAt(x, y) } }
+        val all = (listOf(centreElev) + ringElev.flatten()).filterNotNull()
+        val hasTerrain = all.size > (1 + ringPts.size * boundary.size) / 2
+        val eMin = if (hasTerrain) all.min() else 0.0; val eMax = if (hasTerrain) all.max() else 0.0
+        val zScale = if (hasTerrain && eMax > eMin) min(s * o.exaggeration, o.maxReliefMm / (eMax - eMin)) else 0.0
+        val fallback = if (hasTerrain) all.average() else 0.0
+        fun height(e: Double?) = o.baseMm + ((e ?: fallback) - eMin) * zScale
+        /** Ground height (mm) anywhere, for draping the route. */
+        fun groundAt(xm: Double, ym: Double) = if (hasTerrain) height(elevationAt(xm, ym)) else o.baseMm
+
         val out = mutableListOf<Mesh>()
-        out += box("Base", "#2B2D31", 0.0, 0.0, 0.0, w, h, o.baseMm)
+        val ground = Mesh(if (hasTerrain) "Terrain" else "Base", if (hasTerrain) GROUND else FLAT_BASE)
+        ground.apply {
+            val c = vertex(0.0, 0.0, height(centreElev))
+            val rings = ringPts.mapIndexed { k, ring -> ring.mapIndexed { j, (x, y) -> vertex(x * s, y * s, height(ringElev[k][j])) } }
+            val n = boundary.size
+            for (j in 0 until n) tri(c, rings[0][j], rings[0][(j + 1) % n])
+            for (k in 0 until rings.lastIndex) for (j in 0 until n) quad(rings[k][j], rings[k + 1][j], rings[k + 1][(j + 1) % n], rings[k][(j + 1) % n])
+            val bc = vertex(0.0, 0.0, 0.0)
+            val bottom = boundary.map { (x, y) -> vertex(x * s, y * s, 0.0) }
+            val top = rings.last()
+            for (j in 0 until n) {
+                val jn = (j + 1) % n
+                tri(bc, bottom[jn], bottom[j])
+                quad(bottom[j], bottom[jn], top[jn], top[j])
+            }
+        }
+        out += ground
+
+        // Route, draped on the ground (or raised with GPS altitude on flat ground).
+        val simple = RouteGeometry.simplify(points, 0.3 / s).let { if (it.size >= 2) it else points }
+        val sm = RouteGeometry.metres(simple).map { (it.first - cx) to (it.second - cy) }
         val index = simple.indices.associateBy { simple[it] }
+        val alts = simple.map { it.alt?.toDouble() }; val known = alts.filterNotNull()
+        val altRange = if (known.size >= 2) known.max() - known.min() else 0.0
+        fun gpsRelief(i: Int): Double {
+            if (hasTerrain || altRange < 5) return 0.0
+            val a = alts[i] ?: alts.indices.minBy { j -> if (alts[j] == null) Int.MAX_VALUE else abs(j - i) }.let { alts[it] ?: known.min() }
+            return (a - known.min()) / altRange * o.gpsReliefMm
+        }
         val names = listOf("Route up to 50 km/h", "Route 50-100 km/h", "Route over 100 km/h", "Route")
         val byBand = RouteGeometry.runs(simple).groupBy({ it.first }, { it.second })
         for ((band, runs) in byBand.toSortedMap()) {
             val mesh = Mesh(names[band], RouteGeometry.bandColors[band])
             for (run in runs) {
+                // Densify to ~0.8 mm so the route follows the relief between GPS points.
+                val path = mutableListOf<Pair<Double, Double>>(); val lift = mutableListOf<Double>()
                 val ids = run.map { index.getValue(it) }
-                ribbon(mesh, ids.map { xy[it] }, ids.map { relief[it] }, o.baseMm - 0.2, o.baseMm + o.routeHeightMm, o.routeWidthMm / 2)
+                for ((k, i) in ids.withIndex()) {
+                    if (k == 0) { path += sm[i]; lift += gpsRelief(i); continue }
+                    val (x0, y0) = sm[ids[k - 1]]; val (x1, y1) = sm[i]
+                    val steps = max(1, ceil(sqrt((x1 - x0).let { it * it } + (y1 - y0).let { it * it }) * s / 0.8).toInt())
+                    for (st in 1..steps) {
+                        val f = st.toDouble() / steps
+                        path += (x0 + (x1 - x0) * f) to (y0 + (y1 - y0) * f)
+                        lift += gpsRelief(ids[k - 1]) * (1 - f) + gpsRelief(i) * f
+                    }
+                }
+                val z0 = path.map { (x, y) -> groundAt(x, y) - 0.8 }
+                val z1 = path.mapIndexed { k, (x, y) -> groundAt(x, y) + o.routeHeightMm + lift[k] }
+                ribbon(mesh, path.map { it.first * s to it.second * s }, z0, z1, o.routeWidthMm / 2)
             }
             out += mesh
         }
-        val top = o.baseMm + o.routeHeightMm + 1.2
-        out += cylinder("Start", "#F5F5F5", xy.first().first, xy.first().second, o.routeWidthMm * 1.3, o.baseMm - 0.2, top + relief.first())
-        out += cylinder("End", "#111111", xy.last().first, xy.last().second, o.routeWidthMm * 1.3, o.baseMm - 0.2, top + relief.last())
+        val start = sm.first(); val end = sm.last()
+        out += cylinder("Start", "#F5F5F5", start.first * s, start.second * s, o.routeWidthMm * 1.4, groundAt(start.first, start.second) - 0.8,
+            groundAt(start.first, start.second) + o.routeHeightMm + 1.6 + gpsRelief(0))
+        out += cylinder("End", "#111111", end.first * s, end.second * s, o.routeWidthMm * 1.4, groundAt(end.first, end.second) - 0.8,
+            groundAt(end.first, end.second) + o.routeHeightMm + 1.6 + gpsRelief(simple.lastIndex))
+
+        // Title plaque in front (towards the viewer, -y), joined to the ground.
+        if (title.isNotEmpty()) {
+            val front = boundary.minOf { it.second } * s
+            val width = (boundary.maxOf { it.first } - boundary.minOf { it.first }) * s
+            val pw = width * 0.78; val pd = o.sizeMm * 0.15; val overlap = if (o.shape == Shape.CIRCLE) pd * 0.45 else 2.0
+            val top = o.baseMm + 1.5
+            out += box("Plaque", FLAT_BASE, -pw / 2, front - pd, 0.0, pw / 2, front + overlap, top)
+            val shapes = Polygons.group(title)
+            if (shapes.isNotEmpty()) {
+                val xs = shapes.flatMap { it.outer.map { p -> p.first } }; val ys = shapes.flatMap { it.outer.map { p -> p.second } }
+                val tw = xs.max() - xs.min(); val th = ys.max() - ys.min()
+                val k = min(pw * 0.88 / tw, pd * 0.55 / th)
+                val ox = -(xs.min() + tw / 2) * k; val oy = front - pd / 2 - (ys.min() + th / 2) * k
+                val text = Mesh("Title", "#F5F5F5")
+                for (shape in shapes) extrude(text, shape, k, ox, oy, top - 0.3, top + 1.0)
+                out += text
+            }
+        }
+        // Everything at positive coordinates.
+        val minX = out.minOf { m -> m.v.minOf { it[0] } }; val minY = out.minOf { m -> m.v.minOf { it[1] } }
+        out.forEach { it.translate(-minX, -minY) }
         return out
+    }
+
+    private fun extrude(mesh: Mesh, shape: Polygons.Shape, k: Double, ox: Double, oy: Double, z0: Double, z1: Double) {
+        val (pts, tris) = Polygons.triangulate(shape)
+        val bottom = pts.map { mesh.vertex(it.first * k + ox, it.second * k + oy, z0) }
+        val top = pts.map { mesh.vertex(it.first * k + ox, it.second * k + oy, z1) }
+        for (t in tris) { mesh.tri(top[t[0]], top[t[1]], top[t[2]]); mesh.tri(bottom[t[0]], bottom[t[2]], bottom[t[1]]) }
+        // Walls: outline counter-clockwise and holes clockwise both face outwards with the same winding.
+        var offset = 0
+        for (ring in listOf(shape.outer) + shape.holes) {
+            for (i in ring.indices) {
+                val a = offset + i; val b = offset + (i + 1) % ring.size
+                mesh.quad(bottom[a], bottom[b], top[b], top[a])
+            }
+            offset += ring.size
+        }
     }
 
     private fun box(name: String, color: String, x0: Double, y0: Double, z0: Double, x1: Double, y1: Double, z1: Double) = Mesh(name, color).apply {
@@ -434,21 +558,21 @@ object Route3mf {
 
     private fun cylinder(name: String, color: String, cx: Double, cy: Double, r: Double, z0: Double, z1: Double, n: Int = 24) = Mesh(name, color).apply {
         val bc = vertex(cx, cy, z0); val tc = vertex(cx, cy, z1)
-        val b = (0 until n).map { val a = 2 * Math.PI * it / n; vertex(cx + r * cos(a), cy + r * Math.sin(a), z0) }
-        val t = (0 until n).map { val a = 2 * Math.PI * it / n; vertex(cx + r * cos(a), cy + r * Math.sin(a), z1) }
+        val b = (0 until n).map { val a = 2 * Math.PI * it / n; vertex(cx + r * cos(a), cy + r * sin(a), z0) }
+        val t = (0 until n).map { val a = 2 * Math.PI * it / n; vertex(cx + r * cos(a), cy + r * sin(a), z1) }
         for (i in 0 until n) {
             val j = (i + 1) % n
             tri(bc, b[j], b[i]); tri(tc, t[i], t[j]); quad(b[i], b[j], t[j], t[i])
         }
     }
 
-    /** A closed strip along [path]: half-width [hw], from [z0] to [z1] (+ relief per point). */
-    private fun ribbon(mesh: Mesh, path: List<Pair<Double, Double>>, relief: List<Double>, z0: Double, z1: Double, hw: Double) {
+    /** A closed strip along [path] (mm): half-width [hw], from [z0] to [z1] per point. */
+    private fun ribbon(mesh: Mesh, path: List<Pair<Double, Double>>, z0: List<Double>, z1: List<Double>, hw: Double) {
         // Drop points closer than 0.05 mm, which would give zero-length segments.
-        val pts = mutableListOf<Int>()
-        path.indices.forEach { i -> if (pts.isEmpty() || dist(path[pts.last()], path[i]) > 0.05) pts += i }
-        if (pts.size < 2) return
-        val p = pts.map { path[it] }; val rz = pts.map { relief[it] }
+        val keep = mutableListOf<Int>()
+        path.indices.forEach { i -> if (keep.isEmpty() || dist(path[keep.last()], path[i]) > 0.05) keep += i }
+        if (keep.size < 2) return
+        val p = keep.map { path[it] }; val lo = keep.map { z0[it] }; val hi = keep.map { z1[it] }
         fun normal(a: Pair<Double, Double>, b: Pair<Double, Double>): Pair<Double, Double> {
             val dx = b.first - a.first; val dy = b.second - a.second; val l = sqrt(dx * dx + dy * dy)
             return -dy / l to dx / l
@@ -466,8 +590,8 @@ object Route3mf {
             left += (p[i].first + nx * k) to (p[i].second + ny * k)
             right += (p[i].first - nx * k) to (p[i].second - ny * k)
         }
-        val lb = left.map { mesh.vertex(it.first, it.second, z0) }; val rb = right.map { mesh.vertex(it.first, it.second, z0) }
-        val lt = left.mapIndexed { i, it -> mesh.vertex(it.first, it.second, z1 + rz[i]) }; val rt = right.mapIndexed { i, it -> mesh.vertex(it.first, it.second, z1 + rz[i]) }
+        val lb = left.mapIndexed { i, it -> mesh.vertex(it.first, it.second, lo[i]) }; val rb = right.mapIndexed { i, it -> mesh.vertex(it.first, it.second, lo[i]) }
+        val lt = left.mapIndexed { i, it -> mesh.vertex(it.first, it.second, hi[i]) }; val rt = right.mapIndexed { i, it -> mesh.vertex(it.first, it.second, hi[i]) }
         for (i in 0 until p.lastIndex) {
             val j = i + 1
             mesh.quad(lt[i], rt[i], rt[j], lt[j])   // top
@@ -482,6 +606,10 @@ object Route3mf {
 
     private fun dist(a: Pair<Double, Double>, b: Pair<Double, Double>) = sqrt((a.first - b.first).let { it * it } + (a.second - b.second).let { it * it })
 
+    /**
+     * Writes one object made of the [meshes] as parts (3MF components), so slicers load a single model whose
+     * parts can each get a filament; overlapping parts (the route sunk into the ground) are resolved by the slicer.
+     */
     fun write(meshes: List<Mesh>, out: OutputStream, title: String) {
         val zip = ZipOutputStream(out)
         fun entry(name: String, text: String) { zip.putNextEntry(ZipEntry(name)); zip.write(text.toByteArray(Charsets.UTF_8)); zip.closeEntry() }
@@ -489,31 +617,33 @@ object Route3mf {
 <Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="model" ContentType="application/vnd.ms-package.3dmanufacturing-3dmodel+xml"/></Types>""")
         entry("_rels/.rels", """<?xml version="1.0" encoding="UTF-8"?>
 <Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Target="/3D/3dmodel.model" Id="rel0" Type="http://schemas.microsoft.com/3dmanufacturing/2013/01/3dmodel"/></Relationships>""")
-        val model = buildString {
-            append("""<?xml version="1.0" encoding="UTF-8"?>""").append('\n')
-            append("""<model unit="millimeter" xml:lang="en-US" xmlns="http://schemas.microsoft.com/3dmanufacturing/core/2015/02">""").append('\n')
-            append("""<metadata name="Title">${xml(title)}</metadata><metadata name="Application">OpenOBD</metadata>""").append('\n')
-            append("<resources>\n<basematerials id=\"1\">")
-            meshes.forEach { append("<base name=\"${xml(it.name)}\" displaycolor=\"${it.color}\"/>") }
-            append("</basematerials>\n")
-            meshes.forEachIndexed { i, mesh ->
-                append("<object id=\"${i + 2}\" name=\"${xml(mesh.name)}\" type=\"model\" pid=\"1\" pindex=\"$i\"><mesh><vertices>")
-                mesh.v.forEach { append("<vertex x=\"${f(it[0], 3)}\" y=\"${f(it[1], 3)}\" z=\"${f(it[2], 3)}\"/>") }
-                append("</vertices><triangles>")
-                mesh.t.forEach { append("<triangle v1=\"${it[0]}\" v2=\"${it[1]}\" v3=\"${it[2]}\"/>") }
-                append("</triangles></mesh></object>\n")
-            }
-            append("</resources>\n<build>")
-            meshes.indices.forEach { append("<item objectid=\"${it + 2}\"/>") }
-            append("</build>\n</model>\n")
+        zip.putNextEntry(ZipEntry("3D/3dmodel.model"))
+        val w = zip.bufferedWriter(Charsets.UTF_8)
+        w.write("""<?xml version="1.0" encoding="UTF-8"?>""" + "\n")
+        w.write("""<model unit="millimeter" xml:lang="en-US" xmlns="http://schemas.microsoft.com/3dmanufacturing/core/2015/02">""" + "\n")
+        w.write("""<metadata name="Title">${xml(title)}</metadata><metadata name="Application">OpenOBD</metadata>""" + "\n")
+        w.write("<resources>\n<basematerials id=\"1\">")
+        meshes.forEach { w.write("<base name=\"${xml(it.name)}\" displaycolor=\"${it.color}\"/>") }
+        w.write("</basematerials>\n")
+        meshes.forEachIndexed { i, mesh ->
+            w.write("<object id=\"${i + 2}\" name=\"${xml(mesh.name)}\" type=\"model\" pid=\"1\" pindex=\"$i\"><mesh><vertices>")
+            mesh.v.forEach { w.write("<vertex x=\"${f(it[0], 3)}\" y=\"${f(it[1], 3)}\" z=\"${f(it[2], 3)}\"/>") }
+            w.write("</vertices><triangles>")
+            mesh.t.forEach { w.write("<triangle v1=\"${it[0]}\" v2=\"${it[1]}\" v3=\"${it[2]}\"/>") }
+            w.write("</triangles></mesh></object>\n")
         }
-        entry("3D/3dmodel.model", model)
+        val assembly = meshes.size + 2
+        w.write("<object id=\"$assembly\" name=\"${xml(title)}\" type=\"model\"><components>")
+        meshes.indices.forEach { w.write("<component objectid=\"${it + 2}\"/>") }
+        w.write("</components></object>\n</resources>\n<build><item objectid=\"$assembly\"/></build>\n</model>\n")
+        w.flush()
+        zip.closeEntry()
         zip.finish()
     }
 }
 
 /** Every user-visible phrase used in exports, for translation coverage. */
-val routeExportTexts = listOf(
+val routeExportTexts = Route3mf.Shape.entries.map { it.label } + listOf(Terrarium.ATTRIBUTION) + listOf(
     "Speed", "Engine speed", "Consumption", "Coolant", "Accelerator", "Boost", "Altitude", "Time into the trip",
     "Tap the route or move the slider to see what the car was doing there.", "The map needs an internet connection; the data below still works.",
     "Distance", "Duration", "Average speed (moving)", "Max speed", "Fuel used", "Average consumption", "Climb",

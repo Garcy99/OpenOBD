@@ -275,6 +275,8 @@ fun List<TrackPoint>.nearest(lat: Double, lon: Double, maxMeters: Double): Track
 @Serializable
 data class TripRecord(
     val id: String,
+    /** Name the user gave the trip (used as the title of exports); blank = none. */
+    val name: String = "",
     val vehicleId: String,
     val start: Long,
     val end: Long,
