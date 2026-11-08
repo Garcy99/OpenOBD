@@ -1,0 +1,5 @@
+• Nuevo mapa 3D para imprimir: terreno coloreado por altitud (4 estilos), lagos, carreteras y edificios de OpenStreetMap, en hexágono, círculo o cuadrado
+• Vista previa 3D en directo: gira y acerca el modelo mientras eliges las opciones
+• Lista de filamentos con el color de cada número; cada triángulo llega pintado para Bambu Studio, PrusaSlicer y Orca
+• Altura total del modelo a la vista, con altura máxima y grosor de base a elegir; los valles del borde ya no engordan la base
+• Terreno más fiable: se corrigen huecos y píxeles corruptos del servicio de elevación (también en el póster)

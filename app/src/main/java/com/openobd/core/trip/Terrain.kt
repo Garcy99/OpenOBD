@@ -25,6 +25,36 @@ object Terrarium {
 
     fun decode(r: Int, g: Int, b: Int): Double = r * 256.0 + g + b / 256.0 - 32768.0
 
+    /** Below this, a pixel is "no data" (the service has a few empty tiles, encoded as -32768). */
+    const val NO_DATA = -11_000.0
+
+    /** True when most of a decoded tile is empty, so a coarser zoom should be used there. */
+    fun isEmpty(tile: FloatArray) = tile.count { it < NO_DATA } > tile.size / 2
+
+    /**
+     * Fixes glitches in a decoded 256 x 256 tile (the service has the odd corrupt pixel or column, thousands of
+     * metres off): a pixel far from the median of its neighbours takes that median. Returns how many were fixed.
+     */
+    fun despike(t: FloatArray, threshold: Float = 400f): Int {
+        val src = t.copyOf()
+        val nb = FloatArray(8)
+        var fixed = 0
+        for (y in 0 until 256) for (x in 0 until 256) {
+            var n = 0
+            for (dy in -1..1) for (dx in -1..1) {
+                if (dx == 0 && dy == 0) continue
+                val xx = x + dx; val yy = y + dy
+                if (xx in 0..255 && yy in 0..255 && src[yy * 256 + xx] > NO_DATA) nb[n++] = src[yy * 256 + xx]
+            }
+            if (n < 3) continue
+            java.util.Arrays.sort(nb, 0, n)
+            val median = if (n % 2 == 1) nb[n / 2] else (nb[n / 2 - 1] + nb[n / 2]) / 2
+            val v = src[y * 256 + x]
+            if (v <= NO_DATA || kotlin.math.abs(v - median) > threshold) { t[y * 256 + x] = median; fixed++ }
+        }
+        return fixed
+    }
+
     /** Fractional tile coordinates. */
     fun tileX(lon: Double, z: Int) = (lon + 180) / 360 * (1 shl z)
     fun tileY(lat: Double, z: Int): Double {
@@ -52,12 +82,17 @@ object Terrarium {
     }
 }
 
+/** [fine] where it has data, else [coarse] (e.g. the next zoom out, to fill the service's empty tiles). */
+class FallbackTerrain(private val fine: Terrain, private val coarse: Terrain) : Terrain {
+    override fun elevation(lat: Double, lon: Double): Double? = fine.elevation(lat, lon) ?: coarse.elevation(lat, lon)
+}
+
 /** Bilinear elevation from decoded Terrarium tiles ([tiles]: (x, y) -> 256 * 256 metres, row by row). */
 class TileTerrain(private val z: Int, private val tiles: Map<Pair<Int, Int>, FloatArray>) : Terrain {
     private fun at(px: Int, py: Int): Double? {
         val tx = Math.floorDiv(px, 256); val ty = Math.floorDiv(py, 256)
         val t = tiles[tx to ty] ?: return null
-        return t[(py - ty * 256) * 256 + (px - tx * 256)].toDouble()
+        return t[(py - ty * 256) * 256 + (px - tx * 256)].toDouble().takeIf { it > Terrarium.NO_DATA }
     }
 
     override fun elevation(lat: Double, lon: Double): Double? {

@@ -4,7 +4,9 @@ import androidx.compose.ui.test.hasClickAction
 import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.isSelectable
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
+import androidx.compose.ui.test.assertIsEnabled
 import androidx.compose.ui.test.onAllNodesWithContentDescription
+import androidx.compose.ui.test.onAllNodesWithTag
 import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithTag
@@ -75,7 +77,8 @@ class RouteExportUiTest {
             waitFor { rule.onAllNodesWithText("Export route").fetchSemanticsNodes().isNotEmpty() }
         }
         fun shared(ext: String, mime: String): File {
-            waitFor { reports.listFiles().orEmpty().any { it.name.endsWith(".$ext") } && rule.onAllNodesWithText("Export route").fetchSemanticsNodes().isEmpty() }
+            waitFor { reports.listFiles().orEmpty().any { it.name.endsWith(".$ext") } && shadow.peekNextStartedActivity() != null &&
+                rule.onAllNodesWithText("Export route").fetchSemanticsNodes().isEmpty() }
             val chooser = shadow.nextStartedActivity
             val sent = chooser.getParcelableExtra<android.content.Intent>(android.content.Intent.EXTRA_INTENT)!!
             assertEquals(mime, sent.type)
@@ -98,14 +101,29 @@ class RouteExportUiTest {
         waitFor { c.garage.data.value.trips.first { it.id == "trip1" }.name == "Sierra loop" }
         openDialog()
         assertTrue(rule.onAllNodesWithText("Sierra loop").fetchSemanticsNodes().isNotEmpty())
+        // A lake and a road from the "map" (OpenStreetMap is not reached in tests).
+        c.mapFeatures = { area, _ ->
+            val lat = (area[0] + area[2]) / 2; val lon = (area[1] + area[3]) / 2
+            com.openobd.core.trip.MapFeatures(
+                listOf(listOf(com.openobd.core.trip.LatLon(lat - 0.002, lon - 0.003), com.openobd.core.trip.LatLon(lat - 0.002, lon + 0.003), com.openobd.core.trip.LatLon(lat + 0.002, lon))),
+                listOf(com.openobd.core.trip.MapRoad((0..10).map { com.openobd.core.trip.LatLon(area[0] + (area[2] - area[0]) * it / 10, lon) }, 1)), emptyList(),
+            )
+        }
         rule.onNodeWithTag("export_3mf").performClick()
-        rule.waitForIdle()
-        rule.onNodeWithTag("shape_CIRCLE").performClick()
+        waitFor { rule.onAllNodesWithText("3D model").fetchSemanticsNodes().isNotEmpty() }
+        rule.onNodeWithTag("shape_CIRCLE").performScrollTo().performClick()
+        rule.onNodeWithTag("theme_DESERT").performScrollTo().performClick()
         rule.onNodeWithTag("coordsSwitch").performScrollTo().performClick()
-        rule.onNodeWithTag("make3d").performScrollTo().performClick()
+        // The filament list follows the model: plinth first, then the desert colours, water and roads.
+        waitFor(60_000) { rule.onAllNodesWithTag("filament_1").fetchSemanticsNodes().isNotEmpty() &&
+            rule.onAllNodesWithText("Water", substring = true).fetchSemanticsNodes().size >= 2 }
+        rule.onNodeWithTag("make3d").performScrollTo()
+        waitFor(60_000) { runCatching { rule.onNodeWithTag("make3d").assertIsEnabled() }.isSuccess }
+        rule.onNodeWithTag("make3d").performClick()
         val model = shared("3mf", "model/3mf")
         val xml = java.util.zip.ZipFile(model).use { z -> z.getInputStream(z.getEntry("3D/3dmodel.model")).readBytes().toString(Charsets.UTF_8) }
-        assertTrue(xml.contains("name=\"Terrain\"") && xml.contains("name=\"Plaque\"") && xml.contains("name=\"Title\"") && xml.contains("Sierra loop") && xml.contains("paint_color="))
+        assertTrue(xml.contains("name=\"Terrain\"") && xml.contains("name=\"Roads\"") && xml.contains("name=\"Plaque\"") && xml.contains("name=\"Title\"") && xml.contains("Sierra loop") && xml.contains("paint_color="))
+        assertTrue("desert colours and water", xml.contains(com.openobd.core.trip.Route3mf.Theme.DESERT.low) && xml.contains(com.openobd.core.trip.Route3mf.Theme.DESERT.water))
         assertTrue(model.name.startsWith("OpenOBD "))
     }
 

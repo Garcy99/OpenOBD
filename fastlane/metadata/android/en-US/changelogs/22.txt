@@ -1,0 +1,5 @@
+• New printable 3D map: terrain coloured by altitude (4 styles), lakes, roads and buildings from OpenStreetMap, as a hexagon, circle or square
+• Live 3D preview: turn and zoom the model while you choose the options
+• Filament list with each number's colour; every triangle comes painted for Bambu Studio, PrusaSlicer and Orca
+• Total model height shown, with a choice of maximum height and base thickness; valleys at the edge no longer thicken the base
+• More reliable terrain: gaps and corrupt pixels from the elevation service are fixed (in the poster too)

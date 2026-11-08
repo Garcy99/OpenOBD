@@ -39,6 +39,10 @@ Only in these cases, and only when you trigger them:
   that area from Terrain Tiles (AWS Open Data, s3.amazonaws.com). Amazon sees your IP address and which map tiles are
   requested (so roughly where the trip was); nothing else is sent. Tiles are kept in the app's cache. AWS privacy
   notice: https://aws.amazon.com/privacy/
+- **Map data for 3D maps**: when you open the 3D map of a trip, the app asks the Overpass API (overpass-api.de, or
+  overpass.kumi.systems if that one fails) for the lakes, main roads and buildings inside a rectangle around the trip.
+  The server sees your IP address and that rectangle (so roughly where the trip was); the route itself, your car and
+  your account are not sent. Answers are kept in the app's cache. Overpass API: https://overpass-api.de/
 - **AI assistant** (optional, off until you enter your own Anthropic API key): when you ask a question or send a
   photo of a warning light, the question, the trouble codes and values involved, the car's make / model / year and
   the photo go to Anthropic's API under your key. The VIN and your location are never sent. Anthropic's privacy

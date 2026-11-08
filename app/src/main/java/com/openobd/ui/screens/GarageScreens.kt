@@ -572,7 +572,7 @@ private fun TrackPointCard(p: TrackPoint, tripStart: Long, units: UnitSystem) {
 }
 
 @Composable
-fun TripDetailScreen(tripId: String, onBack: () -> Unit) {
+fun TripDetailScreen(tripId: String, onBack: () -> Unit, onModel3d: () -> Unit = {}) {
     val app = LocalApp.current
     val scope = rememberCoroutineScope()
     val settings = appSettings()
@@ -627,7 +627,7 @@ fun TripDetailScreen(tripId: String, onBack: () -> Unit) {
     if (exporting && t != null) {
         val v = g.vehicles.firstOrNull { it.id == t.vehicleId }
         val car = listOfNotNull(v?.name, v?.specs?.title?.takeIf { it.isNotBlank() && it != v.name }).joinToString(" · ")
-        RouteExportDialog(t, track.orEmpty(), car, onDismiss = { exporting = false })
+        RouteExportDialog(t, track.orEmpty(), car, onDismiss = { exporting = false }, onModel3d = { exporting = false; onModel3d() })
     }
     if (confirmDelete && t != null) AlertDialog(
         onDismissRequest = { confirmDelete = false },

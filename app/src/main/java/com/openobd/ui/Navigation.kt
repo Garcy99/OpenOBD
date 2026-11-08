@@ -99,6 +99,8 @@ object Routes {
     const val TRIPS = "trips"
     const val TRIP = "trip/{id}"
     fun trip(id: String) = "trip/$id"
+    const val TRIP_3D = "trip3d/{id}"
+    fun trip3d(id: String) = "trip3d/$id"
     const val PIDS = "pids"
     const val CHECK = "check"
     const val HEALTH = "health"
@@ -259,7 +261,11 @@ fun OpenObdNavHost() {
                 composable(Routes.MAINTENANCE) { com.openobd.ui.screens.MaintenanceScreen(onBack = back) }
                 composable(Routes.FUEL) { com.openobd.ui.screens.FuelLogScreen(onBack = back) }
                 composable(Routes.TRIPS) { com.openobd.ui.screens.TripsScreen(onBack = back, onOpen = { nav.navigate(Routes.trip(it)) }) }
-                composable(Routes.TRIP) { e -> com.openobd.ui.screens.TripDetailScreen(e.arguments?.getString("id").orEmpty(), onBack = back) }
+                composable(Routes.TRIP) { e ->
+                    val id = e.arguments?.getString("id").orEmpty()
+                    com.openobd.ui.screens.TripDetailScreen(id, onBack = back, onModel3d = { nav.navigate(Routes.trip3d(id)) })
+                }
+                composable(Routes.TRIP_3D) { e -> com.openobd.ui.screens.Route3dScreen(e.arguments?.getString("id").orEmpty(), onBack = back) }
                 composable(Routes.BRAND) { BrandScreen(onBack = back, onNavigate = { nav.navigate(it) }) }
                 composable(Routes.PIDS) { CustomPidsScreen(onBack = back, onPacks = { nav.navigate(Routes.PACKS) }) }
                 composable(Routes.MODULE) { e -> ModuleScreen(e.arguments?.getString("id").orEmpty(), onBack = back, onConnect = toHome) }

@@ -2,6 +2,11 @@ package com.openobd.core
 
 import com.openobd.core.garage.TrackPoint
 import com.openobd.core.trip.Gpx
+import com.openobd.core.trip.LatLon
+import com.openobd.core.trip.MapBuilding
+import com.openobd.core.trip.MapFeatures
+import com.openobd.core.trip.MapRoad
+import com.openobd.core.trip.Overpass
 import com.openobd.core.trip.Route3mf
 import com.openobd.core.trip.RouteGeometry
 import com.openobd.core.trip.RouteHtml
@@ -81,32 +86,37 @@ class RouteExportTest {
     }
 
     @Test fun `3MF has watertight coloured parts that sit on the base`() {
-        val meshes = Route3mf.meshes(points)
+        val model = Route3mf.model(points)
+        val meshes = model.meshes
         assertEquals(listOf("Base", "Route", "Start", "End"), meshes.map { it.name })
-        assertEquals(listOf(1, 2, 3, 4), meshes.map { it.filament })
+        // Flat ground in one colour (no terrain), plinth first so unpainted parts print in it.
+        assertEquals(listOf(Route3mf.SIDES, Route3mf.GROUND, Route3mf.ROUTE, Route3mf.TEXT, Route3mf.END), model.filaments.map { it.roles.first() })
+        assertEquals(model.filaments.map { it.color }.distinct(), model.filaments.map { it.color })
         meshes.forEach { assertSolid(it) }
         val base = meshes.first()
         val size = base.v.maxOf { it[0] } to base.v.maxOf { it[1] }
         assertTrue(size.first <= 150.01 && size.second <= 150.01)
-        // Relief: the route is higher where the road is.
+        // Relief from GPS altitude: the route is higher where the road is.
         val route = meshes.filter { it.name.startsWith("Route") }.flatMap { it.v }
         assertTrue(route.maxOf { it[2] } - route.minOf { it[2] } > 5)
         assertTrue(route.all { it[0] in 0.0..size.first && it[1] in 0.0..size.second })
 
-        val bytes = ByteArrayOutputStream().also { Route3mf.write(meshes, it, "Trip") }.toByteArray()
+        val bytes = ByteArrayOutputStream().also { Route3mf.write(model, it, "Trip") }.toByteArray()
         val entries = mutableMapOf<String, String>()
         ZipInputStream(ByteArrayInputStream(bytes)).use { z -> generateSequence { z.nextEntry }.forEach { entries[it.name] = z.readBytes().toString(Charsets.UTF_8) } }
         assertEquals(setOf("[Content_Types].xml", "_rels/.rels", "3D/3dmodel.model"), entries.keys)
-        val model = xml(entries.getValue("3D/3dmodel.model"))
+        val doc = xml(entries.getValue("3D/3dmodel.model"))
         val ns = "http://schemas.microsoft.com/3dmanufacturing/core/2015/02"
-        // Four parts plus the object that groups them, which is the one thing built.
-        assertEquals(5, model.getElementsByTagNameNS(ns, "object").length)
-        assertEquals(4, model.getElementsByTagNameNS(ns, "base").length)
-        assertEquals(4, model.getElementsByTagNameNS(ns, "component").length)
-        assertEquals(1, model.getElementsByTagNameNS(ns, "item").length)
-        // Every triangle painted with its part's filament, for Bambu Studio and PrusaSlicer / Orca.
+        // Four parts plus the object that groups them, which is the one thing built; one base material per filament.
+        assertEquals(5, doc.getElementsByTagNameNS(ns, "object").length)
+        assertEquals(model.filaments.size, doc.getElementsByTagNameNS(ns, "base").length)
+        assertEquals(4, doc.getElementsByTagNameNS(ns, "component").length)
+        assertEquals(1, doc.getElementsByTagNameNS(ns, "item").length)
+        // Every triangle carries its colour (base material) and its filament painting, for Bambu Studio and PrusaSlicer / Orca.
+        val tris = doc.getElementsByTagNameNS(ns, "triangle")
+        assertEquals(model.triangles, tris.length)
         val text = entries.getValue("3D/3dmodel.model")
-        assertTrue(text.contains("paint_color=\"8\" slic3rpe:mmu_segmentation=\"8\""))
+        assertTrue(text.contains("pid=\"1\" p1=\"1\" paint_color=\"8\" slic3rpe:mmu_segmentation=\"8\""))
         assertTrue(text.contains("paint_color=\"1C\""))
         assertEquals(listOf("4", "8", "0C", "1C", "2C", "3C"), (1..6).map { Route3mf.paintCode(it) })
     }
@@ -158,30 +168,102 @@ class RouteExportTest {
     }
 
     @Test fun `terrain model in every shape with the title`() {
-        for (shape in com.openobd.core.trip.Route3mf.Shape.entries) {
-            val meshes = Route3mf.meshes(points, Route3mf.Options(shape = shape), hill, letterO)
+        for (shape in Route3mf.Shape.entries) {
+            val meshes = Route3mf.meshes(points, Route3mf.Options(shape = shape), hill, null, letterO)
             assertEquals(listOf("Terrain", "Route", "Start", "End", "Plaque", "Title"), meshes.map { it.name })
             meshes.forEach { assertSolid(it) }
             val ground = meshes.first()
             val w = ground.v.maxOf { it[0] } - ground.v.minOf { it[0] }; val h = ground.v.maxOf { it[1] } - ground.v.minOf { it[1] }
             assertEquals(150.0, max(w, h), 0.01)
             when (shape) {
-                com.openobd.core.trip.Route3mf.Shape.HEXAGON -> assertEquals(1 / cos(Math.PI / 6), w / h, 0.01)
+                Route3mf.Shape.HEXAGON -> assertEquals(1 / cos(Math.PI / 6), w / h, 0.01)
                 else -> assertEquals(1.0, w / h, 0.01)
             }
             // Relief: the hill shows (exaggerated, capped) and the ground never gets thinner than the base.
             val tops = ground.v.filter { it[2] > 0 }
             assertTrue(tops.maxOf { it[2] } - tops.minOf { it[2] } in 5.0..40.0)
             assertTrue(tops.minOf { it[2] } >= 3.0 - 1e-9)
+            // Coloured by altitude: lowlands, slopes and the peak of the hill; sides in the plinth colour.
+            val th = Route3mf.Theme.ALPINE
+            assertTrue(ground.c.containsAll(listOf(th.low, th.mid, th.high, th.side)))
+            val peak = ground.t.indices.maxBy { k -> ground.t[k].sumOf { ground.v[it][2] } }
+            assertEquals(th.high, ground.c[peak])
             // The route sits on the ground: its top is above the ground under it.
             val route = meshes.filter { it.name.startsWith("Route") }.flatMap { it.v }
-            val routeTop = route.maxOf { it[2] }
-            assertTrue(routeTop > 3.0 + 1.0)
+            assertTrue(route.maxOf { it[2] } > 3.0 + 1.0)
             // Title on the plaque, in front of the ground.
             val title = meshes.last(); val plaque = meshes[meshes.size - 2]
             assertTrue(title.v.minOf { it[1] } >= plaque.v.minOf { it[1] } && title.v.maxOf { it[1] } <= plaque.v.maxOf { it[1] })
             assertTrue(plaque.v.minOf { it[1] } < ground.v.minOf { it[1] })
         }
+    }
+
+    /** Lake, roads and a building around the start of the route, as OpenStreetMap would give them. */
+    private fun features(): MapFeatures {
+        val o = points.first()
+        fun at(dx: Double, dy: Double) = LatLon(o.lat + dy / 111_000, o.lon + dx / 85_000)
+        val lake = listOf(at(-1800.0, -400.0), at(-1200.0, -400.0), at(-1200.0, 200.0), at(-1800.0, 200.0))
+        val road = MapRoad((0..20).map { at(-2000.0 + it * 150.0, -900.0) }, 0)
+        val house = MapBuilding(listOf(at(-600.0, 300.0), at(-560.0, 300.0), at(-560.0, 330.0), at(-600.0, 330.0)), 30.0)
+        return MapFeatures(listOf(lake), listOf(road, MapRoad(road.points.map { it.copy(lat = it.lat + 0.004) }, 3)), listOf(house))
+    }
+
+    @Test fun `water, roads and buildings from the map`() {
+        val f = features()
+        val small = points.map { it.copy(lat = points[0].lat + (it.lat - points[0].lat) / 4, lon = points[0].lon + (it.lon - points[0].lon) / 4) }
+        // Buildings are only drawn for small areas; this one is ~3 km.
+        assertTrue(Route3mf.spanMetres(small) < Overpass.MAX_BUILDINGS_SPAN_M)
+        val model = Route3mf.model(small, Route3mf.Options(theme = Route3mf.Theme.FOREST), hill, f.copy(water = f.water.map { w -> w.map { LatLon(points[0].lat + (it.lat - points[0].lat) / 4, points[0].lon + (it.lon - points[0].lon) / 4) } }))
+        val names = model.meshes.map { it.name }
+        assertEquals(listOf("Terrain", "Roads", "Buildings", "Route", "Start", "End"), names)
+        model.meshes.forEach { assertSolid(it) }
+        val ground = model.meshes.first()
+        assertTrue("lake painted", ground.c.contains(Route3mf.Theme.FOREST.water))
+        // Wider roads for motorways than for minor roads, both on top of the ground.
+        val roads = model.meshes.first { it.name == "Roads" }
+        assertTrue(roads.v.minOf { it[2] } < roads.v.maxOf { it[2] })
+        val house = model.meshes.first { it.name == "Buildings" }
+        assertTrue(house.v.maxOf { it[2] } - house.v.minOf { it[2] } > 2)
+        // One filament per colour, each with what it prints.
+        val roles = model.filaments.flatMap { it.roles }
+        assertTrue(roles.containsAll(listOf(Route3mf.SIDES, Route3mf.WATER, Route3mf.ROADS, Route3mf.BUILDINGS, Route3mf.ROUTE)))
+        assertEquals(1, model.filamentOf(Route3mf.Theme.FOREST.side))
+        // Layers can be switched off.
+        val bare = Route3mf.model(small, Route3mf.Options(water = false, roads = false, buildings = false), hill, f)
+        assertEquals(listOf("Terrain", "Route", "Start", "End"), bare.meshes.map { it.name })
+        assertTrue(bare.filaments.none { Route3mf.WATER in it.roles })
+        // Large areas leave buildings out even when asked.
+        val big = points.map { it.copy(lat = points[0].lat + (it.lat - points[0].lat) * 3, lon = points[0].lon + (it.lon - points[0].lon) * 3) }
+        assertTrue(Route3mf.model(big, Route3mf.Options(), hill, f).meshes.none { it.name == "Buildings" })
+    }
+
+    @Test fun `Overpass answers become water rings, ranked roads and building heights`() {
+        val json = """
+            {"elements":[
+             {"type":"way","id":1,"tags":{"natural":"water"},"geometry":[{"lat":1,"lon":1},{"lat":1,"lon":2},{"lat":2,"lon":2},{"lat":1,"lon":1}]},
+             {"type":"way","id":2,"tags":{"highway":"primary"},"geometry":[{"lat":0,"lon":0},{"lat":0,"lon":1}]},
+             {"type":"way","id":3,"tags":{"highway":"residential"},"geometry":[{"lat":0,"lon":0},{"lat":0,"lon":1}]},
+             {"type":"way","id":4,"tags":{"building":"yes","building:levels":"4"},"geometry":[{"lat":3,"lon":3},{"lat":3,"lon":4},{"lat":4,"lon":4},{"lat":3,"lon":3}]},
+             {"type":"way","id":5,"tags":{"building":"yes","height":"12,5 m"},"geometry":[{"lat":3,"lon":3},{"lat":3,"lon":4},{"lat":4,"lon":4},{"lat":3,"lon":3}]},
+             {"type":"relation","id":6,"tags":{"natural":"water"},"members":[
+               {"type":"way","role":"outer","geometry":[{"lat":5,"lon":5},{"lat":5,"lon":6}]},
+               {"type":"way","role":"outer","geometry":[{"lat":6,"lon":5},{"lat":6,"lon":6}]},
+               {"type":"way","role":"outer","geometry":[{"lat":5,"lon":6},{"lat":6,"lon":6}]},
+               {"type":"way","role":"outer","geometry":[{"lat":6,"lon":5},{"lat":5,"lon":5}]},
+               {"type":"way","role":"inner","geometry":[{"lat":5.4,"lon":5.4},{"lat":5.5,"lon":5.5}]}]}
+            ]}
+        """.trimIndent()
+        val f = Overpass.parse(json)
+        assertEquals(2, f.water.size)
+        assertEquals(3, f.water[0].size)
+        assertEquals(4, f.water[1].size)
+        assertEquals(listOf(1), f.roads.map { it.rank })
+        assertEquals(listOf(13.0, 12.5), f.buildings.map { it.heightM })
+        assertEquals(6.0, Overpass.height(emptyMap()), 0.0)
+        val q = Overpass.query(40.0, -3.8, 40.1, -3.7, buildings = false)
+        assertTrue(q.contains("(40.000000,-3.800000,40.100000,-3.700000)") && q.contains("highway") && !q.contains("building"))
+        assertTrue(Overpass.query(40.0, -3.8, 40.1, -3.7, buildings = true).contains("way[\"building\"]"))
+        assertTrue(Overpass.parse("{}").isEmpty)
     }
 
     @Test fun `poster with shaded relief embeds a valid PNG under the route`() {
@@ -206,9 +288,14 @@ class RouteExportTest {
     }
 
     @Test fun `colours by speed and coordinates under the title`() {
-        val meshes = Route3mf.meshes(points, Route3mf.Options(colors = Route3mf.Colors.BY_SPEED), hill, letterO, letterO.map { c -> c.map { (x, y) -> x * 3 to y } })
+        val model = Route3mf.model(points, Route3mf.Options(routeBySpeed = true, reliefColours = false), hill, null, letterO, letterO.map { c -> c.map { (x, y) -> x * 3 to y } })
+        val meshes = model.meshes
         assertEquals(listOf("Terrain", "Route up to 50 km/h", "Route 50-100 km/h", "Route over 100 km/h", "Start", "End", "Plaque", "Title"), meshes.map { it.name })
-        assertEquals(listOf(1, 2, 3, 4, 5, 6, 1, 5), meshes.map { it.filament })
+        // Plinth and plaque share filament 1, the title and start marker another.
+        assertEquals(model.filamentOf(meshes[0].color), model.filamentOf(meshes[6].color))
+        assertEquals(1, model.filamentOf(meshes[6].color))
+        assertEquals(model.filamentOf(meshes[4].color), model.filamentOf(meshes[7].color))
+        assertEquals(7, model.filaments.size) // sides, ground, 3 speeds, text, end
         meshes.forEach { assertSolid(it) }
         // Two lines of text: the coordinates sit below the title, both on the plaque.
         val title = meshes.last(); val plaque = meshes[meshes.size - 2]
@@ -243,9 +330,45 @@ class RouteExportTest {
         val bare = points.map { it.copy(speedKmh = null, alt = null, rpm = null) }
         assertEquals(listOf("Base", "Route", "Start", "End"), Route3mf.meshes(bare).map { it.name })
         assertEquals(listOf("Base", "Route up to 50 km/h", "Start", "End"),
-            Route3mf.meshes(bare, Route3mf.Options(colors = Route3mf.Colors.BY_SPEED)).map { it.name })
+            Route3mf.meshes(bare, Route3mf.Options(routeBySpeed = true)).map { it.name })
         assertEquals(null, RouteGeometry.climb(bare))
         assertTrue(Gpx.write(info, bare).contains("<trkpt"))
         assertTrue(Route3mf.meshes(points.take(1)).isEmpty())
+    }
+
+    @Test fun `corrupt and empty elevation tiles are repaired or skipped`() {
+        // A slope with a corrupt column thousands of metres off, as the service sometimes has.
+        val tile = FloatArray(256 * 256) { 500f + (it / 256) * 2f }
+        for (y in 0 until 256) tile[y * 256 + 112] = -7467f
+        tile[40 * 256 + 40] = 9000f
+        assertEquals(257, com.openobd.core.trip.Terrarium.despike(tile))
+        assertTrue((0 until 256 * 256).all { abs(tile[it] - (500f + (it / 256) * 2f)) < 5f })
+        val empty = FloatArray(256 * 256) { -32768f }
+        assertTrue(com.openobd.core.trip.Terrarium.isEmpty(empty) && !com.openobd.core.trip.Terrarium.isEmpty(tile))
+        // Empty pixels are unknown, and a coarser terrain fills them.
+        val t = com.openobd.core.trip.TileTerrain(14, mapOf((7964 to 6001) to empty))
+        assertEquals(null, t.elevation(43.2935, -5.0))
+        assertEquals(800.0, com.openobd.core.trip.FallbackTerrain(t) { _, _ -> 800.0 }.elevation(43.2935, -5.0)!!, 0.0)
+    }
+
+    @Test fun `the model keeps to the maximum height and reports it`() {
+        val tall = Route3mf.model(points, Route3mf.Options(exaggeration = 5.0, maxHeightMm = 20.0, baseMm = 2.0), hill)
+        val ground = tall.meshes.first()
+        assertEquals(20.0, ground.v.maxOf { it[2] }, 0.01)
+        assertTrue(tall.relief.limited)
+        assertEquals(2.0, tall.relief.baseMm, 0.0)
+        assertEquals(18.0, tall.relief.reliefMm, 0.01)
+        assertTrue(tall.size()[2] in 20.0..25.0) // the route and markers stand a little above the ground
+        // Real scale fits easily: not limited, and lower than the cap.
+        val flat = Route3mf.model(points, Route3mf.Options(exaggeration = 1.0, maxHeightMm = 60.0), hill)
+        assertTrue(!flat.relief.limited && flat.meshes.first().v.maxOf { it[2] } < 60.0)
+        // A gorge in one corner rests on the base instead of lifting everything else.
+        val gorge = com.openobd.core.trip.Terrain { lat, lon ->
+            val dx = (lon + 3.6705) * 85_000; val dy = (lat - 40.4168) * 111_000
+            if (dx * dx + dy * dy < 250.0 * 250.0) 100.0 else hill.elevation(lat, lon)
+        }
+        val trimmed = Route3mf.model(points, Route3mf.Options(), gorge)
+        assertTrue(trimmed.relief.trimmedM > 400)
+        assertTrue(trimmed.meshes.first().v.filter { it[2] > 0 }.minOf { it[2] } >= 3.0 - 1e-9)
     }
 }

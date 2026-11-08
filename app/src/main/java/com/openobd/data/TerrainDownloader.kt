@@ -3,6 +3,7 @@ package com.openobd.data
 import android.content.Context
 import android.graphics.BitmapFactory
 import com.openobd.core.garage.TrackPoint
+import com.openobd.core.trip.FallbackTerrain
 import com.openobd.core.trip.Terrain
 import com.openobd.core.trip.Terrarium
 import com.openobd.core.trip.TileTerrain
@@ -35,13 +36,28 @@ class TerrainDownloader(private val context: Context, private val userAgent: Str
         val box = doubleArrayOf(minLat - padLat, minLon - padLon, maxLat + padLat, maxLon + padLon)
         val z = Terrarium.zoomFor(box[0], box[1], box[2], box[3], targetPx = detailPx, maxTiles = if (detailPx > 1000) 36 else 16)
         val wanted = Terrarium.tiles(box[0], box[1], box[2], box[3], z)
+        // The service has a few empty tiles at high zooms: then the next zoom out is used (whole, so there are no
+        // steps where the two meet), or only where it is needed if that one is incomplete too.
+        val coarseWanted = Terrarium.tiles(box[0], box[1], box[2], box[3], z - 1)
+        val total = wanted.size + coarseWanted.size
+        val tiles = load(z, wanted) { i -> progress(i, total) }
+        if (tiles.size == wanted.size) { progress(total, total); return@withContext TileTerrain(z, tiles) }
+        val coarse = load(z - 1, coarseWanted) { i -> progress(wanted.size + i, total) }
+        progress(total, total)
+        when {
+            tiles.size + coarse.size * 4 < (wanted.size + 1) / 2 -> null
+            tiles.isEmpty() || coarse.size == coarseWanted.size -> TileTerrain(z - 1, coarse)
+            else -> FallbackTerrain(TileTerrain(z, tiles), TileTerrain(z - 1, coarse))
+        }
+    }
+
+    private fun load(z: Int, wanted: List<Pair<Int, Int>>, progress: (Int) -> Unit): Map<Pair<Int, Int>, FloatArray> {
         val tiles = HashMap<Pair<Int, Int>, FloatArray>()
         wanted.forEachIndexed { i, (x, y) ->
-            progress(i, wanted.size)
-            tile(z, x, y)?.let { tiles[x to y] = it }
+            progress(i)
+            tile(z, x, y)?.takeIf { !Terrarium.isEmpty(it) }?.let { Terrarium.despike(it); tiles[x to y] = it }
         }
-        progress(wanted.size, wanted.size)
-        if (tiles.size < (wanted.size + 1) / 2) null else TileTerrain(z, tiles)
+        return tiles
     }
 
     private fun tile(z: Int, x: Int, y: Int): FloatArray? {

@@ -22,9 +22,7 @@ import androidx.compose.material.icons.filled.Print
 import androidx.compose.material.icons.filled.Public
 import androidx.compose.material.icons.filled.ViewInAr
 import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.Button
 import androidx.compose.material3.Switch
-import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
@@ -47,7 +45,6 @@ import com.openobd.core.garage.TrackPoint
 import com.openobd.core.garage.TripRecord
 import com.openobd.core.obd.UnitSystem
 import com.openobd.core.trip.Gpx
-import com.openobd.core.trip.Route3mf
 import com.openobd.core.trip.RouteHtml
 import com.openobd.core.trip.RouteInfo
 import com.openobd.core.trip.RoutePoster
@@ -74,8 +71,8 @@ enum class RouteFormat(val ext: String, val mime: String, val title: String, val
         "The route in vectors over the shaded relief: prints sharp on A3 and scales down to A4."),
     SVG("svg", "image/svg+xml", "Vector image (SVG)",
         "The same poster to edit or send to a print shop."),
-    THREE_MF("3mf", "model/3mf", "3D print (3MF, multicolour)",
-        "The route on the real terrain around it, cut as a hexagon, circle or square, with the title on a plaque. Ground, route (coloured by speed), markers and title are separate parts: give each a filament in your slicer."),
+    THREE_MF("3mf", "model/3mf", "3D map to print (3MF, multicolour)",
+        "The terrain around the route coloured by altitude, with lakes, roads and buildings, cut as a hexagon, circle or square. See it in 3D before saving; every part comes painted with its filament."),
     ;
 
     companion object {
@@ -85,7 +82,7 @@ enum class RouteFormat(val ext: String, val mime: String, val title: String, val
 
 @OptIn(androidx.compose.foundation.layout.ExperimentalLayoutApi::class)
 @Composable
-fun RouteExportDialog(trip: TripRecord, points: List<TrackPoint>, car: String, onDismiss: () -> Unit) {
+fun RouteExportDialog(trip: TripRecord, points: List<TrackPoint>, car: String, onDismiss: () -> Unit, onModel3d: () -> Unit = {}) {
     val context = LocalContext.current
     val app = com.openobd.ui.LocalApp.current
     val scope = rememberCoroutineScope()
@@ -96,13 +93,7 @@ fun RouteExportDialog(trip: TripRecord, points: List<TrackPoint>, car: String, o
     val units = Units(imperial = settings.units == UnitSystem.IMPERIAL)
     val defaultTitle = tr("Drive on %1\$s", DateFormat.getDateInstance(DateFormat.LONG).format(Date(trip.start)))
     val title = trip.name.ifBlank { defaultTitle }
-    var options3d by remember { mutableStateOf(false) }
-    var shape by remember { mutableStateOf(Route3mf.Shape.HEXAGON) }
     var withTerrain by remember { mutableStateOf(true) }
-    var relief by remember { mutableStateOf(2.0) }
-    var titleOnModel by remember { mutableStateOf(true) }
-    var withCoordinates by remember { mutableStateOf(false) }
-    var colors by remember { mutableStateOf(Route3mf.Colors.FOUR) }
     val label: (String) -> String = { tr(it) }
 
     fun info() = RouteInfo(
@@ -116,10 +107,10 @@ fun RouteExportDialog(trip: TripRecord, points: List<TrackPoint>, car: String, o
         val info = info()
         scope.launch {
             runCatching {
-                val usesTerrain = format == RouteFormat.THREE_MF || format == RouteFormat.PDF || format == RouteFormat.SVG
+                val usesTerrain = format == RouteFormat.PDF || format == RouteFormat.SVG
                 val terrain = if (usesTerrain && withTerrain) {
                     status = tr("Downloading terrain…")
-                    app.terrain(points, if (format == RouteFormat.THREE_MF) 640 else 1500) { i, n -> status = tr("Downloading terrain… %1\$s of %2\$s", i, n) }
+                    app.terrain(points, 1500) { i, n -> status = tr("Downloading terrain… %1\$s of %2\$s", i, n) }
                         .also { if (it == null) error = tr("The terrain could not be downloaded: exported without relief.") }
                 } else null
                 status = null
@@ -131,13 +122,7 @@ fun RouteExportDialog(trip: TripRecord, points: List<TrackPoint>, car: String, o
                         RouteFormat.HTML -> file.writeText(RouteHtml.write(info, points, label, units))
                         RouteFormat.SVG -> file.writeText(RoutePoster.svg(RoutePoster.layout(info, points, label, units, terrain = terrain)))
                         RouteFormat.PDF -> writePdf(file, RoutePoster.layout(info, points, label, units, terrain = terrain))
-                        RouteFormat.THREE_MF -> {
-                            val outlines = if (titleOnModel) com.openobd.ui.textOutlines(info.title) else emptyList()
-                            val coords = if (titleOnModel && withCoordinates) com.openobd.ui.textOutlines(
-                                com.openobd.core.trip.RouteGeometry.coordinates(points.first().lat, points.first().lon)) else emptyList()
-                            val meshes = Route3mf.meshes(points, Route3mf.Options(shape = shape, exaggeration = relief, colors = colors), terrain, outlines, coords)
-                            file.outputStream().use { Route3mf.write(meshes, it, info.title) }
-                        }
+                        RouteFormat.THREE_MF -> error("3D models are made in their own screen")
                     }
                     file
                 }
@@ -157,7 +142,7 @@ fun RouteExportDialog(trip: TripRecord, points: List<TrackPoint>, car: String, o
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Column(Modifier.weight(1f)) {
                         Text(tr("Terrain around the route"))
-                        Text(tr("Real relief under the poster and in the 3D model, from open elevation data (downloads a few map tiles)."),
+                        Text(tr("Real relief under the poster, from open elevation data (downloads a few map tiles)."),
                             style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
                     Switch(withTerrain, { withTerrain = it }, modifier = Modifier.testTag("terrainSwitch"))
@@ -173,7 +158,7 @@ fun RouteExportDialog(trip: TripRecord, points: List<TrackPoint>, car: String, o
                         RouteFormat.THREE_MF -> Icons.Default.ViewInAr
                     }
                     Row(Modifier.fillMaxWidth().clickable(enabled = busy == null) {
-                        if (f == RouteFormat.THREE_MF) options3d = !options3d else export(f)
+                        if (f == RouteFormat.THREE_MF) onModel3d() else export(f)
                     }.padding(vertical = 8.dp).testTag("export_${f.ext}"), verticalAlignment = Alignment.Top) {
                         Icon(icon, null, Modifier.size(24.dp), tint = MaterialTheme.colorScheme.primary)
                         Spacer(Modifier.width(12.dp))
@@ -181,36 +166,6 @@ fun RouteExportDialog(trip: TripRecord, points: List<TrackPoint>, car: String, o
                             Text(tr(f.title), fontWeight = FontWeight.SemiBold)
                             Text(tr(f.description), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                             if (busy == f) LinearProgressIndicator(Modifier.fillMaxWidth().padding(top = 4.dp))
-                        }
-                    }
-                    if (f == RouteFormat.THREE_MF && options3d) Column(Modifier.padding(start = 36.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                        Text(tr("Shape"), style = MaterialTheme.typography.labelLarge)
-                        androidx.compose.foundation.layout.FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                            Route3mf.Shape.entries.forEach { sh -> FilterChip(shape == sh, { shape = sh }, label = { Text(tr(sh.label)) }, modifier = Modifier.testTag("shape_${sh.name}")) }
-                        }
-                        if (withTerrain) {
-                            Text(tr("Relief exaggeration"), style = MaterialTheme.typography.labelLarge)
-                            androidx.compose.foundation.layout.FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                                listOf(1.0, 2.0, 3.0, 5.0).forEach { x -> FilterChip(relief == x, { relief = x }, label = { Text("×" + x.toInt()) }) }
-                            }
-                        }
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Text(tr("Title on the model"), Modifier.weight(1f))
-                            Switch(titleOnModel, { titleOnModel = it })
-                        }
-                        if (titleOnModel) Row(verticalAlignment = Alignment.CenterVertically) {
-                            Text(tr("GPS coordinates under the title"), Modifier.weight(1f))
-                            Switch(withCoordinates, { withCoordinates = it }, modifier = Modifier.testTag("coordsSwitch"))
-                        }
-                        Text(tr("Colours"), style = MaterialTheme.typography.labelLarge)
-                        androidx.compose.foundation.layout.FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                            Route3mf.Colors.entries.forEach { c -> FilterChip(colors == c, { colors = c }, label = { Text(tr(c.label)) }, modifier = Modifier.testTag("colors_${c.name}")) }
-                        }
-                        Text(tr("Each part comes painted with its filament number:") + " " +
-                            Route3mf.legend(colors).joinToString(" · ") { (n, what) -> "$n " + tr(what).replaceFirstChar { it.lowercase() } },
-                            style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                        Button(onClick = { export(RouteFormat.THREE_MF) }, enabled = busy == null, modifier = Modifier.fillMaxWidth().testTag("make3d")) {
-                            Text(tr("Create 3D model"))
                         }
                     }
                 }
