@@ -1,6 +1,13 @@
 package com.openobd.session
 
+import com.openobd.core.brand.CarState
 import com.openobd.core.brand.ClearOutcome
+import com.openobd.core.brand.Coding
+import com.openobd.core.brand.CodingEngine
+import com.openobd.core.brand.CodingOption
+import com.openobd.core.brand.Routine
+import com.openobd.core.brand.WriteOutcome
+import com.openobd.core.brand.WriteRecord
 import com.openobd.core.brand.CustomPid
 import com.openobd.core.brand.DtcDetails
 import com.openobd.core.brand.EcuModule
@@ -103,8 +110,46 @@ class ModuleFeatures internal constructor(private val s: ObdSession) {
 
     suspend fun readDid(m: EcuModule, did: Int): IntArray = op { it.readDid(m, did) }
 
+    // ------------------------------------------------------------------ codings: every write is backed up, checked and undoable
+
+    /** Speed, engine speed and battery voltage for the write checks; null when the car does not report them. */
+    suspend fun carState(): CarState {
+        val e = s.adapter ?: return CarState(null, null, null)
+        // The demo car is always "driving"; for trying codings it is treated as parked with the ignition on.
+        if (s.vehicle?.isDemo == true) return CarState(rpm = 0.0, speedKmh = 0.0, volts = 12.6)
+        val c = s.client
+        return s.appScope.async {
+            s.live.pause()
+            try {
+                val pids = if (bus.value == Bus.MS || c == null) emptyMap() else runCatching { c.readPids(listOf(0x0C, 0x0D)) }.getOrDefault(emptyMap())
+                CarState(
+                    rpm = pids[0x0C]?.takeIf { it.size >= 2 }?.let { (it[0] * 256 + it[1]) / 4.0 },
+                    speedKmh = pids[0x0D]?.firstOrNull()?.toDouble(),
+                    volts = e.readVoltage(),
+                )
+            } finally { s.live.resume() }
+        }.await()
+    }
+
+    private fun engine(mc: ModuleClient) = CodingEngine(mc, save = { s.garage.saveWrite(it) }, newId = s.garage::newId)
+    private fun vehicleId() = s.garage.data.value.active?.id.orEmpty()
+
+    /** Current value of a coding's identifier. */
+    suspend fun readCoding(c: Coding): IntArray = op { it.read(c.module(), c.didId) }
+    suspend fun applyCoding(c: Coding, option: CodingOption): WriteOutcome = op { engine(it).apply(vehicleId(), c, option) }
+    suspend fun undoWrite(r: WriteRecord): WriteOutcome = op { engine(it).undo(r) }
+    suspend fun restoreWrite(r: WriteRecord): WriteOutcome = op { engine(it).retryRestore(r) }
+    suspend fun runRoutine(r: Routine): WriteOutcome = op { engine(it).run(vehicleId(), r) }
+    suspend fun stopRoutine(r: Routine): Boolean = op { engine(it).stop(r) }
+
     /** Reads one custom PID once, for the editor's "Test" button. */
     suspend fun testCustomPid(p: CustomPid): IntArray? = op { it.readCustom(listOf(p))[p.key] }
+
+    /** Reads and decodes several custom PIDs at once (value null = no answer). */
+    suspend fun readCustomValues(pids: List<CustomPid>): Map<String, Double?> {
+        val raw = op { it.readCustom(pids) }
+        return pids.associate { p -> p.key to raw[p.key]?.let { bytes -> p.toSensor().decode(bytes) } }
+    }
 
     fun discoverModules() {
         if (discovery.value is Op.Loading) return

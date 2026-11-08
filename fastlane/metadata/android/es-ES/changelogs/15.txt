@@ -1,0 +1,6 @@
+• Codificaciones y adaptaciones: cambia ajustes de los módulos desde paquetes de la comunidad o listas de foros
+• Cada escritura guarda antes una copia de seguridad, se comprueba después, se restaura sola si falla y se puede deshacer
+• Las peligrosas explican el riesgo y piden una segunda confirmación; las seguras se aplican directamente
+• Datos de la comunidad OBDb (CC BY-SA 4.0): cientos de valores de fabricante por marca y modelo, solo lectura
+• Valores del FAP del fabricante (hollín, regeneraciones, km desde la última) en la pantalla del filtro de partículas
+• Explorador de identificadores: compara antes y después de cambiar un ajuste para encontrar dónde se guarda

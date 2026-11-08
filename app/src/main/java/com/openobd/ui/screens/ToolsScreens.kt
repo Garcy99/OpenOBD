@@ -60,8 +60,12 @@ import kotlinx.coroutines.launch
 // ------------------------------------------------------------------ DPF regeneration helper
 
 @Composable
-fun DieselScreen(onBack: () -> Unit, onConnect: () -> Unit, onGuides: () -> Unit) {
-    val session = LocalApp.current.session
+fun DieselScreen(onBack: () -> Unit, onConnect: () -> Unit, onGuides: () -> Unit, onPacks: () -> Unit = {}) {
+    val app = LocalApp.current
+    val session = app.session
+    val garage by app.garage.data.collectAsStateWithLifecycle()
+    val dpfPids = remember(garage.active?.customPids) { garage.active?.customPids.orEmpty().filter { com.openobd.core.brand.Obdb.isDpf(it) }.take(24) }
+    val dpfValues = remember { mutableStateMapOf<String, Double?>() }
     val vehicle = connectedVehicle()
     val status by session.diesel.status.collectAsStateWithLifecycle()
     DisposableEffect(vehicle != null) {
@@ -94,6 +98,33 @@ fun DieselScreen(onBack: () -> Unit, onConnect: () -> Unit, onGuides: () -> Unit
                 s?.dpfTempC?.let { Text(tr("Exhaust / filter temperature: %1\$s °C", "%.0f".format(it))) }
                 s?.dpfDeltaKpa?.let { Text(tr("Filter pressure difference: %1\$s kPa (rises as the filter fills)", "%.2f".format(it))) }
                 if ((s?.regensSeen ?: 0) > 0) Text(tr("Regenerations seen this drive: %1\$s", s!!.regensSeen))
+            }
+            SectionCard(title = tr("Manufacturer DPF values")) {
+                if (dpfPids.isEmpty()) {
+                    Text(tr("Soot load, regeneration count and distance since the last one are only in the engine computer's own identifiers. Add them from the community data (OBDb) for your make, then they appear here."),
+                        style = MaterialTheme.typography.bodySmall)
+                    TextButton(onClick = onPacks) { Text(tr("Get DPF values from community data")) }
+                } else {
+                    LaunchedEffect(dpfPids) {
+                        while (isActive) {
+                            runCatching { session.modules.readCustomValues(dpfPids) }.onSuccess { dpfValues.putAll(it) }
+                            delay(5000)
+                        }
+                    }
+                    val units = com.openobd.ui.appSettings().units
+                    dpfPids.forEach { p ->
+                        val v = dpfValues[p.key]
+                        val sensor = remember(p) { p.toSensor() }
+                        val f = com.openobd.ui.components.formatSensor(sensor, v, units)
+                        Row(Modifier.fillMaxWidth().padding(vertical = 3.dp)) {
+                            Text(p.name, Modifier.weight(1f), style = MaterialTheme.typography.bodyMedium)
+                            Text(if (!dpfValues.containsKey(p.key)) "…" else if (v == null) tr("no answer") else (f.value + " " + f.unit).trim(),
+                                fontWeight = FontWeight.SemiBold)
+                        }
+                    }
+                    Text(tr("Community data, not tested on your car: values that do not answer are not available on this engine."),
+                        style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
             }
             OutlinedButton(onClick = onGuides, modifier = Modifier.fillMaxWidth()) { Text(tr("Step-by-step guide")) }
         }
@@ -179,6 +210,11 @@ fun IdExplorerScreen(onBack: () -> Unit, onConnect: () -> Unit) {
     val watched = remember { mutableStateMapOf<Int, Boolean>() }
     var watching by remember { mutableStateOf(false) }
     var savedMsg by remember { mutableStateOf<String?>(null) }
+    var snapshot by remember { mutableStateOf<Map<Int, IntArray>?>(null) }
+    var changes by remember { mutableStateOf<List<com.openobd.core.brand.BitChange>?>(null) }
+    var naming by remember { mutableStateOf<com.openobd.core.brand.BitChange?>(null) }
+    var comparing by remember { mutableStateOf(false) }
+    val app = LocalApp.current
 
     LaunchedEffect(watching, module) {
         val m = module ?: return@LaunchedEffect
@@ -254,7 +290,77 @@ fun IdExplorerScreen(onBack: () -> Unit, onConnect: () -> Unit) {
                     }
                 }
             }
+            if (found.isNotEmpty() && m != null && !range.gmlan) {
+                SectionCard(title = tr("Find a setting")) {
+                    Text(tr("1. Take a snapshot. 2. Change one setting with the car's own menu (for example automatic locking). 3. Compare: the bits that changed hold that setting. Sensors also change on their own, so change the setting back and compare again to be sure."),
+                        style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        OutlinedButton(onClick = {
+                            comparing = true; changes = null
+                            scope.launch {
+                                runCatching { session.modules.readIds(m, found.keys, false) }.onSuccess { snapshot = it }.onFailure { error = it.message }
+                                comparing = false
+                            }
+                        }, enabled = !comparing) { Text(tr("Take snapshot")) }
+                        Button(onClick = {
+                            val before = snapshot ?: return@Button
+                            comparing = true
+                            scope.launch {
+                                runCatching { session.modules.readIds(m, before.keys, false) }
+                                    .onSuccess { after -> changes = com.openobd.core.brand.CodingFinder.diff(before, after); snapshot = after }
+                                    .onFailure { error = it.message }
+                                comparing = false
+                            }
+                        }, enabled = snapshot != null && !comparing) { Text(tr("Compare")) }
+                    }
+                    if (comparing) LinearProgressIndicator(Modifier.fillMaxWidth())
+                    snapshot?.let { Text(tr("Snapshot of %1\$s identifiers", it.size), style = MaterialTheme.typography.bodySmall) }
+                    changes?.let { list ->
+                        if (list.isEmpty()) Text(tr("Nothing changed."), style = MaterialTheme.typography.bodyMedium)
+                        list.forEach { c ->
+                            Row(Modifier.fillMaxWidth().padding(vertical = 2.dp), verticalAlignment = Alignment.CenterVertically) {
+                                Text("%04X · ".format(c.did) + tr("byte %1\$s", c.byte) + " · " + tr("bits %1\$s", "%02X".format(c.mask)) + ": %02X → %02X".format(c.before, c.after),
+                                    fontFamily = com.openobd.ui.theme.Inter, style = MaterialTheme.typography.bodySmall, modifier = Modifier.weight(1f))
+                                TextButton(onClick = { naming = c }) { Text(tr("Save as coding")) }
+                            }
+                        }
+                    }
+                }
+            }
             savedMsg?.let { Text(it, color = Good, style = MaterialTheme.typography.bodySmall) }
         }
+    }
+
+    naming?.let { c ->
+        val m = module
+        var name by remember(c) { mutableStateOf("") }
+        var beforeLabel by remember(c) { mutableStateOf(tr("Before")) }
+        var afterLabel by remember(c) { mutableStateOf(tr("After")) }
+        androidx.compose.material3.AlertDialog(
+            onDismissRequest = { naming = null },
+            title = { Text(tr("Save as coding")) },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    Text(tr("It is saved as dangerous and not tested. Check it by changing the setting back with the car's menu and comparing again."),
+                        style = MaterialTheme.typography.bodySmall, color = Warn)
+                    androidx.compose.material3.OutlinedTextField(name, { name = it }, label = { Text(tr("Name")) }, singleLine = true)
+                    androidx.compose.material3.OutlinedTextField(beforeLabel, { beforeLabel = it }, label = { Text(tr("Option 1")) }, singleLine = true)
+                    androidx.compose.material3.OutlinedTextField(afterLabel, { afterLabel = it }, label = { Text(tr("Option 2")) }, singleLine = true)
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    if (m == null) return@TextButton
+                    val coding = com.openobd.core.brand.CodingFinder.toCoding(app.garage.newId(), name.ifBlank { "%04X byte %d".format(c.did, c.byte) }, m, c,
+                        beforeLabel.ifBlank { "Before" }, afterLabel.ifBlank { "After" }).let { it.copy(source = tr(it.source)) }
+                    naming = null
+                    scope.launch {
+                        app.garage.updateActive { v -> v.copy(codings = v.codings + coding) }
+                        savedMsg = tr("Saved in Codings & adaptations (Brand features), marked dangerous and not tested.")
+                    }
+                }) { Text(tr("Save")) }
+            },
+            dismissButton = { TextButton(onClick = { naming = null }) { Text(tr("Cancel")) } },
+        )
     }
 }

@@ -80,6 +80,11 @@ class DemoTransport(
         0x251 to SimModule(0x651, "HVAC", "13406121", mutableListOf(), gmlan = true),
     )
     private var receiveFilter: String? = null
+    /** ATR0: the adapter sends without waiting for (or printing) replies. */
+    private var responses = true
+    /** ISO-TP request being received frame by frame (auto formatting off). */
+    private var isoTp: MutableList<Int>? = null
+    private var isoTpLength = 0
     private var canFilter: Int? = null
     private var canMask: Int? = null
 
@@ -99,6 +104,36 @@ class DemoTransport(
         0x243 to SimModule(0x643, "EBCM", "13354012", mutableListOf(Triple("C0561", 0x71, 0x6F), Triple("C0035", 0x00, 0x2F)), gmlan = true),
         0x247 to SimModule(0x647, "SDM", "13583468", mutableListOf(), gmlan = true),
     )
+
+    /** Writable identifiers (codings) per module request id; BCM 0101 is short, IPC 0600 needs several frames. */
+    val codingData: MutableMap<Int, MutableMap<Int, IntArray>> = mutableMapOf(
+        0x726 to mutableMapOf(0x0101 to intArrayOf(0x05, 0x00, 0x10), 0x0909 to intArrayOf(0x00)),
+        0x720 to mutableMapOf(0x0600 to intArrayOf(0x01, 0x22, 0x04, 0x00, 0x80, 0x10, 0x00, 0x03, 0x00, 0x40, 0x00, 0x07)),
+    )
+    /** Identifiers that need security access to write (answer 7F 2E 33). */
+    val lockedDids = mutableSetOf(0x0909)
+    /** Diagnostic session per module. */
+    private val sessions = mutableMapOf<Int, Int>()
+    /** Started routines (id) on the engine module. */
+    val runningRoutines = mutableSetOf<Int>()
+
+    enum class WriteFault {
+        /** Answers positively but keeps the old value. */
+        IGNORE,
+        /** Stores something else than what was sent. */
+        CORRUPT,
+        /** Stores something else, and refuses the restore too. */
+        CORRUPT_STICKY,
+        /** Answers 7F 2E 22. */
+        REFUSE,
+        /** Stores the value and then stops answering reads once. */
+        SILENT_READ,
+    }
+    var writeFault: WriteFault? = null
+    private var silentReads = 0
+    /** Number of 2E requests seen, for tests. */
+    var writes = 0
+        private set
 
     // Car state
     val stored = mutableListOf("P0301", "P0420")
@@ -159,18 +194,20 @@ class DemoTransport(
         if (cmd == "STI" && stn) return listOf("STN2120 v5.6.19")
         if (cmd.startsWith("ST")) return listOf("?")
         if (!cmd.all { it.isDigit() || it in 'A'..'F' }) return listOf("?")
-        return handleObd(cmd)
+        val out = handleObd(cmd)
+        return if (responses) out else emptyList()
     }
 
     private fun handleAt(c: String): List<String> = when {
         c == "Z" || c == "WS" -> {
             echo = true; spaces = true; headers = false; connectedToCar = false
-            protocolCode = '0'; caf = true; pbOptions = 0xE0; pbDivisor = 0x04
+            protocolCode = '0'; caf = true; pbOptions = 0xE0; pbDivisor = 0x04; responses = true; isoTp = null
             header = defaultHeader; receiveFilter = null; canFilter = null; canMask = null
             listOf("", "ELM327 v1.5")
         }
         limitedClone && ((c.startsWith("CRA") && c != "CRA") || c.startsWith("FCS")) -> listOf("?")
-        c.startsWith("CAF") -> { caf = c.endsWith("1"); listOf("OK") }
+        c.startsWith("CAF") -> { caf = c.endsWith("1"); isoTp = null; listOf("OK") }
+        c == "R0" || c == "R1" -> { responses = c == "R1"; listOf("OK") }
         c.startsWith("PB") && c.length == 6 -> {
             if (limitedClone) listOf("?") else {
                 pbOptions = c.substring(2, 4).toInt(16); pbDivisor = c.substring(4, 6).toInt(16).coerceAtLeast(1); listOf("OK")
@@ -202,8 +239,29 @@ class DemoTransport(
     private fun handleObd(cmd: String): List<String> {
         // Odd length -> trailing "expected responses" digit
         val hex = if (cmd.length % 2 == 1) cmd.dropLast(1) else cmd
+        val rawBytes = hex.chunked(2).map { it.toInt(16) }
+        // Long requests sent frame by frame with auto formatting off: answer the first frame with flow control,
+        // collect consecutive frames, and handle the request once complete.
+        if (!caf && can11 && rawBytes.isNotEmpty() && header != defaultHeader) {
+            val pci = rawBytes[0] shr 4
+            val module = modules[header.toIntOrNull(16) ?: -1]
+            if (pci == 1 && module != null) {
+                isoTpLength = ((rawBytes[0] and 0x0F) shl 8) or rawBytes.getOrElse(1) { 0 }
+                isoTp = rawBytes.drop(2).toMutableList()
+                return if (accepts(module.rx)) listOf(join(listOfNotNull("%03X".format(module.rx).takeIf { headers }) + listOf(0x30, 0, 0, 0, 0, 0, 0, 0).map(::hex))) else listOf("NO DATA")
+            }
+            if (pci == 2 && module != null) {
+                val buf = isoTp ?: return listOf("NO DATA")
+                buf += rawBytes.drop(1)
+                if (buf.size < isoTpLength) return emptyList()
+                isoTp = null
+                val payload = moduleReply(header.toInt(16), module, buf.take(isoTpLength)) ?: return listOf("NO DATA")
+                val frame = listOf(payload.size) + payload + List((7 - payload.size).coerceAtLeast(0)) { 0 }
+                return listOf(join(listOfNotNull("%03X".format(module.rx).takeIf { headers }) + frame.map(::hex)))
+            }
+        }
         // With CAN auto formatting off the tester supplies the ISO-TP PCI byte itself.
-        val bytes = hex.chunked(2).map { it.toInt(16) }.let { if (!caf && it.isNotEmpty() && it[0] in 1..7) it.drop(1).take(it[0]) else it }
+        val bytes = rawBytes.let { if (!caf && it.isNotEmpty() && it[0] in 1..7) it.drop(1).take(it[0]) else it }
         if (bytes.isEmpty()) return listOf("?")
         if (!carAnswers && !onMsCan) return listOf(when (protocolCode) { '0' -> "UNABLE TO CONNECT"; '3', '4', '5' -> "BUS INIT: ...ERROR"; '1', '2' -> "NO DATA"; else -> "CAN ERROR" })
         if (autoSearchMissesCar && protocolCode == '0' && !connectedToCar) return listOf("SEARCHING...", "UNABLE TO CONNECT")
@@ -361,7 +419,37 @@ class DemoTransport(
         fun neg(nrc: Int) = listOf(0x7F, b[0], nrc)
         return when (b[0]) {
             0x3E -> listOf(0x7E, 0x00)
-            0x10 -> listOf(0x50, b.getOrElse(1) { 1 }, 0x00, 0x32, 0x01, 0xF4)
+            0x10 -> { sessions[tx] = b.getOrElse(1) { 1 }; listOf(0x50, b.getOrElse(1) { 1 }, 0x00, 0x32, 0x01, 0xF4) }
+            0x2E -> {
+                val did = (b[1] shl 8) or b[2]
+                val store = codingData[tx]?.takeIf { did in it } ?: return neg(0x31)
+                if (sessions[tx] != 3) return neg(0x7F)
+                if (did in lockedDids) return neg(0x33)
+                val data = b.drop(3).toIntArray()
+                if (data.size != store.getValue(did).size) return neg(0x13)
+                writes++
+                when (writeFault) {
+                    WriteFault.REFUSE -> return neg(0x22)
+                    WriteFault.IGNORE -> {}
+                    WriteFault.CORRUPT -> { store[did] = data.copyOf().also { it[0] = it[0] xor 0xFF }; writeFault = null }
+                    WriteFault.CORRUPT_STICKY -> store[did] = data.copyOf().also { it[0] = it[0] xor 0xFF }
+                    WriteFault.SILENT_READ -> { store[did] = data; silentReads = 1; writeFault = null }
+                    null -> store[did] = data
+                }
+                listOf(0x6E, b[1], b[2])
+            }
+            0x31 -> {
+                if (tx != 0x7E0) return neg(0x11)
+                val id = (b[2] shl 8) or b[3]
+                if (id != 0xF001) return neg(0x31)
+                if (sessions[tx] != 3) return neg(0x7F)
+                when (b[1]) {
+                    0x01 -> { runningRoutines += id; listOf(0x71, 0x01, b[2], b[3], 0x00) }
+                    0x02 -> { runningRoutines -= id; listOf(0x71, 0x02, b[2], b[3], 0x00) }
+                    0x03 -> listOf(0x71, 0x03, b[2], b[3], if (id in runningRoutines) 0x01 else 0x02)
+                    else -> neg(0x12)
+                }
+            }
             0x19 -> if (b.getOrNull(1) == 0x04 || b.getOrNull(1) == 0x06) {
                 // Snapshot / extended data for the ABS wheel-speed code
                 val code = DtcDecoder.decode(b[2], b[3])
@@ -381,6 +469,10 @@ class DemoTransport(
             0x22 -> {
                 val did = (b.getOrElse(1) { 0 } shl 8) or b.getOrElse(2) { 0 }
                 fun ascii(s: String) = listOf(0x62, b[1], b[2]) + s.map { it.code }
+                codingData[tx]?.get(did)?.let { data ->
+                    if (silentReads > 0) { silentReads--; return null }
+                    return listOf(0x62, b[1], b[2]) + data.toList()
+                }
                 when (did) {
                     0xF187 -> ascii(m.partNumber)
                     0xF190 -> ascii(m.vin ?: vin)

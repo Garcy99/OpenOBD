@@ -112,6 +112,7 @@ object Routes {
     const val DIESEL = "diesel"
     const val GUIDES = "guides"
     const val EXPLORER = "explorer"
+    const val CODINGS = "codings"
     const val CODE = "code/{code}"
     fun code(c: String) = "code/$c"
     const val ASSISTANT = "assistant/{code}"
@@ -231,8 +232,9 @@ fun OpenObdNavHost() {
                 composable(Routes.ASSISTANT) { e ->
                     com.openobd.ui.screens.AssistantScreen(e.arguments?.getString("code").orEmpty(), onBack = back, onSettings = { nav.navigate(Routes.SETTINGS) })
                 }
-                composable(Routes.DIESEL) { com.openobd.ui.screens.DieselScreen(onBack = back, onConnect = toHome, onGuides = { nav.navigate(Routes.GUIDES) }) }
+                composable(Routes.DIESEL) { com.openobd.ui.screens.DieselScreen(onBack = back, onConnect = toHome, onGuides = { nav.navigate(Routes.GUIDES) }, onPacks = { nav.navigate(Routes.PACKS) }) }
                 composable(Routes.GUIDES) { com.openobd.ui.screens.ServiceGuidesScreen(onBack = back, onDieselHelper = { nav.navigate(Routes.DIESEL) }) }
+                composable(Routes.CODINGS) { com.openobd.ui.screens.CodingsScreen(onBack = back, onConnect = toHome) }
                 composable(Routes.EXPLORER) { com.openobd.ui.screens.IdExplorerScreen(onBack = back, onConnect = toHome) }
                 composable(Routes.WELCOME) { com.openobd.ui.screens.WelcomeScreen(onDone = { nav.goTab(Routes.HOME) }, onGarage = { nav.navigate(Routes.GARAGE) }) }
             composable(Routes.PACKS) { com.openobd.ui.screens.PacksScreen(onBack = back) }

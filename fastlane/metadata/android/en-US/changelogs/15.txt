@@ -1,0 +1,6 @@
+• Codings & adaptations: change module settings from community packs or forum coding lists
+• Every write saves a backup first, is checked afterwards, is put back automatically if it fails and can be undone
+• Dangerous changes explain the risk and ask a second time; safe ones are applied straight away
+• OBDb community data (CC BY-SA 4.0): hundreds of manufacturer values per make and model, read-only
+• Manufacturer DPF values (soot, regenerations, distance since the last one) on the particulate filter screen
+• Identifier explorer: compare before and after changing a setting to find where it is stored

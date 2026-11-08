@@ -23,6 +23,10 @@ data class CustomPid(
     val header: String = "",
     /** Response CAN ID; blank = header + 8 (the usual convention). */
     val receive: String = "",
+    /** Text for enumerated raw values ("0" -> "Off"); the value is shown as text when one matches. */
+    val labels: Map<String, String> = emptyMap(),
+    /** Where the definition came from, e.g. "OBDb (CC BY-SA 4.0)". */
+    val source: String = "",
 ) {
     val key: String get() = "X_$id"
     val requestBytes: List<Int> get() = request.chunked(2).map { it.toInt(16) }
@@ -47,10 +51,13 @@ data class CustomPid(
             key = key, pid = -2, name = name, shortName = shortName.ifBlank { name.take(12) }, unit = u,
             min = min, max = if (max > min) max else min + 100, category = SensorCategory.BRAND,
             decimals = if (max - min <= 20) 2 else if (max - min <= 300) 1 else 0, customUnit = label,
+            labeler = if (labels.isEmpty()) null else { v -> labels[Math.round(v).toString()] ?: formatPlain(v) },
         ) { bytes -> eq?.evaluate(bytes) }
     }
 
     companion object {
+        private fun formatPlain(v: Double) = if (v == Math.floor(v)) v.toLong().toString() else "%.2f".format(v)
+
         /** OBD read, freeze frame, vehicle info, KWP read by local id, UDS read by identifier, GMLAN read by id / packet. */
         val READ_ONLY_SERVICES = setOf(0x01, 0x02, 0x09, 0x21, 0x22, 0x1A, 0xAA)
 
@@ -66,6 +73,7 @@ data class CustomPid(
                 "rpm" -> ObdUnit.RPM
                 "km" -> ObdUnit.KM
                 "nm", "n·m", "n.m" -> ObdUnit.NEWTON_METERS
+                "bar" -> ObdUnit.BAR
                 "kw" -> ObdUnit.KILOWATTS
                 "l/h" -> ObdUnit.LITERS_PER_HOUR
                 "g/s" -> ObdUnit.GRAMS_PER_SEC

@@ -21,6 +21,9 @@ data class PidPack(
     val verified: Boolean = false,
     val pids: List<CustomPid> = emptyList(),
     val modules: List<EcuModule> = emptyList(),
+    /** Settings the pack can change; only written when the user picks an option, after a backup. */
+    val codings: List<Coding> = emptyList(),
+    val routines: List<Routine> = emptyList(),
 )
 
 /** One entry of the online catalog: what the pack is for and where to download it. */
@@ -35,6 +38,7 @@ data class PackEntry(
     val engines: List<String> = emptyList(),
     val verified: Boolean = false,
     val pids: Int = 0,
+    val codings: Int = 0,
     val author: String = "",
     /** Relative to the catalog URL, or absolute https. */
     val file: String,
@@ -62,9 +66,11 @@ object PidPacks {
         }
         if (p.format != 1) throw PackException("This pack needs a newer version of OpenOBD.")
         if (p.name.isBlank()) throw PackException("The pack has no name.")
-        if (p.pids.isEmpty()) throw PackException("The pack contains no PIDs.")
-        if (p.pids.size > MAX_PIDS) throw PackException("The pack has too many PIDs.")
+        if (p.pids.isEmpty() && p.codings.isEmpty() && p.routines.isEmpty()) throw PackException("The pack contains no PIDs.")
+        if (p.pids.size > MAX_PIDS || p.codings.size + p.routines.size > MAX_PIDS) throw PackException("The pack has too many PIDs.")
         p.pids.forEach { pid -> pid.validate()?.let { throw PackException("${pid.name}: $it") } }
+        p.codings.forEach { c -> c.validate()?.let { throw PackException("${c.name}: $it") } }
+        p.routines.forEach { r -> r.validate()?.let { throw PackException("${r.name}: $it") } }
         p.modules.forEach { m -> if (m.tx !in 0..0x7FF && !m.is29Bit) throw PackException("${m.name}: invalid address") }
         return p
     }
@@ -92,19 +98,34 @@ object PidPacks {
     }
 
     /** Builds a pack from a car's own custom PIDs and modules. */
-    fun fromCar(name: String, make: String?, model: String?, pids: List<CustomPid>, modules: List<EcuModule>) = PidPack(
+    fun fromCar(
+        name: String, make: String?, model: String?, pids: List<CustomPid>, modules: List<EcuModule>,
+        codings: List<Coding> = emptyList(), routines: List<Routine> = emptyList(),
+    ) = PidPack(
         name = name, makes = listOfNotNull(make?.takeIf { it.isNotBlank() }), models = listOfNotNull(model?.takeIf { it.isNotBlank() }),
-        pids = pids, modules = modules,
+        pids = pids, modules = modules, codings = codings, routines = routines,
     )
 
     data class MergeResult(val pids: List<CustomPid>, val modules: List<EcuModule>, val added: Int, val skipped: Int)
+
+    /** Adds a pack's codings and routines; the same setting (module, identifier, bits) or routine is not added twice. */
+    fun mergeCodings(codings: List<Coding>, routines: List<Routine>, pack: PidPack, newId: () -> String): Triple<List<Coding>, List<Routine>, Int> {
+        fun key(c: Coding) = "${c.header.uppercase()}/${c.did.uppercase()}/${c.byte}/${c.mask}"
+        fun rkey(r: Routine) = "${r.header.uppercase()}/${r.start.uppercase()}"
+        val have = codings.map(::key).toMutableSet()
+        val haveR = routines.map(::rkey).toMutableSet()
+        val newC = pack.codings.filter { have.add(key(it)) }.map { it.copy(id = newId()) }
+        val newR = pack.routines.filter { haveR.add(rkey(it)) }.map { it.copy(id = newId()) }
+        return Triple(codings + newC, routines + newR, newC.size + newR.size)
+    }
 
     /**
      * Adds a pack to a car. PIDs already present (same request and header) are skipped; new ones get fresh ids so
      * two packs can never clash.
      */
     fun merge(existing: List<CustomPid>, existingModules: List<EcuModule>, pack: PidPack, newId: () -> String): MergeResult {
-        fun key(p: CustomPid) = p.request.uppercase() + "@" + p.header.trim().uppercase()
+        // Several values often come from one request (different bytes or bits), so the formula is part of the key.
+        fun key(p: CustomPid) = p.request.uppercase() + "@" + p.header.trim().uppercase() + "#" + p.equation.replace(" ", "")
         val have = existing.map(::key).toMutableSet()
         val added = mutableListOf<CustomPid>()
         var skipped = 0

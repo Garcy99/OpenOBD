@@ -82,24 +82,26 @@ fun PacksScreen(onBack: () -> Unit) {
     Column(Modifier.fillMaxSize()) {
         ScreenTopBar(tr("PID packs"), onBack)
         Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
-            Text(tr("Packs are sets of manufacturer PIDs and identifiers for a make, model or engine. Share what you discovered, or use what others found. Packs can only read values: requests that clear, write or run routines are refused."),
+            Text(tr("Packs are sets of manufacturer PIDs, identifiers and codings for a make, model or engine. Share what you discovered, or use what others found. Values are only read; a coding is only written when you choose it in Codings, after a backup."),
                 style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
 
             SectionCard(title = tr("Share your PIDs")) {
                 val pids = car?.customPids.orEmpty()
-                Text(if (pids.isEmpty()) tr("This car has no custom PIDs yet. Find some with the identifier explorer or add them by hand.")
-                else tr("%1\$s custom PIDs of %2\$s", pids.size, car?.name ?: ""), style = MaterialTheme.typography.bodyMedium)
+                val codings = car?.codings.orEmpty().size + car?.routines.orEmpty().size
+                Text(if (pids.isEmpty() && codings == 0) tr("This car has no custom PIDs yet. Find some with the identifier explorer or add them by hand.")
+                else tr("%1\$s custom PIDs of %2\$s", pids.size, car?.name ?: "") + (if (codings > 0) " · " + tr("%1\$s codings", codings) else ""),
+                    style = MaterialTheme.typography.bodyMedium)
                 Button(onClick = {
                     val c = car ?: return@Button
                     scope.launch {
-                        val pack = PidPacks.fromCar("${c.name} PIDs", c.specs?.make, c.specs?.model, c.customPids, c.customModules)
+                        val pack = PidPacks.fromCar("${c.name} PIDs", c.specs?.make, c.specs?.model, c.customPids, c.customModules, c.codings, c.routines)
                         val file = withContext(Dispatchers.IO) {
                             File(File(context.cacheDir, "reports").apply { mkdirs() }, c.name.replace(Regex("[^A-Za-z0-9]+"), "-").trim('-').ifBlank { "car" } + ".openobd-pack.json")
                                 .apply { writeText(PidPacks.encode(pack)) }
                         }
                         shareFile(context, file, "application/json")
                     }
-                }, enabled = pids.isNotEmpty()) { Icon(Icons.Default.Share, null); Spacer(Modifier.width(6.dp)); Text(tr("Share as a pack")) }
+                }, enabled = pids.isNotEmpty() || codings > 0) { Icon(Icons.Default.Share, null); Spacer(Modifier.width(6.dp)); Text(tr("Share as a pack")) }
                 Text(tr("To add it to the community catalog, open a pull request with the file in the packs folder of the OpenOBD repository (only values you tested on a real car, please)."),
                     style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
@@ -120,6 +122,7 @@ fun PacksScreen(onBack: () -> Unit) {
             }
             if (loading) LoadingBox(null)
             error?.let { ErrorText(it) }
+            ObdbSection(onAdded = { message = it })
             message?.let { Text(it, color = Good, style = MaterialTheme.typography.bodyMedium) }
             catalog?.let { list ->
                 SectionCard(title = tr("Community packs")) {
@@ -137,7 +140,7 @@ fun PacksScreen(onBack: () -> Unit) {
                                 if (e.verified) Icon(Icons.Default.Verified, tr("Tested on a real car"), tint = Good)
                             }
                             Text(listOf(e.makes.joinToString(), e.models.joinToString(), e.years, e.engines.joinToString()).filter { it.isNotBlank() }.joinToString(" · ") +
-                                " · " + tr("%1\$s PIDs", e.pids), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                " · " + tr("%1\$s PIDs", e.pids) + (if (e.codings > 0) " · " + tr("%1\$s codings", e.codings) else ""), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                             if (e.description.isNotBlank()) Text(e.description, style = MaterialTheme.typography.bodySmall)
                         }
                     }
@@ -162,19 +165,29 @@ fun PacksScreen(onBack: () -> Unit) {
                         Text("• ${p.name}  ", fontWeight = FontWeight.Medium)
                         Text("   ${p.header.ifBlank { "7DF" }} · ${p.request} · ${p.equation}", fontFamily = com.openobd.ui.theme.Inter, style = MaterialTheme.typography.bodySmall)
                     }
+                    if (pack.codings.isNotEmpty() || pack.routines.isNotEmpty()) {
+                        Text(tr("Codings (nothing is written until you choose an option in Codings):"), fontWeight = FontWeight.SemiBold, color = Warn)
+                        pack.codings.forEach { c ->
+                            Text("• ${c.name}" + (if (c.risk == com.openobd.core.brand.WriteRisk.DANGEROUS) " ⚠" else ""), fontWeight = FontWeight.Medium)
+                            Text("   ${c.header} · ${c.did} · " + tr("byte %1\$s", c.byte) + " · " + c.options.joinToString(" / ") { it.label }, style = MaterialTheme.typography.bodySmall)
+                        }
+                        pack.routines.forEach { r -> Text("• ${r.name} ⚠", fontWeight = FontWeight.Medium) }
+                    }
                 }
             },
             confirmButton = {
                 TextButton(onClick = {
                     preview = null
                     scope.launch {
-                        var added = 0; var skipped = 0
+                        var added = 0; var skipped = 0; var codings = 0
                         app.garage.updateActive { v ->
                             val r = PidPacks.merge(v.customPids, v.customModules, pack) { app.garage.newId() }
-                            added = r.added; skipped = r.skipped
-                            v.copy(customPids = r.pids, customModules = r.modules)
+                            val (c, rt, n) = PidPacks.mergeCodings(v.codings, v.routines, pack) { app.garage.newId() }
+                            added = r.added; skipped = r.skipped; codings = n
+                            v.copy(customPids = r.pids, customModules = r.modules, codings = c, routines = rt)
                         }
-                        message = tr("Added %1\$s PIDs (%2\$s already present). They appear in Live data under \"Brand / custom\".", added, skipped)
+                        message = tr("Added %1\$s PIDs (%2\$s already present). They appear in Live data under \"Brand / custom\".", added, skipped) +
+                            (if (codings > 0) " " + tr("%1\$s codings added: find them in Brand features > Codings.", codings) else "")
                     }
                 }, enabled = car != null) { Text(tr("Add to my car")) }
             },

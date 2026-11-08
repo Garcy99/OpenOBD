@@ -184,8 +184,15 @@ fun BrandScreen(onBack: () -> Unit, onNavigate: (String) -> Unit) {
                 TextButton(onClick = { onNavigate(Routes.PIDS) }) { Text(tr("Manage custom PIDs")) }
             }
 
+            SectionCard(title = tr("Codings & adaptations")) {
+                val n = (activeVehicle?.codings.orEmpty().size + activeVehicle?.routines.orEmpty().size)
+                Text(tr("Change settings stored in the modules (from community packs or forums). Every write is backed up first, checked afterwards and can be undone."),
+                    style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                TextButton(onClick = { onNavigate(Routes.CODINGS) }) { Text(if (n > 0) tr("Open codings (%1\$s)", n) else tr("Open codings")) }
+            }
+
             SectionCard(title = tr("Safety")) {
-                Text(tr("OpenOBD only reads data and clears trouble codes. It never writes coding, adaptations or software, which could disable a module. ") +
+                Text(tr("OpenOBD reads data and clears trouble codes. It only writes a coding when you choose one, after saving a backup, and never writes software or unlocks protected modules. ") +
                     tr("Some 2018+ vehicles (notably Stellantis) have a secure gateway that blocks clearing codes without an authorised unlock."),
                     style = MaterialTheme.typography.bodySmall)
             }

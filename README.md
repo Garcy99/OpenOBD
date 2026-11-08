@@ -46,7 +46,11 @@ with no ads, subscriptions or paywalls.
 - **Manufacturer-specific code descriptions** for Ford, Toyota, Honda, Nissan, GM, Chrysler and Hyundai/Kia
 - **Custom / brand PIDs** with a full equation engine and **Torque CSV import/export**, so community PID packs (EV battery health,
   transmission temperature, DPF soot …) show up in live data, gauges, charts and logs
-- Read-only by design: no coding or adaptations, which could disable a module. Code clearing is the only write
+- **Community data from OBDb**: hundreds of read-only manufacturer values per make and model (battery, DPF soot and
+  regenerations, tyres, gearbox …), converted on the phone
+- **Codings & adaptations** from community packs or forum coding lists, with a backup before every write, a check
+  afterwards, automatic restore if it fails and undo from the history. Dangerous changes explain the risk and ask twice;
+  modules protected by security access are never unlocked
 
 **Find your car (model & specifications)**
 - Pick your country: **every EU country, Norway and Iceland**, including Spain, can browse the official catalog of every car
@@ -163,6 +167,14 @@ Don't use the app while driving. Clearing codes doesn't fix the underlying probl
 descriptions are generic (SAE J2012), and manufacturer-specific codes (P1xxx, B1xxx …) can mean
 different things on different brands.
 
+Codings change settings inside the car's modules. OpenOBD saves a backup before every write, checks it
+afterwards, writes the backup back if the check fails and lets you undo any change, but a coding that does
+not match your car can still disable a function until it is put back. Use codings tested on your model.
+
 ## License
 
 MIT. See [LICENSE](LICENSE).
+
+Community manufacturer data imported from [OBDb](https://obdb.community) is © OBDb contributors,
+CC BY-SA 4.0; it is downloaded and converted on the phone, and packs made from it keep that attribution
+and licence. `app/src/main/assets/obdb/index.json` (the list of makes and models) is derived from it.

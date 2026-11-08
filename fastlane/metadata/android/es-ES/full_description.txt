@@ -29,4 +29,4 @@ GARAJE
 
 Pruébala sin coche: el modo Demo simula un vehículo.
 
-OpenOBD solo lee datos y borra códigos de avería; nunca escribe codificaciones ni adaptaciones. No uses la app mientras conduces. Algunas funciones dependen de tu adaptador y de tu vehículo.
+OpenOBD lee datos y borra códigos de avería. Las codificaciones solo se escriben cuando tú las eliges, tras guardar una copia de seguridad, y se pueden deshacer; nunca desbloquea módulos protegidos. No uses la app mientras conduces. Algunas funciones dependen de tu adaptador y de tu vehículo.

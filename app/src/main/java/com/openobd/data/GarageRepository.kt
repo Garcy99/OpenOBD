@@ -62,6 +62,12 @@ class GarageRepository(context: Context) {
 
     suspend fun updateActive(transform: (Vehicle) -> Vehicle) { _data.value.active?.let { updateVehicle(it.id, transform) } }
 
+    /** Stores or replaces a write record (the backup is on disk before the write is sent). */
+    suspend fun saveWrite(r: com.openobd.core.brand.WriteRecord) = update { d ->
+        val i = d.writes.indexOfFirst { it.id == r.id }
+        d.copy(writes = if (i >= 0) d.writes.toMutableList().also { it[i] = r } else (d.writes + r).takeLast(500))
+    }
+
     suspend fun deleteVehicle(id: String) {
         val trips = _data.value.trips.filter { it.vehicleId == id }
         update { d ->
@@ -74,6 +80,7 @@ class GarageRepository(context: Context) {
                 trips = d.trips.filter { it.vehicleId != id },
                 health = d.health.filter { it.vehicleId != id },
                 batteryTests = d.batteryTests.filter { it.vehicleId != id },
+                writes = d.writes.filter { it.vehicleId != id },
             )
         }
         withContext(Dispatchers.IO) { trips.forEach { trackFile(it.id).delete() } }

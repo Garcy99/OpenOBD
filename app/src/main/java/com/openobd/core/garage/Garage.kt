@@ -20,6 +20,9 @@ data class Vehicle(
     val createdAt: Long = 0,
     /** Model and specifications from a registry / catalog lookup, editable by the user. */
     val specs: com.openobd.core.specs.VehicleSpecs? = null,
+    /** Settings this car can change (from packs or typed in), and routines it can run. */
+    val codings: List<com.openobd.core.brand.Coding> = emptyList(),
+    val routines: List<com.openobd.core.brand.Routine> = emptyList(),
 )
 
 @Serializable
@@ -301,6 +304,8 @@ data class GarageData(
     val health: List<com.openobd.core.health.HealthSample> = emptyList(),
     /** Battery and starting tests. */
     val batteryTests: List<com.openobd.core.battery.BatteryTestRecord> = emptyList(),
+    /** Every coding write and routine, with the backup of what was there before (newest last). */
+    val writes: List<com.openobd.core.brand.WriteRecord> = emptyList(),
 ) {
     val active: Vehicle? get() = vehicles.firstOrNull { it.id == activeVehicleId } ?: vehicles.firstOrNull()
 

@@ -29,4 +29,4 @@ GARAGE
 
 Try it without a car: Demo mode simulates a vehicle.
 
-OpenOBD only reads data and clears trouble codes; it never writes coding or adaptations. Don't use the app while driving. Some features depend on your adapter and vehicle.
+OpenOBD reads data and clears trouble codes. Codings are only written when you choose them, after saving a backup, and can be undone; protected modules are never unlocked. Don't use the app while driving. Some features depend on your adapter and vehicle.
