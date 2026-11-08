@@ -23,6 +23,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # tags, to collect the changelogs since the previous release
       - uses: actions/setup-java@v4
         with:
           distribution: temurin
@@ -72,18 +74,30 @@ jobs:
           mkdir dist
           cp app/build/outputs/apk/release/app-release.apk "dist/OpenOBD-$TAG.apk"
           if [ "$SIGNED" = "true" ]; then cp app/build/outputs/bundle/release/app-release.aab "dist/OpenOBD-$TAG.aab"; fi
+          # Every version since the previous release tag, newest first.
+          PREV=$(git tag --list 'v*' --sort=-v:refname | grep -vx "$TAG" | head -n1)
+          PREV_CODE=$( [ -n "$PREV" ] && git show "$PREV:app/build.gradle.kts" | grep -oP 'versionCode = \K[0-9]+' || echo $((CODE - 1)) )
+          changes() {
+            for c in $(seq "$CODE" -1 $((PREV_CODE + 1))); do
+              f="fastlane/metadata/android/$1/changelogs/$c.txt"
+              [ -f "$f" ] && cat "$f" && echo
+            done
+          }
           {
-            echo "## What's new"
-            cat "fastlane/metadata/android/en-US/changelogs/$CODE.txt" 2>/dev/null
-            echo
-            echo "## Novedades"
-            cat "fastlane/metadata/android/es-ES/changelogs/$CODE.txt" 2>/dev/null
-            echo
+            echo "## What's new${PREV:+ since $PREV}"
+            changes en-US
+            echo "## Novedades${PREV:+ desde $PREV}"
+            changes es-ES
             echo "## Install"
-            echo "Download **OpenOBD-$TAG.apk** on your Android phone (Android 8.0 or newer) and open it. Allow installing apps from your browser or file manager if asked."
+            echo "Download **OpenOBD-$TAG.apk** on your Android phone, tablet or car head unit (Android 6.0 or newer) and open it. Allow installing apps from your browser or file manager if asked."
+            echo
+            echo "## Instalar"
+            echo "Descarga **OpenOBD-$TAG.apk** en tu móvil, tablet o pantalla del coche (Android 6.0 o superior) y ábrelo. Si te lo pide, permite instalar apps desde el navegador o el gestor de archivos."
             if [ "$SIGNED" != "true" ]; then
               echo
               echo "> **Test build.** This APK is signed with a temporary key, so it cannot update a copy signed with a different key: uninstall the old copy first (back up in Settings → Backup to keep your garage and trips)."
+              echo ">"
+              echo "> **Versión de prueba.** Este APK está firmado con una clave temporal y no puede actualizar una copia firmada con otra clave: desinstala antes la anterior (haz una copia en Ajustes → Copia de seguridad para conservar tu garaje y viajes)."
             fi
           } > notes.md
           cat notes.md
