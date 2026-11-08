@@ -52,8 +52,6 @@ data class VehicleSpecs(
     val source: String = "",
     val lookupDate: Long = 0,
 ) {
-    val powerCv: Double? get() = powerKw?.let { it * 1.35962 }
-    val powerHp: Double? get() = powerKw?.let { it * 1.34102 }
     val displacementL: Double? get() = engineCc?.let { it / 1000.0 }
     val title: String get() = listOf(make, model).filter { it.isNotBlank() }.joinToString(" ") { prettyName(it) }
 

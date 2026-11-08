@@ -8,7 +8,6 @@ enum class DtcType(val label: String, val mode: Int, val description: String) {
 
 data class Dtc(val code: String, val type: DtcType, val ecu: String) {
     val system: DtcSystem get() = DtcSystem.of(code)
-    val isGeneric: Boolean get() = code.length == 5 && (code[1] == '0' || (code[0] == 'P' && (code[1] == '2' || (code[1] == '3' && code[2] >= '4'))))
 }
 
 enum class DtcSystem(val letter: Char, val label: String) {

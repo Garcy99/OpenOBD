@@ -1,32 +1,38 @@
-OpenOBD convierte tu móvil y un adaptador OBD-II compatible con ELM327 (Bluetooth, Bluetooth LE o Wi-Fi) en una herramienta de diagnóstico completa. Es gratis y de código abierto, sin anuncios, suscripciones ni cuenta.
+OpenOBD convierte tu móvil, tablet o pantalla del coche y un adaptador OBD-II compatible ELM327 (Bluetooth, Bluetooth LE, Wi-Fi o USB) en una herramienta de diagnóstico completa. Gratis y de código abierto: sin anuncios, sin suscripciones, sin cuenta, y tus datos se quedan en tu móvil.
 
-DIAGNÓSTICO
-• Lee códigos de avería confirmados, pendientes y permanentes de todas las centralitas, y bórralos (testigo de avería del motor)
-• Base de datos sin conexión con más de 1300 códigos genéricos, con causas, gravedad y consejos para los más habituales
-• Imagen congelada, preparación de emisiones (ITV) y pruebas de monitores del modo 06, incluidos fallos de encendido por cilindro
-• Información del vehículo: decodificador de VIN, IDs de calibración, CVN, nombres de centralitas
+DIAGNOSIS
+• Lee y borra averías del motor y de todos los módulos: ABS, airbag, carrocería, cuadro, cambio, climatización, batería de VE
+• Averías explicadas: «¿puedo seguir conduciendo?», causas probables ordenadas con los datos de tu coche y qué revisar
+• Más de 1.300 descripciones sin conexión, y códigos del fabricante de Ford, Toyota, Honda, Nissan, GM, Chrysler y Hyundai / Kia
+• Revisión de coche usado y pre-ITV con informe PDF: averías ocultas, borrados recientes, monitores, VIN en cada módulo
+• Freeze frame, monitores de emisiones, pruebas Mode 06 con fallos por cilindro, test de batería y arranque, tendencias de salud
+• Asistente IA opcional con tu propia clave de Claude, también para identificar un testigo con una foto
 
-FUNCIONES DE MARCA
-• Marca detectada automáticamente a partir del VIN
-• Escanea módulos de ABS, airbag, carrocería, cuadro, dirección, climatización y batería de VE (UDS / KWP2000 sobre CAN)
-• Direcciones conocidas para Ford/Lincoln, Mazda, VW/Audi/Škoda/SEAT, Hyundai/Kia, Toyota/Lexus, Nissan, Renault y GM, y descubrimiento para cualquier marca
-• Imagen congelada de módulos, tipos de fallo y consejos de "qué revisar"
-• Compatible con adaptadores con conmutador HS/MS-CAN (Ford/Mazda)
-• PIDs personalizados con importación de CSV de Torque
+DATOS EN DIRECTO
+• Más de 200 sensores, consumo real (también en diésel), turbo, potencia y acelerador
+• Relojes a tu gusto: 7 temas, aguja, arco, barra o número, colores, rangos y avisos en cada reloj
+• Gráficas, HUD, relojes flotantes sobre el navegador, avisos por voz y registro CSV en segundo plano
+• Ordenador de viaje, cronómetro 0-100 km/h y puntuación de conducción eficiente
 
-DATOS EN VIVO
-• Todos los PIDs OBD-II estándar (más de 200 sensores), además de consumo, presión del turbo, potencia y par calculados
-• Panel de indicadores personalizable, gráficas en tiempo real, modo HUD y alertas
-• Registro de datos en CSV en segundo plano
-• Lectura rápida con peticiones multi-PID y modo rápido OBDLink/STN
+DATOS DEL FABRICANTE Y CODIFICACIONES
+• Datos de la comunidad OBDb para casi todas las marcas: estado de la batería, hollín y regeneraciones del FAP, neumáticos, cambio…
+• Pantalla del filtro de partículas con condiciones de regeneración y los valores del FAP del fabricante
+• Codificaciones y adaptaciones de paquetes de la comunidad o listas de foros (UDS, KWP2000, GMLAN, pasarela de BMW / MINI). Cada cambio guarda antes una copia, se comprueba después, se restaura solo si falla y se puede deshacer. Los peligrosos explican el riesgo y piden confirmación dos veces
+• Explorador de identificadores, PIDs personalizados con importación de Torque y paquetes para compartir
 
 GARAJE
-• Varios vehículos, cada uno con sus ajustes e historial
-• Recordatorios de mantenimiento por distancia y tiempo
-• Registro de combustible con consumo real y costes
-• Historial de viajes con mapa GPS
-• Widget para la pantalla de inicio
+• Varios coches, reconocidos por el VIN
+• Encuentra tu coche en el catálogo oficial de la UE (EEA), por matrícula (NL, UK) o por VIN (EE. UU.)
+• Recordatorios de mantenimiento e ITV, registro de repostajes con consumo real
+• Viajes en el mapa: toca cualquier punto para ver velocidad, revoluciones y consumo
+• Widget, copia de seguridad y restauración
 
-Pruébala sin coche: el modo Demo simula un vehículo.
+FUNCIONA CON
+• Cualquier coche OBD-II (gasolina UE desde 2001, diésel desde 2004, EE. UU. desde 1996) y todos los protocolos OBD-II
+• Direcciones de módulos de Ford, Mazda, grupo VW, Hyundai / Kia, Toyota / Lexus, Nissan, Renault, GM, Opel / Vauxhall y BMW / MINI; búsqueda automática para el resto
+• Clones baratos de ELM327, OBDLink / STN (modo rápido) y adaptadores con conmutador HS/MS-CAN
+• 11 idiomas; temas claro, oscuro y AMOLED; móviles, tablets y pantallas de coche
 
-OpenOBD lee datos y borra códigos de avería. Las codificaciones solo se escriben cuando tú las eliges, tras guardar una copia de seguridad, y se pueden deshacer; nunca desbloquea módulos protegidos. No uses la app mientras conduces. Algunas funciones dependen de tu adaptador y de tu vehículo.
+Pruébala sin coche: el modo demo simula un vehículo.
+
+No uses la app mientras conduces. Las codificaciones solo se escriben cuando tú las eliges, con una copia de seguridad antes; nunca desbloquea módulos protegidos. Algunas funciones dependen de tu adaptador y de tu vehículo.

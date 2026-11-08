@@ -9,7 +9,6 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
@@ -22,7 +21,6 @@ import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Fullscreen
 import androidx.compose.material.icons.filled.PictureInPictureAlt
 import androidx.compose.material.icons.filled.RestartAlt
-import androidx.compose.material.icons.filled.Speed
 import androidx.compose.material.icons.filled.Tune
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowLeft
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
@@ -54,10 +52,7 @@ import com.openobd.ui.components.NotConnected
 import com.openobd.ui.components.TopBar
 import com.openobd.ui.components.TopBarSlot
 import com.openobd.ui.components.SensorPickerDialog
-import com.openobd.ui.components.displayRange
-import com.openobd.ui.components.displayValue
 import com.openobd.ui.components.formatNumber
-import com.openobd.ui.components.formatSensor
 import com.openobd.ui.connectedVehicle
 import kotlinx.coroutines.launch
 

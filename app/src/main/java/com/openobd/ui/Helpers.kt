@@ -56,9 +56,6 @@ object Permissions {
 
     fun granted(context: Context, perms: Array<String>) =
         perms.all { ContextCompat.checkSelfPermission(context, it) == PackageManager.PERMISSION_GRANTED }
-
-    fun hasBluetooth(context: Context): Boolean = if (Build.VERSION.SDK_INT >= 31)
-        granted(context, arrayOf(Manifest.permission.BLUETOOTH_CONNECT)) else true
 }
 
 fun shareText(context: Context, subject: String, text: String) {

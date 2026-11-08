@@ -72,7 +72,6 @@ val LocalApp = staticCompositionLocalOf<AppContainer> { error("AppContainer not 
 
 object Routes {
     const val HOME = "home"
-    const val DASHBOARD = "dashboard"
     const val LIVE = "live"
     const val DIAGNOSTICS = "diagnostics"
     const val MORE = "more"

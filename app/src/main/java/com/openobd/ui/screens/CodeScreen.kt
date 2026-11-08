@@ -49,7 +49,6 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.openobd.core.diagnosis.DriveAdvice
 import com.openobd.core.diagnosis.Evidence
 import com.openobd.data.ChatTurn
-import com.openobd.data.ClaudeBackend
 import com.openobd.data.DiagnosisAssistant
 import com.openobd.session.Op
 import com.openobd.ui.LocalApp

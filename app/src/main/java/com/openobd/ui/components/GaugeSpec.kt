@@ -51,8 +51,6 @@ data class GaugeSpec(
     /** Range, warnings and decimals only apply in the unit system they were set in. */
     fun appliesTo(current: UnitSystem) = units == current
 
-    val hasCustomisation: Boolean get() = color != null || min != null || max != null || warnAbove != null || warnBelow != null || decimals != null
-
     companion object {
         private fun num(v: Double) = if (v == Math.floor(v) && kotlin.math.abs(v) < 1e9) v.toLong().toString() else v.toString()
 

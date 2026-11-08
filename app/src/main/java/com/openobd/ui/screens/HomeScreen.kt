@@ -49,7 +49,6 @@ import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.SettingsInputAntenna
 import androidx.compose.material.icons.filled.Speed
 import androidx.compose.material.icons.filled.SwapHoriz
-import androidx.compose.material.icons.filled.Thermostat
 import androidx.compose.material.icons.filled.Wifi
 import androidx.compose.material.icons.filled.WavingHand
 import androidx.compose.material3.AlertDialog
@@ -88,7 +87,6 @@ import com.openobd.core.health.HealthLevel
 import com.openobd.core.obd.DtcType
 import com.openobd.core.report.CarScore
 import com.openobd.core.report.ScoreInput
-import com.openobd.core.specs.Spain
 import com.openobd.data.ConnectionType
 import com.openobd.session.ConnectionState
 import com.openobd.session.Op

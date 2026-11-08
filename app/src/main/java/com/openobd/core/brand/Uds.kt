@@ -18,7 +18,6 @@ data class ModuleDtc(val code: String, val failureType: Int?, val status: Int?, 
 
     val isActive: Boolean get() = status?.let { protocol == DiagProtocol.UDS && it and 0x01 != 0 } ?: false
     val isConfirmed: Boolean get() = status?.let { if (protocol == DiagProtocol.UDS) it and 0x08 != 0 else true } ?: true
-    val isPending: Boolean get() = protocol == DiagProtocol.UDS && (status ?: 0) and 0x04 != 0
     val warningLamp: Boolean get() = protocol == DiagProtocol.UDS && (status ?: 0) and 0x80 != 0
 
     /** Human readable status summary. */

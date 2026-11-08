@@ -93,7 +93,6 @@ class LiveDataManager(private val scope: CoroutineScope) {
     }
 
     fun addListener(l: CycleListener) { listeners += l }
-    fun removeListener(l: CycleListener) { listeners -= l }
 
     fun history(key: String): History = histories.getOrPut(key) { History() }
 

@@ -1,6 +1,6 @@
 # OpenOBD privacy policy
 
-_Last updated: November 3, 2026_
+_Last updated: November 8, 2026_
 
 OpenOBD is an open-source car diagnostics app. It has no accounts, no ads, no analytics and no crash
 reporting, and its developers receive no data from it.
@@ -10,7 +10,8 @@ reporting, and its developers receive no data from it.
 Everything the app records stays in its private storage on your phone:
 
 - **Vehicle data** read from your car: VIN, trouble codes, sensor values, module information.
-- **Your entries**: garage vehicles, maintenance items, fuel log, custom PIDs, settings.
+- **Your entries**: garage vehicles, maintenance items, fuel log, custom PIDs, codings, settings.
+- **Coding backups**: the value a module held before each coding you write, so it can be undone.
 - **Recordings**: CSV data logs and saved trips. If you turn on GPS tracks, trips include the route you drove.
 
 Uninstalling the app deletes all of it. You can also delete vehicles, trips, logs and scan history in the app.
@@ -30,8 +31,18 @@ Only in these cases, and only when you trigger them:
   - your VIN to the US NHTSA, and the year, make and model you browse to the US EPA (fueleconomy.gov)
 
   These are government open-data services; no account or personal data is sent.
+- **Community data and packs**: when you open the community pack catalog or pick a make / model from OBDb, the app
+  downloads that file from GitHub (raw.githubusercontent.com). GitHub sees your IP address and which file is
+  requested; nothing about you or your car is sent. Its privacy statement:
+  https://docs.github.com/site-policy/privacy-policies/github-general-privacy-statement
+- **AI assistant** (optional, off until you enter your own Anthropic API key): when you ask a question or send a
+  photo of a warning light, the question, the trouble codes and values involved, the car's make / model / year and
+  the photo go to Anthropic's API under your key. The VIN and your location are never sent. Anthropic's privacy
+  policy: https://www.anthropic.com/legal/privacy
 - **Web search**: the "Search web" button opens your browser with a search for the trouble code.
 - **Wi-Fi adapters**: the app connects to the OBD adapter on your local network. Nothing is sent to the internet.
+
+Everything else, including what the app reads from or writes to your car, stays between the app and your adapter.
 
 ## Permissions
 
@@ -41,7 +52,10 @@ Only in these cases, and only when you trigger them:
 | Location | Android 11 and older require it to scan for Bluetooth LE devices. If you turn on GPS tracks, it's also used to record trip routes while the app is connected to your car, including with the screen off. Location is never sent anywhere. |
 | Notifications | Show the connection status while the app keeps the link to your car open. |
 | Foreground service | Keep the connection and data logging running in the background. |
-| Internet / network state | Wi-Fi OBD adapters and map tiles. |
+| Internet / network state | Wi-Fi OBD adapters, map tiles, vehicle lookups, community data and the optional AI assistant. |
+| Display over other apps | Only if you turn on floating gauges, to show them over navigation apps. |
+| Camera (through the system camera app) | Only when you take a photo of a warning light for the AI assistant. |
+| USB | Talk to USB OBD cables, mainly on car head units. |
 
 ## Children
 

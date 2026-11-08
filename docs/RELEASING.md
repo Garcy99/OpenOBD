@@ -55,15 +55,15 @@ For each release:
 3. Tag and push:
 
 ```bash
-git tag v1.3.0
+git tag v1.12.2
 ```
 
 ```bash
-git push origin v1.3.0
+git push origin v1.12.2
 ```
 
 Or, without tagging locally: **Actions → Release → Run workflow**. It creates the tag from `versionName`
-(for example `v1.8.0`) and publishes the release with the APK and App Bundle.
+(for example `v1.12.2`) and publishes the release with the APK and App Bundle.
 
 Without the signing secrets the workflow still runs, but publishes a **pre-release** signed with a
 temporary key. It installs fine for testing, but each such build has a different key, so a phone has to

@@ -1,32 +1,38 @@
-OpenOBD turns your phone and an ELM327-compatible OBD-II adapter (Bluetooth, Bluetooth LE or Wi-Fi) into a complete car diagnostic tool. It's free and open source, with no ads, subscriptions or account.
+OpenOBD turns your phone, tablet or car head unit and an ELM327-compatible OBD-II adapter (Bluetooth, Bluetooth LE, Wi-Fi or USB) into a complete car diagnostic tool. Free and open source: no ads, no subscriptions, no account, and your data stays on your phone.
 
-DIAGNOSTICS
-• Read confirmed, pending and permanent trouble codes from every ECU, and clear them (check engine light)
-• Offline database of 1,300+ generic codes, with causes, severity and repair tips for common ones
-• Freeze frame, emission readiness (smog check) and Mode 06 monitor tests, including misfire counts per cylinder
-• Vehicle information: VIN decoder, calibration IDs, CVN, ECU names
-
-BRAND FEATURES
-• Brand detected automatically from the VIN
-• Scan ABS, airbag, body, cluster, steering, climate and EV battery modules (UDS / KWP2000 on CAN)
-• Known module addresses for Ford/Lincoln, Mazda, VW/Audi/Škoda/SEAT, Hyundai/Kia, Toyota/Lexus, Nissan, Renault and GM, plus discovery for any brand
-• Module freeze frames, failure types and "what to check" hints
-• Support for HS/MS-CAN switch adapters (Ford/Mazda)
-• Custom PIDs with Torque CSV import
+DIAGNOSE
+• Read and clear trouble codes in the engine and in every module: ABS, airbag, body, cluster, gearbox, climate, EV battery
+• Codes explained: "can I keep driving?", likely causes ranked with your car's own data, what to check next
+• 1,300+ code descriptions offline, plus manufacturer codes for Ford, Toyota, Honda, Nissan, GM, Chrysler and Hyundai / Kia
+• Used car & pre-inspection check with a PDF report: hidden faults, codes cleared recently, readiness, VIN in every module
+• Freeze frame, emission readiness, Mode 06 tests with misfires per cylinder, battery & starting test, health trends
+• Optional AI assistant with your own Claude API key, also to identify a warning light from a photo
 
 LIVE DATA
-• Every standard OBD-II PID (200+ sensors), plus calculated fuel economy, boost, power and torque
-• Custom gauge dashboard, real-time charts, head-up display mode and alerts
-• CSV data logging in the background
-• Fast polling with multi-PID requests and OBDLink/STN fast mode
+• 200+ sensors, real fuel consumption (also for diesels), boost, power and accelerator
+• Gauges your way: 7 themes, needle, arc, bar or number, colours, ranges and warnings for every gauge
+• Charts, HUD, floating gauges over navigation apps, voice alerts, background CSV logging
+• Trip computer, 0-100 km/h timer and eco-driving score
+
+MANUFACTURER DATA AND CODINGS
+• Community data from OBDb for almost every brand: battery health, DPF soot and regenerations, tyres, gearbox…
+• Particulate filter screen with regeneration conditions and the manufacturer's DPF values
+• Codings & adaptations from community packs or forum lists (UDS, KWP2000, GMLAN, BMW / MINI gateway). Every change is backed up first, checked afterwards, restored automatically if it fails and can be undone. Dangerous changes explain the risk and ask twice
+• Identifier explorer, custom PIDs with Torque CSV import, shareable PID packs
 
 GARAGE
-• Several cars, each with its own settings and history
-• Maintenance reminders by distance and time
-• Fuel log with real consumption and costs
-• Trip history with GPS map
-• Home-screen widget
+• Several cars, recognised by VIN
+• Find your car in the official EU catalog (EEA), by licence plate (NL, UK) or by VIN (US)
+• Maintenance and inspection reminders, fuel log with real consumption
+• Trips on a map: tap any point to see speed, rpm and consumption there
+• Home-screen widget, backup and restore
+
+WORKS WITH
+• Every OBD-II car (EU petrol 2001+, diesel 2004+, US 1996+), all OBD-II protocols
+• Known module addresses for Ford, Mazda, VW group, Hyundai / Kia, Toyota / Lexus, Nissan, Renault, GM, Opel / Vauxhall and BMW / MINI; discovery for every other brand
+• Cheap ELM327 clones, OBDLink / STN (fast mode) and HS/MS-CAN switch adapters
+• 11 languages; light, dark and AMOLED themes; phones, tablets and car head units
 
 Try it without a car: Demo mode simulates a vehicle.
 
-OpenOBD reads data and clears trouble codes. Codings are only written when you choose them, after saving a backup, and can be undone; protected modules are never unlocked. Don't use the app while driving. Some features depend on your adapter and vehicle.
+Don't use the app while driving. Codings are only written when you choose them, with a backup first; protected modules are never unlocked. Some features depend on your adapter and vehicle.

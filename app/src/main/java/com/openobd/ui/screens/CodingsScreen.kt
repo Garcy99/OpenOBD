@@ -46,7 +46,6 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.openobd.core.brand.Coding
 import com.openobd.core.brand.CodingOption
 import com.openobd.core.brand.OutcomeKind
-import com.openobd.core.brand.Routine
 import com.openobd.core.brand.WriteOutcome
 import com.openobd.core.brand.WriteRecord
 import com.openobd.core.brand.WriteRisk

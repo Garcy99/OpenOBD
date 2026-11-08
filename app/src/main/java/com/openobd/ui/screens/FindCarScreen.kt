@@ -86,7 +86,6 @@ import com.openobd.ui.appSettings
 import com.openobd.ui.components.CenteredMessage
 import com.openobd.ui.components.ErrorText
 import com.openobd.ui.components.KeyValueRow
-import com.openobd.ui.components.Pill
 import com.openobd.ui.components.ScreenTopBar
 import com.openobd.ui.components.SectionCard
 import com.openobd.ui.tr

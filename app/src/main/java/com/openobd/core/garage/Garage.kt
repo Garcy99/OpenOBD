@@ -116,7 +116,6 @@ data class FuelEntry(
     val fullTank: Boolean = true,
     val note: String = "",
 ) {
-    val pricePerLiter: Double get() = if (liters > 0) totalCost / liters else 0.0
 }
 
 data class FuelSummary(

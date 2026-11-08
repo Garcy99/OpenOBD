@@ -110,28 +110,6 @@ fun AnalogGauge(
     }
 }
 
-/** Horizontal bar meter, used for compact displays. */
-@Composable
-fun BarMeter(fraction: Float?, modifier: Modifier = Modifier, warnFrom: Float? = null) {
-    val track = MaterialTheme.colorScheme.surfaceVariant
-    val f = (fraction ?: 0f).coerceIn(0f, 1f)
-    val color = when {
-        warnFrom != null && f >= warnFrom -> Warn
-        else -> MaterialTheme.colorScheme.primary
-    }
-    Canvas(modifier) {
-        val h = size.height
-        drawRoundRect(track, cornerRadius = androidx.compose.ui.geometry.CornerRadius(h / 2))
-        if (fraction != null) drawRoundRect(color, size = Size(size.width * f, h), cornerRadius = androidx.compose.ui.geometry.CornerRadius(h / 2))
-    }
-}
-
-fun gaugeColor(fraction: Float): Color = when {
-    fraction > 0.85f -> Bad
-    fraction > 0.7f -> Warn
-    else -> Color.Unspecified
-}
-
 /**
  * Classic round dial: a 240° scale with numbers, a red zone, and a needle. [scale] are the labels at the five
  * major ticks (min to max).
