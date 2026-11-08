@@ -94,6 +94,7 @@ fun Route3dScreen(tripId: String, onBack: () -> Unit) {
     var roads by remember { mutableStateOf(true) }
     var buildings by remember { mutableStateOf(true) }
     var bySpeed by remember { mutableStateOf(false) }
+    var colours by remember { mutableStateOf(Route3mf.Colours.ALL) }
     var titleOn by remember { mutableStateOf(true) }
     var coords by remember { mutableStateOf(false) }
 
@@ -131,7 +132,7 @@ fun Route3dScreen(tripId: String, onBack: () -> Unit) {
     }
     val options = Route3mf.Options(
         shape = shape, theme = theme, sizeMm = sizeMm, exaggeration = exaggeration, detail = detail, maxHeightMm = maxHeight, baseMm = baseMm,
-        water = water, roads = roads, buildings = buildings && canBuildings, routeBySpeed = bySpeed,
+        water = water, roads = roads, buildings = buildings && canBuildings, routeBySpeed = bySpeed && colours == Route3mf.Colours.ALL, colours = colours,
     )
     val ready = pts.size >= 2 && terrainStatus == null && mapStatus == null
     LaunchedEffect(ready, options, terrain, features, titleOn, coords, title) {
@@ -198,6 +199,16 @@ fun Route3dScreen(tripId: String, onBack: () -> Unit) {
                         })
                     }
                 }
+                Label("Filaments")
+                FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    Route3mf.Colours.entries.forEach { c -> FilterChip(colours == c, { colours = c }, label = { Text(tr(c.label)) }, modifier = Modifier.testTag("colours_${c.name}")) }
+                }
+                Hint(tr(when (colours) {
+                    Route3mf.Colours.ALL -> "One filament per colour of the style."
+                    Route3mf.Colours.SIX -> "Roads, markers, buildings and title share colours with the base and the peaks."
+                    Route3mf.Colours.FOUR -> "Base, lowlands, peaks and water; the route prints in the base colour, standing above the ground."
+                    Route3mf.Colours.CMYKW -> "Load black, cyan, magenta, yellow and white. The ground becomes a fine pattern of the five that blends into every shade of the style, like a printed photo; best seen from arm's length, with a 0.4 mm nozzle or finer. Always uses high detail."
+                }))
                 Label("Shape")
                 FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                     Route3mf.Shape.entries.forEach { sh -> FilterChip(shape == sh, { shape = sh }, label = { Text(tr(sh.label)) }, modifier = Modifier.testTag("shape_${sh.name}")) }
@@ -229,7 +240,7 @@ fun Route3dScreen(tripId: String, onBack: () -> Unit) {
                 Toggle("Roads", roads, "layerRoads") { roads = it }
                 Toggle("Buildings", buildings && canBuildings, "layerBuildings", enabled = canBuildings) { buildings = it }
                 if (!canBuildings) Hint(tr("Buildings are only added for areas up to %1\$s km across.", (Overpass.MAX_BUILDINGS_SPAN_M / 1000).toInt()))
-                Toggle("Route coloured by speed", bySpeed, "bySpeed") { bySpeed = it }
+                if (colours == Route3mf.Colours.ALL) Toggle("Route coloured by speed", bySpeed, "bySpeed") { bySpeed = it }
                 Toggle("Title on the model", titleOn, "titleOn") { titleOn = it }
                 if (titleOn) Toggle("GPS coordinates under the title", coords, "coordsSwitch") { coords = it }
                 if (titleOn) Hint(tr("Title of every export. Change it with the trip's name.") + " " + title)
@@ -237,7 +248,7 @@ fun Route3dScreen(tripId: String, onBack: () -> Unit) {
 
             model?.let { m ->
                 SectionCard(title = tr("Filaments")) {
-                    Hint(tr("Every triangle comes painted with its filament number: load the file in Bambu Studio, PrusaSlicer or Orca and give each number this colour."))
+                    Hint(tr("Bambu Studio, PrusaSlicer and Orca load each part and the painting and add these filaments, but with colours of their own: give each number the colour shown here."))
                     m.filaments.forEach { f ->
                         Row(Modifier.fillMaxWidth().padding(vertical = 4.dp).testTag("filament_${f.number}"), verticalAlignment = Alignment.CenterVertically) {
                             Text("${f.number}", fontWeight = FontWeight.Bold, modifier = Modifier.width(24.dp))
@@ -277,9 +288,12 @@ private fun Toggle(text: String, value: Boolean, tag: String, enabled: Boolean =
 val route3dTexts = listOf(
     "3D model", "Look", "Colours", "Shape", "Size", "Relief exaggeration", "Detail", "On the map", "Water", "Roads", "Buildings",
     "Route coloured by speed", "Title on the model", "GPS coordinates under the title", "Filaments",
-    "Every triangle comes painted with its filament number: load the file in Bambu Studio, PrusaSlicer or Orca and give each number this colour.",
+    "Bambu Studio, PrusaSlicer and Orca load each part and the painting and add these filaments, but with colours of their own: give each number the colour shown here.",
     "%1\$s triangles", "Create 3MF file", "Maximum height", "Base thickness", "Drag to turn, pinch to zoom.", "Preparing the model…",
     "Downloading map data…", "The terrain could not be downloaded: the model is flat.",
     "The map data could not be downloaded: the model has no water, roads or buildings.",
     "Buildings are only added for areas up to %1\$s km across.", "This trip has no GPS route.",
+    "One filament per colour of the style.", "Roads, markers, buildings and title share colours with the base and the peaks.",
+    "Base, lowlands, peaks and water; the route prints in the base colour, standing above the ground.",
+    "Load black, cyan, magenta, yellow and white. The ground becomes a fine pattern of the five that blends into every shade of the style, like a printed photo; best seen from arm's length, with a 0.4 mm nozzle or finer. Always uses high detail.",
 )

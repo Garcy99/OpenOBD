@@ -32,6 +32,39 @@ object Route3mf {
         STONE("Stone", "#D6D0C2", "#D6D0C2", "#D6D0C2", "#3A3A3A", "#7FA6D6", "#D7302A", "#3A3A3A", "#9EA3A8", "#F4F2EE"),
     }
 
+    /**
+     * How many filaments: every colour of the theme, fewer (colours merged so the model fits a 6- or 4-slot
+     * system), or five spools (cyan, magenta, yellow, black, white) mixed on the surface: the ground is a halftone of
+     * tiny painted areas that blend, seen from a normal distance, into a continuous range of colours.
+     */
+    enum class Colours(val label: String) { ALL("All colours"), SIX("6 filaments"), FOUR("4 filaments"), CMYKW("CMYKW colour mixing") }
+
+    /** The five spools of colour mixing, in loading order (black first: it is also the plinth). */
+    enum class Ink(val label: String, val hex: String) {
+        BLACK("Black", "#1A1A1A"), CYAN("Cyan", "#0086D6"), MAGENTA("Magenta", "#EC008C"), YELLOW("Yellow", "#F4EE2A"), WHITE("White", "#F5F5F5"),
+    }
+
+    /** The colour of each role once the theme and the number of filaments are applied. */
+    data class Palette(
+        val low: String, val mid: String, val high: String, val side: String, val water: String, val route: String,
+        val roads: String, val buildings: String, val text: String, val end: String,
+    )
+
+    fun palette(o: Options): Palette {
+        val t = o.theme
+        val all = Palette(t.low, t.mid, t.high, t.side, t.water, t.route, t.roads, t.buildings, t.text, t.roads)
+        return when (o.colours) {
+            Colours.ALL -> all
+            // Accents take colours already in use: roads and the end marker the plinth's, buildings and text the peaks'.
+            Colours.SIX -> all.copy(roads = t.side, end = t.side, buildings = t.high, text = t.high)
+            // Also two ground bands (no slopes colour) and the route in the plinth's colour, standing above the ground.
+            Colours.FOUR -> all.copy(mid = t.low, roads = t.side, end = t.side, buildings = t.high, text = t.high, route = t.side)
+            // Ground colours become targets for the mix; solid parts take one of the five spools.
+            Colours.CMYKW -> all.copy(side = Ink.BLACK.hex, route = Ink.MAGENTA.hex, roads = Ink.BLACK.hex, end = Ink.BLACK.hex,
+                buildings = Ink.WHITE.hex, text = Ink.WHITE.hex)
+        }
+    }
+
     enum class Detail(val label: String, val rings: Int, val boundary: Int, val terrainPx: Int) {
         NORMAL("Normal", 90, 360, 700), HIGH("High", 160, 640, 1300),
     }
@@ -56,15 +89,16 @@ object Route3mf {
         val water: Boolean = true,
         val roads: Boolean = true,
         val buildings: Boolean = true,
-        /** Route in three colours by speed instead of the theme's one. */
+        /** Route in three colours by speed instead of the theme's one (only with all colours). */
         val routeBySpeed: Boolean = false,
+        val colours: Colours = Colours.ALL,
     )
 
     /** Roles of the colours, for the filament list (English keys, translated by the app). */
     const val SIDES = "Base and sides"; const val LOW = "Lowlands"; const val MID = "Slopes"; const val HIGH = "Peaks"
     const val WATER = "Water"; const val ROUTE = "Route"; const val ROADS = "Roads"; const val BUILDINGS = "Buildings"
     const val TEXT = "Title and start"; const val END = "End"; const val GROUND = "Ground"
-    private val rolePriority = listOf(SIDES, LOW, MID, HIGH, GROUND, WATER, ROUTE, "Route up to 50 km/h", "Route 50-100 km/h", "Route over 100 km/h", ROADS, BUILDINGS, TEXT, END)
+    private val rolePriority = Ink.entries.map { it.label } + listOf(SIDES, LOW, MID, HIGH, GROUND, WATER, ROUTE, "Route up to 50 km/h", "Route 50-100 km/h", "Route over 100 km/h", ROADS, BUILDINGS, TEXT, END)
 
     /** A part; [c] is each triangle's colour. */
     class Mesh(val name: String, val color: String, private val role: String) {
@@ -144,7 +178,8 @@ object Route3mf {
         title: List<List<Pair<Double, Double>>>, subtitle: List<List<Pair<Double, Double>>>,
     ): Pair<List<Mesh>, Relief> {
         if (points.size < 2) return emptyList<Mesh>() to Relief(0.0, 0.0, false, 0.0)
-        val th = o.theme
+        val th = palette(o)
+        val mixing = o.colours == Colours.CMYKW
         val sizeK = o.sizeMm / 150.0
         val origin = points.first()
         val kx = 111_320.0 * cos(Math.toRadians(origin.lat)); val ky = 110_540.0
@@ -183,7 +218,8 @@ object Route3mf {
             terrain?.elevation(origin.lat + (ym + cy) / ky, origin.lon + (xm + cx) / kx)?.let { max(it, 0.0) } // the sea is flat
 
         // Ground surface: rings from the centre out to the boundary (works for any convex shape).
-        val rings = o.detail.rings
+        // Colour mixing needs triangles about a nozzle wide, so it always uses the fine mesh.
+        val rings = if (mixing) max(o.detail.rings, Detail.HIGH.rings) else o.detail.rings
         val ringPts = (1..rings).map { k -> boundary.map { (bx, by) -> bx * k / rings to by * k / rings } }
         val centreElev = elevationAt(0.0, 0.0)
         val ringElev = ringPts.map { ring -> ring.map { (x, y) -> elevationAt(x, y) } }
@@ -215,9 +251,29 @@ object Route3mf {
             val c0 = vx(0.0, 0.0, centreElev)
             val ring = ringPts.mapIndexed { k, r -> r.mapIndexed { j, (x, y) -> vx(x, y, ringElev[k][j]) } }
             // Bands by share of the area (not by height alone), so every map shows lowlands, slopes and peaks.
-            val lowTop = max(quantile(0.45), eMin + (eMax - eMin) * 0.2); val midTop = max(quantile(0.82), lowTop + (eMax - eMin) * 0.1)
+            val twoBands = o.colours == Colours.FOUR
+            val lowTop = max(quantile(if (twoBands) 0.6 else 0.45), eMin + (eMax - eMin) * 0.2)
+            val midTop = if (twoBands) lowTop else max(quantile(0.82), lowTop + (eMax - eMin) * 0.1)
+            // Colour mixing: a halftone of the five spools over the whole top, aiming at a smooth gradient of the
+            // theme's colours by altitude (and the water's colour), so every height gets its own shade.
+            val dither = if (!mixing) null else Halftone(boundary.map { it.first * s to it.second * s }, 0.5) { xmm, ymm ->
+                val xm = xmm / s; val ym = ymm / s
+                val e = elevationAt(xm, ym)
+                when {
+                    mask?.isWater(xm, ym) == true || (seaLevel && e != null && e <= 0.5) -> th.water
+                    !hasTerrain || !o.reliefColours -> th.mid
+                    else -> {
+                        val v = e ?: fallback
+                        var lo = 0; var hi = sorted.size
+                        while (lo < hi) { val m = (lo + hi) / 2; if (sorted[m] < v) lo = m + 1 else hi = m }
+                        val t = 0.5 * lo / max(1, sorted.size) + 0.5 * (v - eMin) / max(eMax - eMin, 1e-9)
+                        gradient(listOf(th.low, th.mid, th.high), t)
+                    }
+                }
+            }
             fun topColour(a: Int, b: Int, cc: Int): Pair<String, String> {
                 val xm = (v[a][0] + v[b][0] + v[cc][0]) / 3 / s; val ym = (v[a][1] + v[b][1] + v[cc][1]) / 3 / s
+                if (dither != null) return dither.at(xm * s, ym * s).let { it.hex to it.label }
                 val e = (elev[a] + elev[b] + elev[cc]) / 3
                 if (mask?.isWater(xm, ym) == true || (seaLevel && max(elev[a], max(elev[b], elev[cc])) <= 0.5)) return th.water to WATER
                 if (!hasTerrain || !o.reliefColours) return th.mid to GROUND
@@ -286,7 +342,7 @@ object Route3mf {
             return (a - known.min()) / altRange * o.gpsReliefMm
         }
         val names = listOf("Route up to 50 km/h", "Route 50-100 km/h", "Route over 100 km/h")
-        val routeMeshes = if (o.routeBySpeed) (0..2).map { Mesh(names[it], RouteGeometry.bandColors[it], names[it]) } else listOf(Mesh("Route", th.route, ROUTE))
+        val routeMeshes = if (o.routeBySpeed && o.colours == Colours.ALL) (0..2).map { Mesh(names[it], RouteGeometry.bandColors[it], names[it]) } else listOf(Mesh("Route", th.route, ROUTE))
         fun bandOf(i: Int) = RouteGeometry.band(points[i].speedKmh).let { if (it == RouteGeometry.UNKNOWN) RouteGeometry.SLOW else it }
         val routeHeight = 1.2 * sizeK
         var piece = mutableListOf<Pair<Double, Double>>(); var pieceLift = mutableListOf<Double>(); var pieceMesh: Mesh? = null
@@ -296,7 +352,7 @@ object Route3mf {
             piece = mutableListOf(); pieceLift = mutableListOf()
         }
         for ((x, y, i) in samples) {
-            val m = if (o.routeBySpeed) routeMeshes[bandOf(i)] else routeMeshes[0]
+            val m = if (routeMeshes.size == 3) routeMeshes[bandOf(i)] else routeMeshes[0]
             if (m !== pieceMesh) {
                 val last = piece.lastOrNull(); val lastLift = pieceLift.lastOrNull()
                 flushRoute()
@@ -311,7 +367,7 @@ object Route3mf {
         val (sx, sy, si) = samples.first(); val (ex, ey, ei) = samples.last()
         val marker = 1.55 * sizeK
         out += Mesh("Start", th.text, TEXT).also { addCylinder(it, sx * s, sy * s, marker, groundAt(sx, sy) - 0.8, topAt(sx, sy, si) + 1.6, 32) }
-        out += Mesh("End", th.roads, END).also { addCylinder(it, ex * s, ey * s, marker, groundAt(ex, ey) - 0.8, topAt(ex, ey, ei) + 1.6, 32) }
+        out += Mesh("End", th.end, END).also { addCylinder(it, ex * s, ey * s, marker, groundAt(ex, ey) - 0.8, topAt(ex, ey, ei) + 1.6, 32) }
 
         // Title plaque in front (towards the viewer, -y), joined to the base; optional second line.
         if (title.isNotEmpty()) {
@@ -384,6 +440,97 @@ object Route3mf {
         val e = xy.lastIndex
         addCylinder(mesh, xy[e].first, xy[e].second, hw, bottoms[e], tops[e], joint)
         return count
+    }
+
+    /** "#RRGGBB" to 0xRRGGBB (no Android classes, so plain unit tests can run this). */
+    private fun hexColour(hex: String): Int = hex.removePrefix("#").toInt(16)
+
+    /** A colour [t] (0..1) of the way along evenly spaced [stops]. */
+    private fun gradient(stops: List<String>, t: Double): String {
+        val x = t.coerceIn(0.0, 1.0) * (stops.size - 1)
+        val k = floor(x).toInt().coerceAtMost(stops.size - 2); val u = x - k
+        val a = hexColour(stops[k]); val b = hexColour(stops[k + 1])
+        return "#%02X%02X%02X".format(*IntArray(3) { ch -> val sh = 16 - 8 * ch; ((a shr sh and 0xFF) * (1 - u) + (b shr sh and 0xFF) * u).toInt() }.toTypedArray())
+    }
+
+    /**
+     * Floyd-Steinberg error diffusion of [target] colours (sRGB hex at a point in mm) into the five [Ink]s on a
+     * grid of [cell] mm over the [outline], in linear light, so the areas of each spool average to the colour
+     * the eye sees from a distance.
+     */
+    private class Halftone(outline: List<Pair<Double, Double>>, private val cell: Double, target: (Double, Double) -> String) {
+        private val x0 = outline.minOf { it.first }; private val y0 = outline.minOf { it.second }
+        private val nx = ((outline.maxOf { it.first } - x0) / cell).toInt() + 2
+        private val ny = ((outline.maxOf { it.second } - y0) / cell).toInt() + 2
+        private val ink = ByteArray(nx * ny)
+
+        init {
+            fun lin(c: Int) = (c / 255.0).let { if (it <= 0.04045) it / 12.92 else Math.pow((it + 0.055) / 1.055, 2.4) }
+            fun rgb(hex: String) = hexColour(hex).let { doubleArrayOf(lin(it shr 16 and 0xFF), lin(it shr 8 and 0xFF), lin(it and 0xFF)) }
+            val inks = Ink.entries.map { rgb(it.hex) }
+            val cache = HashMap<String, DoubleArray>()
+            val err = Array(2) { DoubleArray(nx * 3 + 6) }
+            for (j in 0 until ny) {
+                val cur = err[j % 2]; val next = err[(j + 1) % 2]
+                java.util.Arrays.fill(next, 0.0)
+                val forward = j % 2 == 0
+                for (step in 0 until nx) {
+                    val i = if (forward) step else nx - 1 - step
+                    val hex = target(x0 + (i + 0.5) * cell, y0 + (j + 0.5) * cell); val want = cache.getOrPut(hex) { reachable(rgb(hex), inks) }
+                    val c = DoubleArray(3) { k -> (want[k] + cur[(i + 1) * 3 + k]).coerceIn(-0.5, 1.5) }
+                    var best = 0; var bestD = Double.MAX_VALUE
+                    for ((n, p) in inks.withIndex()) {
+                        val d = (c[0] - p[0]) * (c[0] - p[0]) * 0.3 + (c[1] - p[1]) * (c[1] - p[1]) * 0.59 + (c[2] - p[2]) * (c[2] - p[2]) * 0.11
+                        if (d < bestD) { bestD = d; best = n }
+                    }
+                    ink[j * nx + i] = best.toByte()
+                    val dir = if (forward) 1 else -1
+                    for (k in 0..2) {
+                        val e = c[k] - inks[best][k]
+                        cur[(i + dir + 1) * 3 + k] += e * 7 / 16
+                        next[(i - dir + 1) * 3 + k] += e * 3 / 16
+                        next[(i + 1) * 3 + k] += e * 5 / 16
+                        next[(i + dir + 1) * 3 + k] += e * 1 / 16
+                    }
+                }
+            }
+        }
+
+        /**
+         * The mix of the five spools (shares adding up to 1, in linear light) that looks closest to [want] in Oklab.
+         * Colours outside what they can make (deep greens: filament cyan is quite blue) get the nearest look instead
+         * of drifting in hue, and diffusing towards a reachable colour keeps the pattern even.
+         */
+        private fun reachable(want: DoubleArray, inks: List<DoubleArray>): DoubleArray {
+            fun oklab(c: DoubleArray): DoubleArray {
+                val l = Math.cbrt(max(0.0, 0.4122214708 * c[0] + 0.5363325363 * c[1] + 0.0514459929 * c[2]))
+                val m = Math.cbrt(max(0.0, 0.2119034982 * c[0] + 0.6806995451 * c[1] + 0.1073969566 * c[2]))
+                val s = Math.cbrt(max(0.0, 0.0883024619 * c[0] + 0.2817188376 * c[1] + 0.6299787005 * c[2]))
+                return doubleArrayOf(0.2104542553 * l + 0.7936177850 * m - 0.0040720468 * s, 1.9779984951 * l - 2.4285922050 * m + 0.4505937099 * s,
+                    0.0259040371 * l + 0.7827717662 * m - 0.8086757731 * s)
+            }
+            val goal = oklab(want)
+            fun mix(w: DoubleArray) = DoubleArray(3) { k -> inks.indices.sumOf { w[it] * inks[it][k] } }
+            fun cost(w: DoubleArray) = oklab(mix(w)).let { (it[0] - goal[0]).let { d -> d * d } + (it[1] - goal[1]).let { d -> d * d } + (it[2] - goal[2]).let { d -> d * d } }
+            var w = DoubleArray(inks.size) { 1.0 / inks.size }; var best = cost(w)
+            var step = 0.2
+            while (step > 1e-4) {
+                var improved = false
+                for (a in inks.indices) for (b in inks.indices) {
+                    if (a == b || w[b] <= 0) continue
+                    val d = min(step, w[b]); val w2 = w.copyOf(); w2[a] += d; w2[b] -= d
+                    val c = cost(w2)
+                    if (c < best) { w = w2; best = c; improved = true }
+                }
+                if (!improved) step /= 2
+            }
+            return mix(w)
+        }
+
+        fun at(x: Double, y: Double): Ink {
+            val i = floor((x - x0) / cell).toInt().coerceIn(0, nx - 1); val j = floor((y - y0) / cell).toInt().coerceIn(0, ny - 1)
+            return Ink.entries[ink[j * nx + i].toInt()]
+        }
     }
 
     /** Water polygons rasterised over the footprint, so each ground triangle is looked up in constant time. */
@@ -566,5 +713,6 @@ object Route3mf {
     }
 
     val texts = Shape.entries.map { it.label } + Theme.entries.map { it.label } + Detail.entries.map { it.label } +
+        Colours.entries.map { it.label } + Ink.entries.map { it.label } +
         listOf(SIDES, LOW, MID, HIGH, WATER, ROUTE, ROADS, BUILDINGS, TEXT, END, GROUND, Overpass.ATTRIBUTION)
 }

@@ -384,4 +384,33 @@ class RouteExportTest {
         assertTrue(trimmed.relief.trimmedM > 400)
         assertTrue(trimmed.meshes.first().v.filter { it[2] > 0 }.minOf { it[2] } >= 3.0 - 1e-9)
     }
+
+    @Test fun `fewer filaments merge colours, and CMYKW mixes five spools on the ground`() {
+        val f = features()
+        fun count(c: Route3mf.Colours) = Route3mf.model(points, Route3mf.Options(colours = c), hill, f).filaments.size
+        val all = count(Route3mf.Colours.ALL)
+        assertTrue("all $all", all >= 8)
+        assertTrue(count(Route3mf.Colours.SIX) <= 6)
+        assertTrue(count(Route3mf.Colours.FOUR) <= 4)
+        // Four: no slopes colour, and the route stands out in the plinth's colour.
+        val four = Route3mf.model(points, Route3mf.Options(colours = Route3mf.Colours.FOUR), hill, f)
+        assertTrue(four.filaments.none { Route3mf.MID in it.roles })
+        assertEquals(four.filamentOf(four.meshes.first().color), four.filamentOf(four.meshes.first { it.name == "Route" }.color))
+
+        val mix = Route3mf.model(points, Route3mf.Options(colours = Route3mf.Colours.CMYKW), hill, f)
+        assertEquals(Route3mf.Ink.entries.map { it.hex }, mix.filaments.map { it.color })
+        assertEquals(1, mix.filamentOf(Route3mf.Ink.BLACK.hex)) // black is also the plinth: filament 1
+        mix.meshes.forEach { assertSolid(it) }
+        val ground = mix.meshes.first()
+        // The top is a halftone of every spool; where it is higher it is lighter (the theme's pale peaks).
+        val top = ground.t.indices.filter { k -> ground.t[k].all { ground.v[it][2] > 0.01 } } // sides and bottom touch z = 0
+        assertEquals(Route3mf.Ink.entries.size, ground.c.toSet().size)
+        fun light(k: Int) = ground.c[k].removePrefix("#").toInt(16).let { ((it shr 16 and 255) + (it shr 8 and 255) + (it and 255)) / 765.0 }
+        val zTop = top.map { k -> ground.t[k].maxOf { ground.v[it][2] } }
+        val zHigh = zTop.sorted()[zTop.size * 9 / 10]; val zLow = zTop.sorted()[zTop.size / 4]
+        val high = top.filterIndexed { n, _ -> zTop[n] >= zHigh }.map(::light).average()
+        val low = top.filterIndexed { n, _ -> zTop[n] <= zLow }.map(::light).average()
+        assertTrue("peaks $high vs lowlands $low", high > low + 0.1)
+        assertTrue(mix.meshes.none { it.name.startsWith("Route ") }) // no speed colours in mixing
+    }
 }

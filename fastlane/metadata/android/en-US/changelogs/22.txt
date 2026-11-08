@@ -2,5 +2,6 @@
 • Bambu Studio, PrusaSlicer and Orca load the colours: filaments and per-part painting
 • Total height shown, with maximum height and base thickness to choose
 • HTML map no longer blocked, with a relief that works offline
+• CMYKW colour mixing with 5 spools, or 4/6-filament mode
 • Poster with coloured relief
 • Terrain fixes (gaps and bad pixels)

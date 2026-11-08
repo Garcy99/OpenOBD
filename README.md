@@ -139,7 +139,9 @@ No adapter yet? Choose **Demo** as the connection: a simulated car with codes, m
   the trip's name (and optionally its GPS coordinates) on a plaque. A live 3D preview turns and zooms while you choose
   size, relief exaggeration, maximum height, base thickness and detail; the screen shows the total height and the
   filament list, and the file uses PrusaSlicer's 3MF dialect, so Bambu Studio, PrusaSlicer and Orca load each part with
-  its filament and the altitude bands painted (set each filament's colour as the list shows)
+  its filament and the altitude bands painted (set each filament's colour as the list shows); it can merge colours to fit
+  6 or 4 filaments, or use five spools (cyan, magenta, yellow, black, white) mixed as a fine halftone on the ground
+  for a continuous range of shades
 - **Home-screen widget**, backup and restore
 
 ### Connection

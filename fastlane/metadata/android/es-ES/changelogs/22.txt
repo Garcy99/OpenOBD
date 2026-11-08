@@ -2,5 +2,6 @@
 • Bambu Studio, PrusaSlicer y Orca cargan los colores: filamentos y pintura por pieza
 • Altura total visible, con altura máxima y grosor de base a elegir
 • Mapa HTML ya no bloqueado, con relieve que funciona sin conexión
+• Mezcla de color CMYKW con 5 bobinas, o modo de 4/6 filamentos
 • Póster con relieve en color
 • Terreno corregido (huecos y píxeles erróneos)
