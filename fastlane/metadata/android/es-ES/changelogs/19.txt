@@ -1,0 +1,5 @@
+• Exportar viajes: GPX para cualquier GPS (Garmin, OsmAnd, Komoot, Google Earth) con los datos del coche en cada punto
+• Mapa interactivo (HTML) para compartir: cualquiera lo abre en el navegador, toca la ruta para ver los datos y guarda el GPX
+• Póster vectorial para imprimir (PDF A3 / SVG) con la ruta coloreada por velocidad y el resumen del viaje
+• Modelo para impresión 3D multicolor (3MF): la ruta en relieve sobre una base, por colores de velocidad, que sube y baja con la carretera
+• Los viajes guardan ahora la altitud GPS

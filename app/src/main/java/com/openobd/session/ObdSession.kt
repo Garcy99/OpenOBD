@@ -514,7 +514,9 @@ class ObdSession(
                 lon += d * Math.sin(heading) / (111_320.0 * Math.cos(Math.toRadians(lat)))
             }
             if (now - last >= 2000 || last == 0L) {
-                location.addSynthetic(com.openobd.core.garage.TrackPoint.of(now, lat, lon, speed.toFloat()) { k -> values[k] })
+                // Madrid sits at ~650 m; the demo road rises and falls a little.
+                val alt = (650 + 25 * Math.sin(heading / 2)).toFloat()
+                location.addSynthetic(com.openobd.core.garage.TrackPoint.of(now, lat, lon, speed.toFloat(), alt) { k -> values[k] })
             }
             last = now
         }

@@ -1,0 +1,5 @@
+• Export trips: GPX for any GPS (Garmin, OsmAnd, Komoot, Google Earth) with the car's values in every point
+• Interactive map (HTML) to share: anyone opens it in a browser, taps the route to see the data and saves the GPX
+• Vector poster to print (PDF A3 / SVG) with the route coloured by speed and the trip summary
+• Multicolour 3D print model (3MF): the route raised on a base, coloured by speed, rising and falling with the road
+• Trips now record GPS altitude

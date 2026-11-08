@@ -174,6 +174,20 @@ class DemoSessionTest {
     }
 
     @Test
+    fun routePosterPdf() {
+        val pts = (0 until 120).map { i ->
+            val a = i / 120.0 * Math.PI
+            com.openobd.core.garage.TrackPoint(1_762_600_000_000L + i * 2000L, 40.4 + 0.01 * Math.sin(a), -3.7 + 0.02 * Math.cos(a), (30 + i).toFloat(), alt = (600 + i).toFloat())
+        }
+        val info = com.openobd.core.trip.RouteInfo("Test drive", "Demo", pts.first().t, pts.last().t, 3.2, 0.2, 60.0, 149.0, 6.2)
+        val file = java.io.File(app.cacheDir, "poster-test.pdf")
+        com.openobd.ui.screens.writePdf(file, com.openobd.core.trip.RoutePoster.layout(info, pts, { it }))
+        val bytes = file.readBytes()
+        assertEquals("%PDF-", String(bytes.copyOfRange(0, 5), Charsets.US_ASCII))
+        assertTrue("PDF size ${bytes.size}", bytes.size > 2000)
+    }
+
+    @Test
     fun olderCarOnKLine() {
         configure(ObdProtocol.ISO_9141_2)
         tap("Connect")

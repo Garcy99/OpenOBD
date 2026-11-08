@@ -29,7 +29,8 @@ class LocationTracker(private val context: Context) {
         if (!lm.isProviderEnabled(LocationManager.GPS_PROVIDER)) return false
         val l = LocationListener { loc: Location ->
             synchronized(points) {
-                points += TrackPoint.of(loc.time, loc.latitude, loc.longitude, (loc.speed * 3.6f).takeIf { loc.hasSpeed() }, valueProvider)
+                points += TrackPoint.of(loc.time, loc.latitude, loc.longitude, (loc.speed * 3.6f).takeIf { loc.hasSpeed() },
+                    loc.altitude.toFloat().takeIf { loc.hasAltitude() }, valueProvider)
             }
         }
         return runCatching {

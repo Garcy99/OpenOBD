@@ -477,6 +477,9 @@ class CrashReportUiTest {
     @get:Rule
     val rule = createAndroidComposeRule<MainActivity>()
 
+    @org.junit.Before
+    fun before() = clearFileProviderCache()
+
     @Test
     fun crashIsOfferedOnceAndShared() {
         val app = rule.activity.application as OpenObdApp

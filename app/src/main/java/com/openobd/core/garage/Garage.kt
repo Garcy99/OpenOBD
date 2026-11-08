@@ -247,14 +247,16 @@ data class TrackPoint(
     val coolantC: Float? = null,
     val pedal: Float? = null,
     val boostBar: Float? = null,
+    /** GPS altitude in metres (null in tracks saved by older versions or without a fix). */
+    val alt: Float? = null,
 ) {
     companion object {
         /** Live values stored with each point of a GPS track. */
         val KEYS = listOf("010D", "010C", "CALC_CONS", "0105", "CALC_PEDAL", "CALC_BOOST")
 
-        fun of(t: Long, lat: Double, lon: Double, gpsSpeedKmh: Float?, value: (String) -> Double?) = TrackPoint(
+        fun of(t: Long, lat: Double, lon: Double, gpsSpeedKmh: Float?, alt: Float? = null, value: (String) -> Double?) = TrackPoint(
             t, lat, lon, value("010D")?.toFloat() ?: gpsSpeedKmh, value("010C")?.toFloat(), value("CALC_CONS")?.toFloat(),
-            value("0105")?.toFloat(), value("CALC_PEDAL")?.toFloat(), value("CALC_BOOST")?.toFloat(),
+            value("0105")?.toFloat(), value("CALC_PEDAL")?.toFloat(), value("CALC_BOOST")?.toFloat(), alt,
         )
     }
 

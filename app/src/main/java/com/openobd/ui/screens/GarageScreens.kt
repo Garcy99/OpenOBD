@@ -19,6 +19,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Share
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Delete
@@ -578,9 +579,11 @@ fun TripDetailScreen(tripId: String, onBack: () -> Unit) {
     var track by remember { mutableStateOf<List<TrackPoint>?>(null) }
     var confirmDelete by remember { mutableStateOf(false) }
     var point by remember { mutableStateOf<TrackPoint?>(null) }
+    var exporting by remember { mutableStateOf(false) }
     LaunchedEffect(tripId) { track = app.garage.loadTrack(tripId) }
     Column(Modifier.fillMaxSize()) {
         ScreenTopBar(tr("Trip"), onBack, actions = {
+            if (t != null && track.orEmpty().size >= 2) IconButton(onClick = { exporting = true }) { Icon(Icons.Default.Share, tr("Export route")) }
             if (t != null) IconButton(onClick = { confirmDelete = true }) { Icon(Icons.Default.Delete, tr("Delete trip")) }
         })
         if (t == null) { CenteredMessage(null, tr("Trip not found.")); return@Column }
@@ -610,6 +613,11 @@ fun TripDetailScreen(tripId: String, onBack: () -> Unit) {
                     Modifier.fillMaxWidth().height(160.dp))
             }
         }
+    }
+    if (exporting && t != null) {
+        val v = g.vehicles.firstOrNull { it.id == t.vehicleId }
+        val car = listOfNotNull(v?.name, v?.specs?.title?.takeIf { it.isNotBlank() && it != v.name }).joinToString(" · ")
+        RouteExportDialog(t, track.orEmpty(), car, onDismiss = { exporting = false })
     }
     if (confirmDelete && t != null) AlertDialog(
         onDismissRequest = { confirmDelete = false },

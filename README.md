@@ -45,7 +45,7 @@ No ads, no subscriptions, no account. Your data stays on your phone.
 - **Codings & adaptations** with a backup before every write, a check afterwards, automatic restore if it fails
   and undo from the history
 - **Garage**: several cars, maintenance and inspection reminders, fuel log with real consumption, trips on a
-  map with the values at every point
+  map with the values at every point, exported to GPX, an interactive web map, a printable poster or a 3D model
 - Works with **Bluetooth, Bluetooth LE, Wi-Fi and USB** adapters, on phones, tablets and Android car head units
 - **11 languages** and a **demo car** to try everything without an adapter
 
@@ -130,6 +130,10 @@ No adapter yet? Choose **Demo** as the connection: a simulated car with codes, m
 - **Fuel log** with real full-to-full consumption and costs; real consumption from your trips in the car's specs
 - **Trips** saved automatically with a GPS track on an OpenStreetMap map: tap any point for the speed, rpm,
   consumption and time there
+- **Export a trip**: **GPX** for any GPS (Garmin, OsmAnd, Komoot, Google Earth) with the car's values in every point;
+  an **interactive HTML map** anyone can open in a browser to tap the route, see the same data and save the GPX;
+  a vector **poster** (PDF A3 / SVG) to print sharp at any size; and a **multicolour 3D model** (3MF) with the route
+  raised on a base, coloured by speed, rising and falling with the road
 - **Home-screen widget**, backup and restore
 
 ### Connection
