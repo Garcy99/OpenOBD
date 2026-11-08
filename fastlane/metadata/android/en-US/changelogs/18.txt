@@ -1,0 +1,3 @@
+• Custom PIDs: search and filter buttons (by category and module), and delete only the filtered ones
+• Fixed the app closing while scrolling large lists of imported PIDs (bulk imports could repeat ids; repaired automatically)
+• Only the PIDs on screen are polled live, so large lists don't slow live data

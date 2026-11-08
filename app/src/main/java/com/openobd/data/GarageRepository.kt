@@ -7,6 +7,7 @@ import com.openobd.core.garage.MaintenanceItem
 import com.openobd.core.garage.TrackPoint
 import com.openobd.core.garage.TripRecord
 import com.openobd.core.garage.Vehicle
+import com.openobd.core.garage.withUniqueIds
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -28,12 +29,25 @@ class GarageRepository(context: Context) {
     @Volatile var loaded = false
         private set
 
-    fun newId(): String = java.lang.Long.toString(System.currentTimeMillis(), 36) + java.lang.Integer.toString((Math.random() * 1296).toInt(), 36)
+    private val idCounter = java.util.concurrent.atomic.AtomicLong((Math.random() * 1_000_000).toLong())
+
+    /**
+     * A new unique id. Time + a counter + randomness: imports create hundreds in the same millisecond, and the
+     * old time + random(1296) ids repeated, which crashed lists keyed by id.
+     */
+    fun newId(): String = java.lang.Long.toString(System.currentTimeMillis(), 36) +
+        java.lang.Long.toString(idCounter.incrementAndGet() and 0xFFFFFF, 36) + java.lang.Integer.toString((Math.random() * 1296).toInt(), 36)
 
     /** Loads the garage; on first run creates a default vehicle, migrating older global brand settings into it. */
     suspend fun load(legacy: AppSettings?) = withContext(Dispatchers.IO) {
         mutex.withLock {
             val existing = runCatching { json.decodeFromString<GarageData>(file.readText()) }.getOrNull()
+                ?.let { d ->
+                    // Repairs garages saved by older versions, whose bulk imports could repeat ids.
+                    val fixed = d.copy(vehicles = d.vehicles.map { it.withUniqueIds(::newId) })
+                    if (fixed != d) runCatching { write(fixed) }
+                    fixed
+                }
             _data.value = existing ?: run {
                 val v = Vehicle(newId(), GarageData.DEFAULT_NAME, brandId = legacy?.brandId, customPids = legacy?.customPids.orEmpty(),
                     customModules = legacy?.customModules.orEmpty(), createdAt = System.currentTimeMillis())

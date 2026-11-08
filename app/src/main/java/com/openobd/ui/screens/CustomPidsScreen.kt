@@ -16,6 +16,12 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.ui.platform.testTag
+import androidx.compose.material3.FilterChip
+import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.FilterList
+import androidx.compose.material.icons.filled.Search
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
@@ -73,6 +79,24 @@ fun CustomPidsScreen(onBack: () -> Unit, onPacks: () -> Unit = {}) {
     var editing by remember { mutableStateOf<CustomPid?>(null) }
     var pasting by remember { mutableStateOf(false) }
     var importReport by remember { mutableStateOf<TorqueCsv.ImportResult?>(null) }
+    var searching by remember { mutableStateOf(false) }
+    var filtering by remember { mutableStateOf(false) }
+    var query by remember { mutableStateOf("") }
+    var group by remember { mutableStateOf<String?>(null) }
+    var module by remember { mutableStateOf<String?>(null) }
+    var confirmDelete by remember { mutableStateOf<List<CustomPid>?>(null) }
+    fun moduleOf(p: CustomPid) = p.header.ifBlank { "7DF" } + (if (p.extAddr.isNotBlank()) "/" + p.extAddr else "")
+    val groups = remember(pids) { pids.groupingBy { com.openobd.core.brand.Obdb.group(it) }.eachCount().entries.sortedByDescending { it.value } }
+    val modules = remember(pids) { pids.groupingBy { moduleOf(it) }.eachCount().entries.sortedByDescending { it.value } }
+    val shown = remember(pids, query, group, module) {
+        val q = query.trim().lowercase()
+        pids.filter { p ->
+            (group == null || com.openobd.core.brand.Obdb.group(p) == group) && (module == null || moduleOf(p) == module) &&
+                (q.isEmpty() || p.name.lowercase().contains(q) || p.shortName.lowercase().contains(q) || p.request.lowercase().contains(q) ||
+                    p.unit.lowercase().contains(q) || p.header.lowercase().contains(q))
+        }
+    }
+    val filtered = shown.size != pids.size
 
     fun import(text: String) {
         val r = TorqueCsv.parse(text)
@@ -85,12 +109,19 @@ fun CustomPidsScreen(onBack: () -> Unit, onPacks: () -> Unit = {}) {
         }.onSuccess { t -> t?.let(::import) }.onFailure { Toast.makeText(context, tr("Could not read file: %1\$s", it.message), Toast.LENGTH_LONG).show() }
     }
 
-    if (vehicle != null) SubscribeSensors("custompids", pids.map { it.key })
+    // Only the first ones on screen are polled: hundreds of imported values would slow live data to a crawl.
+    if (vehicle != null) SubscribeSensors("custompids", shown.take(30).map { it.key })
     val readings by app.session.live.readings.collectAsStateWithLifecycle()
 
     Scaffold(
         topBar = {
             ScreenTopBar(tr("Custom PIDs"), onBack, actions = {
+                if (pids.isNotEmpty()) {
+                    IconButton(onClick = { searching = !searching; if (!searching) query = "" }) { Icon(Icons.Default.Search, tr("Search")) }
+                    IconButton(onClick = { filtering = !filtering }) {
+                        Icon(Icons.Default.FilterList, tr("Filter"), tint = if (group != null || module != null) MaterialTheme.colorScheme.primary else androidx.compose.ui.graphics.Color.Unspecified)
+                    }
+                }
                 IconButton(onClick = onPacks) { Icon(Icons.Default.Inventory2, tr("PID packs")) }
                 IconButton(onClick = { fileLauncher.launch(arrayOf("text/*", "application/octet-stream", "*/*")) }) { Icon(Icons.Default.FileOpen, tr("Import CSV file")) }
                 IconButton(onClick = { pasting = true }) { Icon(Icons.Default.ContentPaste, tr("Paste CSV")) }
@@ -110,7 +141,35 @@ fun CustomPidsScreen(onBack: () -> Unit, onPacks: () -> Unit = {}) {
                 Text(tr("Custom PIDs appear in Live data, the dashboard, charts and logs under \"Brand / custom\"."),
                     style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
-            items(pids, key = { it.id }) { p ->
+            if (searching) item {
+                OutlinedTextField(query, { query = it }, leadingIcon = { Icon(Icons.Default.Search, null) }, singleLine = true,
+                    placeholder = { Text(tr("Name, request, module or unit")) },
+                    trailingIcon = { if (query.isNotEmpty()) IconButton(onClick = { query = "" }) { Icon(Icons.Default.Close, tr("Clear")) } },
+                    modifier = Modifier.fillMaxWidth().testTag("pidSearch"))
+            }
+            if (filtering) item {
+                Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                    Text(tr("Category"), style = MaterialTheme.typography.labelLarge)
+                    LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                        item { FilterChip(group == null, { group = null }, label = { Text(tr("All") + " · ${pids.size}") }) }
+                        items(groups.map { it.key to it.value }) { (g, n) -> FilterChip(group == g, { group = if (group == g) null else g }, label = { Text(tr(g) + " · $n") }) }
+                    }
+                    if (modules.size > 1) {
+                        Text(tr("Module"), style = MaterialTheme.typography.labelLarge)
+                        LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                            item { FilterChip(module == null, { module = null }, label = { Text(tr("All")) }) }
+                            items(modules.map { it.key to it.value }) { (m, n) -> FilterChip(module == m, { module = if (module == m) null else m }, label = { Text("$m · $n") }) }
+                        }
+                    }
+                }
+            }
+            if (filtered) item {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(tr("Showing %1\$s of %2\$s", shown.size, pids.size), style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1f))
+                    TextButton(onClick = { query = ""; group = null; module = null }) { Text(tr("Show all")) }
+                }
+            }
+            items(shown, key = { it.id }) { p ->
                 val def = remember(p) { p.toSensor() }
                 SectionCard(Modifier.clickable { editing = p }) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
@@ -125,11 +184,27 @@ fun CustomPidsScreen(onBack: () -> Unit, onPacks: () -> Unit = {}) {
                 }
             }
             item {
-                TextButton(onClick = { scope.launch { app.garage.updateActive { it.copy(customPids = emptyList()) } } }) {
-                    Text(tr("Delete all custom PIDs"), color = MaterialTheme.colorScheme.error)
+                TextButton(onClick = { confirmDelete = shown }, enabled = shown.isNotEmpty()) {
+                    Text(if (filtered) tr("Delete these %1\$s PIDs", shown.size) else tr("Delete all custom PIDs"), color = MaterialTheme.colorScheme.error)
                 }
             }
         }
+    }
+
+    confirmDelete?.let { list ->
+        AlertDialog(
+            onDismissRequest = { confirmDelete = null },
+            title = { Text(tr("Delete %1\$s PIDs?", list.size)) },
+            text = { Text(tr("They are removed from this car. Gauges and logs that use them stop showing them.")) },
+            confirmButton = {
+                TextButton(onClick = {
+                    val ids = list.map { it.id }.toSet()
+                    confirmDelete = null
+                    scope.launch { app.garage.updateActive { s -> s.copy(customPids = s.customPids.filter { it.id !in ids }) } }
+                }) { Text(tr("Delete"), color = MaterialTheme.colorScheme.error) }
+            },
+            dismissButton = { TextButton(onClick = { confirmDelete = null }) { Text(tr("Cancel")) } },
+        )
     }
 
     editing?.let { p ->

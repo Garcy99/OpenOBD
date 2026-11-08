@@ -1,0 +1,3 @@
+• PIDs personalizados: botones de búsqueda y de filtro (por categoría y módulo), y borrar solo los filtrados
+• Corregido el cierre de la app al recorrer listas grandes de PIDs importados (identificadores repetidos al importar muchos de golpe; se reparan solos)
+• Solo se leen en directo los PIDs que hay en pantalla, para no ralentizar los datos

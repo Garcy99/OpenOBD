@@ -25,6 +25,16 @@ data class Vehicle(
     val routines: List<com.openobd.core.brand.Routine> = emptyList(),
 )
 
+/** The same vehicle with every custom PID, coding and routine id unique (the first of a repeated id keeps it). */
+fun Vehicle.withUniqueIds(newId: () -> String): Vehicle {
+    val seen = HashSet<String>()
+    fun fresh(id: String): String = if (seen.add(id)) id else generateSequence { newId() }.first { seen.add(it) }
+    val pids = customPids.map { p -> fresh(p.id).let { if (it == p.id) p else p.copy(id = it) } }
+    val c = codings.map { x -> fresh("c:" + x.id).removePrefix("c:").let { if (it == x.id) x else x.copy(id = it) } }
+    val r = routines.map { x -> fresh("r:" + x.id).removePrefix("r:").let { if (it == x.id) x else x.copy(id = it) } }
+    return if (pids == customPids && c == codings && r == routines) this else copy(customPids = pids, codings = c, routines = r)
+}
+
 @Serializable
 data class MaintenanceItem(
     val id: String,
