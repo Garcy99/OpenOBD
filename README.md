@@ -132,9 +132,10 @@ No adapter yet? Choose **Demo** as the connection: a simulated car with codes, m
   consumption and time there
 - **Export a trip**: **GPX** for any GPS (Garmin, OsmAnd, Komoot, Google Earth) with the car's values in every point;
   an **interactive HTML map** anyone can open in a browser to tap the route, see the same data and save the GPX;
-  a vector **poster** (PDF A3 / SVG) to print sharp at any size; and a **multicolour 3D model** (3MF): the route on
+  a **poster** (PDF A3 / SVG) with the route in vectors over the shaded relief of the area; and a **multicolour 3D model** (3MF): the route on
   the real terrain around it (open elevation data, exaggeration ×1 to ×5), cut as a hexagon, circle or square, coloured
-  by speed, with the trip's name embossed on a plaque, each part ready for its own filament
+  by speed, with the trip's name (and optionally its GPS coordinates) embossed on a plaque, each part painted with its
+  filament number for Bambu Studio, PrusaSlicer and Orca
 - **Home-screen widget**, backup and restore
 
 ### Connection

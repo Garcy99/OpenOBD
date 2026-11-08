@@ -92,6 +92,52 @@ object RouteGeometry {
         return out
     }
 
+    /**
+     * A faithful smooth path in metres from the first point: GPS jitter closer than [minStepM] to the previous kept
+     * point is dropped, then a centripetal Catmull-Rom curve passes through every kept point, sampled about every
+     * [stepM]. Each sample carries the index of the GPS point its piece starts at (for speed colours).
+     */
+    fun smooth(points: List<TrackPoint>, minStepM: Double, stepM: Double): List<Triple<Double, Double, Int>> {
+        val m = metres(points)
+        if (m.size < 2) return m.mapIndexed { i, p -> Triple(p.first, p.second, i) }
+        val keep = mutableListOf(0)
+        for (i in 1 until m.size) {
+            val (x0, y0) = m[keep.last()]
+            if (sqrt((m[i].first - x0).let { it * it } + (m[i].second - y0).let { it * it }) >= minStepM) keep += i
+        }
+        if (keep.last() != m.lastIndex) { if (keep.size > 1) keep[keep.lastIndex] = m.lastIndex else keep += m.lastIndex }
+        val p = keep.map { m[it] }
+        if (p.size < 2) return listOf(Triple(m.first().first, m.first().second, 0), Triple(m.last().first, m.last().second, m.lastIndex))
+        fun pt(i: Int): Pair<Double, Double> = when {
+            i < 0 -> (2 * p[0].first - p[1].first) to (2 * p[0].second - p[1].second)
+            i > p.lastIndex -> (2 * p.last().first - p[p.lastIndex - 1].first) to (2 * p.last().second - p[p.lastIndex - 1].second)
+            else -> p[i]
+        }
+        fun knot(a: Pair<Double, Double>, b: Pair<Double, Double>) = sqrt(sqrt((b.first - a.first).let { it * it } + (b.second - a.second).let { it * it })).coerceAtLeast(1e-6)
+        val out = mutableListOf<Triple<Double, Double, Int>>()
+        for (i in 0 until p.lastIndex) {
+            val p0 = pt(i - 1); val p1 = pt(i); val p2 = pt(i + 1); val p3 = pt(i + 2)
+            val t0 = 0.0; val t1 = t0 + knot(p0, p1); val t2 = t1 + knot(p1, p2); val t3 = t2 + knot(p2, p3)
+            val len = sqrt((p2.first - p1.first).let { it * it } + (p2.second - p1.second).let { it * it })
+            val n = max(1, ceil(len / stepM).toInt())
+            for (k in 0 until n) {
+                val t = t1 + (t2 - t1) * k / n
+                fun lerp(a: Pair<Double, Double>, b: Pair<Double, Double>, ta: Double, tb: Double) =
+                    ((tb - t) / (tb - ta) * a.first + (t - ta) / (tb - ta) * b.first) to ((tb - t) / (tb - ta) * a.second + (t - ta) / (tb - ta) * b.second)
+                val a1 = lerp(p0, p1, t0, t1); val a2 = lerp(p1, p2, t1, t2); val a3 = lerp(p2, p3, t2, t3)
+                val b1 = lerp(a1, a2, t0, t2); val b2 = lerp(a2, a3, t1, t3)
+                val c = lerp(b1, b2, t1, t2)
+                out += Triple(c.first, c.second, keep[i])
+            }
+        }
+        out += Triple(p.last().first, p.last().second, keep.last())
+        return out
+    }
+
+    /** "40.74060° N, 4.05730° W" */
+    fun coordinates(lat: Double, lon: Double): String =
+        String.format(Locale.US, "%.5f° %s, %.5f° %s", abs(lat), if (lat >= 0) "N" else "S", abs(lon), if (lon >= 0) "E" else "W")
+
     /** Climb in metres (sum of rises larger than GPS noise), or null without altitude. */
     fun climb(points: List<TrackPoint>): Double? {
         val alts = points.mapNotNull { it.alt?.toDouble() }
@@ -231,6 +277,41 @@ map.fitBounds(D.map(p=>[p[0],p[1]]),{padding:[20,20]});map.on('click',e=>show(ne
     }
 }
 
+/** Minimal PNG encoder (RGBA, 8 bits), so the core needs no imaging library. */
+object Png {
+    fun encode(width: Int, height: Int, argb: IntArray): ByteArray {
+        val raw = java.io.ByteArrayOutputStream(height * (1 + width * 4))
+        for (y in 0 until height) {
+            raw.write(1) // "Sub" filter: each byte minus the one to its left
+            var pr = 0; var pg = 0; var pb = 0; var pa = 0
+            for (x in 0 until width) {
+                val p = argb[y * width + x]
+                val r = (p shr 16) and 0xFF; val g = (p shr 8) and 0xFF; val b = p and 0xFF; val a = (p ushr 24) and 0xFF
+                raw.write((r - pr) and 0xFF); raw.write((g - pg) and 0xFF); raw.write((b - pb) and 0xFF); raw.write((a - pa) and 0xFF)
+                pr = r; pg = g; pb = b; pa = a
+            }
+        }
+        val deflater = java.util.zip.Deflater(9)
+        val idat = java.io.ByteArrayOutputStream()
+        java.util.zip.DeflaterOutputStream(idat, deflater).use { it.write(raw.toByteArray()) }
+        val out = java.io.ByteArrayOutputStream()
+        out.write(byteArrayOf(0x89.toByte(), 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A))
+        fun chunk(type: String, data: ByteArray) {
+            val len = data.size
+            out.write(byteArrayOf((len ushr 24).toByte(), (len ushr 16).toByte(), (len ushr 8).toByte(), len.toByte()))
+            val t = type.toByteArray(Charsets.US_ASCII)
+            out.write(t); out.write(data)
+            val crc = java.util.zip.CRC32().apply { update(t); update(data) }.value
+            out.write(byteArrayOf((crc ushr 24).toByte(), (crc ushr 16).toByte(), (crc ushr 8).toByte(), crc.toByte()))
+        }
+        val ihdr = java.nio.ByteBuffer.allocate(13).putInt(width).putInt(height).put(8).put(6).put(0).put(0).put(0).array()
+        chunk("IHDR", ihdr)
+        chunk("IDAT", idat.toByteArray())
+        chunk("IEND", ByteArray(0))
+        return out.toByteArray()
+    }
+}
+
 /** Display units for exports (metric or imperial), kept here so the core stays free of Android. */
 data class Units(val imperial: Boolean = false) {
     fun distance(km: Double) = if (imperial) f(km * 0.621371, 1) + " mi" else f(km, 1) + " km"
@@ -265,10 +346,19 @@ object RoutePoster {
     data class Rect(val x: Double, val y: Double, val w: Double, val h: Double, val fill: String) : Shape
     /** [anchor]: 0 start, 1 middle, 2 end; [y] is the baseline. */
     data class Text(val x: Double, val y: Double, val text: String, val size: Double, val color: String, val bold: Boolean = false, val anchor: Int = 0) : Shape
+    /** A raster ([argb], [width] x [height] pixels) stretched over the rectangle; used for the relief. */
+    class Image(val x: Double, val y: Double, val w: Double, val h: Double, val width: Int, val height: Int, val argb: IntArray) : Shape
 
     data class Poster(val widthMm: Double, val heightMm: Double, val shapes: List<Shape>)
 
-    fun layout(info: RouteInfo, points: List<TrackPoint>, label: (String) -> String, units: Units = Units(), widthMm: Double = 297.0, heightMm: Double = 420.0): Poster {
+    /**
+     * [terrain]: shaded relief under the route (null = route only). [pxPerMm]: relief resolution (5 = 127 dpi, more
+     * than the elevation data holds).
+     */
+    fun layout(
+        info: RouteInfo, points: List<TrackPoint>, label: (String) -> String, units: Units = Units(), widthMm: Double = 297.0, heightMm: Double = 420.0,
+        terrain: Terrain? = null, pxPerMm: Double = 5.0,
+    ): Poster {
         val ink = "#16181D"; val muted = "#6B7280"
         val shapes = mutableListOf<Shape>(Rect(0.0, 0.0, widthMm, heightMm, "#FFFFFF"))
         val margin = widthMm * 0.08
@@ -284,12 +374,34 @@ object RoutePoster {
         if (m.size >= 2) {
             val minX = m.minOf { it.first }; val maxX = m.maxOf { it.first }; val minY = m.minOf { it.second }; val maxY = m.maxOf { it.second }
             val spanX = max(maxX - minX, 1.0); val spanY = max(maxY - minY, 1.0)
-            val scale = min(boxW / spanX, boxH / spanY) // mm per metre
+            // With relief, leave ground around the route.
+            val fit = if (terrain != null) 0.86 else 1.0
+            val scale = min(boxW / spanX, boxH / spanY) * fit // mm per metre
             val offX = margin + (boxW - spanX * scale) / 2; val offY = top + (boxH - spanY * scale) / 2
             fun xy(p: Pair<Double, Double>) = (offX + (p.first - minX) * scale) to (offY + (maxY - p.second) * scale)
-            val index = simple.indices.associateBy { simple[it] }
+            if (terrain != null) {
+                val origin = simple.first()
+                val kx = 111_320.0 * cos(Math.toRadians(origin.lat)); val ky = 110_540.0
+                relief(terrain, boxW, boxH, pxPerMm) { mmX, mmY ->
+                    // Box millimetres to the route's metres, then to latitude / longitude.
+                    val xm = (margin + mmX - offX) / scale + minX; val ym = maxY - (top + mmY - offY) / scale
+                    (origin.lat + ym / ky) to (origin.lon + xm / kx)
+                }?.let { (w, h, px) ->
+                    shapes += Image(margin, top, boxW, boxH, w, h, px)
+                    shapes += Line(listOf(margin to top, margin + boxW to top, margin + boxW to top + boxH, margin to top + boxH, margin to top), "#D6D3CC", 0.3)
+                }
+            }
             val stroke = widthMm * 0.0065
-            for ((b, run) in RouteGeometry.runs(simple)) shapes += Line(run.map { xy(m[index.getValue(it)]) }, RouteGeometry.bandColors[b], stroke)
+            // A smooth curve through every GPS point (not straight lines between them), coloured by speed.
+            val curve = RouteGeometry.smooth(points, max(3.0, 0.15 / scale), 0.25 / scale)
+            var run = mutableListOf<Pair<Double, Double>>(); var band = -1
+            for ((x, y, i) in curve) {
+                val b = RouteGeometry.band(points[i].speedKmh)
+                val pt = xy(x to y)
+                if (b != band && run.isNotEmpty()) { run += pt; shapes += Line(run, RouteGeometry.bandColors[band], stroke); run = mutableListOf() }
+                run += pt; band = b
+            }
+            if (run.size >= 2) shapes += Line(run, RouteGeometry.bandColors[band], stroke)
             val s = xy(m.first()); val e = xy(m.last())
             shapes += Circle(s.first, s.second, stroke * 1.6, "#16A34A", "#FFFFFF", stroke * 0.5)
             shapes += Circle(e.first, e.second, stroke * 1.6, ink, "#FFFFFF", stroke * 0.5)
@@ -338,13 +450,73 @@ object RoutePoster {
             lx += 14 + t.length * widthMm * 0.0085
         }
         shapes += Text(widthMm - margin, legendY, "OpenOBD", widthMm * 0.017, muted, anchor = 2)
+        if (shapes.any { it is Image }) shapes += Text(widthMm - margin, legendY + 5, label(Terrarium.ATTRIBUTION), widthMm * 0.011, muted, anchor = 2)
         return Poster(widthMm, heightMm, shapes)
+    }
+
+    /**
+     * Shaded relief of the box: light from the north-west, a soft tint from low (sage) to high (sand), so the
+     * coloured route stays the strongest thing on the page. Pixels without elevation are transparent.
+     */
+    private fun relief(terrain: Terrain, wMm: Double, hMm: Double, pxPerMm: Double, at: (Double, Double) -> Pair<Double, Double>): Triple<Int, Int, IntArray>? {
+        val w = (wMm * pxPerMm).toInt().coerceIn(2, 2400); val h = (hMm * pxPerMm).toInt().coerceIn(2, 2400)
+        // Elevation with a border for smoothing and slopes. Poster pixels are smaller than the elevation data's, so
+        // the grid is smoothed and slopes are taken over a few pixels; otherwise the data's steps show as stripes.
+        val bd = 4; val gw = w + 2 * bd; val gh = h + 2 * bd
+        var e = DoubleArray(gw * gh)
+        var missing = 0
+        for (j in 0 until gh) for (i in 0 until gw) {
+            val (lat, lon) = at((i - bd + 0.5) / pxPerMm, (j - bd + 0.5) / pxPerMm)
+            val v = terrain.elevation(lat, lon)
+            if (v == null) missing++
+            e[j * gw + i] = v ?: Double.NaN
+        }
+        if (missing > e.size * 3 / 4) return null
+        val known = e.filter { !it.isNaN() }
+        val lo = known.min(); val hi = known.max(); val range = max(hi - lo, 1.0)
+        val fill = known.average()
+        val valid = BooleanArray(e.size) { !e[it].isNaN() }
+        for (k in e.indices) if (!valid[k]) e[k] = fill
+        val r = 2
+        repeat(2) {
+            val tmp = DoubleArray(e.size)
+            for (j in 0 until gh) for (i in 0 until gw) { var sum = 0.0; var n = 0; for (d in -r..r) { val x = i + d; if (x in 0 until gw) { sum += e[j * gw + x]; n++ } }; tmp[j * gw + i] = sum / n }
+            val out = DoubleArray(e.size)
+            for (j in 0 until gh) for (i in 0 until gw) { var sum = 0.0; var n = 0; for (d in -r..r) { val y = j + d; if (y in 0 until gh) { sum += tmp[y * gw + i]; n++ } }; out[j * gw + i] = sum / n }
+            e = out
+        }
+        // Metres per pixel, from two neighbouring pixels.
+        val (la, loA) = at(0.0, 0.0); val (lb, loB) = at(1 / pxPerMm, 0.0)
+        val cell = max(0.5, sqrt(((la - lb) * 110_540).let { it * it } + ((loA - loB) * 111_320 * cos(Math.toRadians(la))).let { it * it }))
+        val zf = 1.6
+        val light = doubleArrayOf(-0.5, 0.5, 0.7071)
+        val low = intArrayOf(0xE6, 0xEC, 0xDD); val high = intArrayOf(0xEA, 0xDF, 0xCC)
+        val px = IntArray(w * h)
+        val st = 2
+        for (j in 0 until h) for (i in 0 until w) {
+            val gi = i + bd; val gj = j + bd
+            if (!valid[gj * gw + gi]) continue
+            val c = e[gj * gw + gi]
+            val dx = (e[gj * gw + gi + st] - e[gj * gw + gi - st]) / (2 * st * cell) * zf
+            val dy = (e[(gj - st) * gw + gi] - e[(gj + st) * gw + gi]) / (2 * st * cell) * zf
+            val nl = sqrt(dx * dx + dy * dy + 1)
+            val shade = ((-dx * light[0] - dy * light[1] + light[2]) / nl / light[2]).coerceIn(0.0, 1.35)
+            val t = (c - lo) / range
+            val k = 0.58 + 0.42 * min(shade, 1.0); val glow = (shade - 1).coerceAtLeast(0.0) * 0.6
+            val rgb = IntArray(3) { ch ->
+                val base = low[ch] + (high[ch] - low[ch]) * t
+                (base * k + (255 - base * k) * glow).toInt().coerceIn(0, 255)
+            }
+            px[j * w + i] = (0xFF shl 24) or (rgb[0] shl 16) or (rgb[1] shl 8) or rgb[2]
+        }
+        return Triple(w, h, px)
     }
 
     fun svg(p: Poster): String = buildString {
         append("""<?xml version="1.0" encoding="UTF-8"?>""").append('\n')
-        append("""<svg xmlns="http://www.w3.org/2000/svg" width="${f(p.widthMm, 0)}mm" height="${f(p.heightMm, 0)}mm" viewBox="0 0 ${f(p.widthMm, 2)} ${f(p.heightMm, 2)}" font-family="Helvetica, Arial, sans-serif">""").append('\n')
+        append("""<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="${f(p.widthMm, 0)}mm" height="${f(p.heightMm, 0)}mm" viewBox="0 0 ${f(p.widthMm, 2)} ${f(p.heightMm, 2)}" font-family="Helvetica, Arial, sans-serif">""").append('\n')
         for (s in p.shapes) when (s) {
+            is Image -> append("""<image x="${f(s.x, 2)}" y="${f(s.y, 2)}" width="${f(s.w, 2)}" height="${f(s.h, 2)}" preserveAspectRatio="none" xlink:href="data:image/png;base64,${java.util.Base64.getEncoder().encodeToString(Png.encode(s.width, s.height, s.argb))}"/>""")
             is Rect -> append("""<rect x="${f(s.x, 2)}" y="${f(s.y, 2)}" width="${f(s.w, 2)}" height="${f(s.h, 2)}" fill="${s.fill}"/>""")
             is Line -> append("""<polyline fill="none" stroke="${s.color}" stroke-width="${f(s.width, 2)}" stroke-linecap="round" stroke-linejoin="round" points="${s.points.joinToString(" ") { "${f(it.first, 2)},${f(it.second, 2)}" }}"/>""")
             is Circle -> append("""<circle cx="${f(s.x, 2)}" cy="${f(s.y, 2)}" r="${f(s.r, 2)}" fill="${s.fill}"${s.stroke?.let { " stroke=\"$it\" stroke-width=\"${f(s.strokeWidth, 2)}\"" } ?: ""}/>""")
@@ -382,9 +554,17 @@ object Route3mf {
         val margin: Double = 0.12,
         val rings: Int = 90,
         val boundaryPoints: Int = 360,
+        val colors: Colors = Colors.FOUR,
     )
 
-    class Mesh(val name: String, val color: String) {
+    /**
+     * How parts map to filaments. FOUR: 1 ground and plaque, 2 route, 3 title and start, 4 end (fits a 4-slot AMS).
+     * BY_SPEED: the route in three colours by speed: 1 ground, 2-4 route, 5 title and start, 6 end.
+     */
+    enum class Colors(val label: String) { FOUR("4 filaments"), BY_SPEED("By speed (6 filaments)") }
+
+    /** [filament]: 1-based filament the part is painted with in the slicer. */
+    class Mesh(val name: String, val color: String, val filament: Int = 1) {
         val v = mutableListOf<DoubleArray>()
         val t = mutableListOf<IntArray>()
         fun vertex(x: Double, y: Double, z: Double): Int { v += doubleArrayOf(x, y, z); return v.size - 1 }
@@ -393,13 +573,22 @@ object Route3mf {
         fun translate(dx: Double, dy: Double) { v.forEach { it[0] += dx; it[1] += dy } }
     }
 
+    /** Filament legend for the chosen colours, e.g. "1 ground · 2 route · 3 title and start · 4 end". */
+    fun legend(colors: Colors): List<Pair<Int, String>> = when (colors) {
+        Colors.FOUR -> listOf(1 to "Ground and plaque", 2 to "Route", 3 to "Title and start", 4 to "End")
+        Colors.BY_SPEED -> listOf(1 to "Ground and plaque", 2 to "Route up to 50 km/h", 3 to "Route 50-100 km/h", 4 to "Route over 100 km/h", 5 to "Title and start", 6 to "End")
+    }
+
     private const val GROUND = "#C9C1AE"
     private const val FLAT_BASE = "#2B2D31"
 
     /**
      * [title]: outlines of the title text (any units, y up), drawn by the app with a real font; empty = no plaque.
      */
-    fun meshes(points: List<TrackPoint>, o: Options = Options(), terrain: Terrain? = null, title: List<List<Pair<Double, Double>>> = emptyList()): List<Mesh> {
+    fun meshes(
+        points: List<TrackPoint>, o: Options = Options(), terrain: Terrain? = null, title: List<List<Pair<Double, Double>>> = emptyList(),
+        subtitle: List<List<Pair<Double, Double>>> = emptyList(),
+    ): List<Mesh> {
         if (points.size < 2) return emptyList()
         val origin = points.first()
         val kx = 111_320.0 * cos(Math.toRadians(origin.lat)); val ky = 110_540.0
@@ -447,7 +636,7 @@ object Route3mf {
         fun groundAt(xm: Double, ym: Double) = if (hasTerrain) height(elevationAt(xm, ym)) else o.baseMm
 
         val out = mutableListOf<Mesh>()
-        val ground = Mesh(if (hasTerrain) "Terrain" else "Base", if (hasTerrain) GROUND else FLAT_BASE)
+        val ground = Mesh(if (hasTerrain) "Terrain" else "Base", if (hasTerrain) GROUND else FLAT_BASE, 1)
         ground.apply {
             val c = vertex(0.0, 0.0, height(centreElev))
             val rings = ringPts.mapIndexed { k, ring -> ring.mapIndexed { j, (x, y) -> vertex(x * s, y * s, height(ringElev[k][j])) } }
@@ -465,64 +654,77 @@ object Route3mf {
         }
         out += ground
 
-        // Route, draped on the ground (or raised with GPS altitude on flat ground).
-        val simple = RouteGeometry.simplify(points, 0.3 / s).let { if (it.size >= 2) it else points }
-        val sm = RouteGeometry.metres(simple).map { (it.first - cx) to (it.second - cy) }
-        val index = simple.indices.associateBy { simple[it] }
-        val alts = simple.map { it.alt?.toDouble() }; val known = alts.filterNotNull()
+        // Route: a smooth curve through every GPS point, drawn like a pen stroke (straight pieces with round joints),
+        // standing on the highest ground under its width so it never sinks into the relief.
+        val hw = o.routeWidthMm / 2
+        val samples = RouteGeometry.smooth(points, max(3.0, 0.2 / s), 0.5 / s)
+            .map { (x, y, i) -> Triple(x - cx, y - cy, i) }
+        val alts = points.map { it.alt?.toDouble() }; val known = alts.filterNotNull()
         val altRange = if (known.size >= 2) known.max() - known.min() else 0.0
         fun gpsRelief(i: Int): Double {
             if (hasTerrain || altRange < 5) return 0.0
-            val a = alts[i] ?: alts.indices.minBy { j -> if (alts[j] == null) Int.MAX_VALUE else abs(j - i) }.let { alts[it] ?: known.min() }
+            val a = alts[i] ?: alts.indices.filter { alts[it] != null }.minBy { abs(it - i) }.let { alts[it]!! }
             return (a - known.min()) / altRange * o.gpsReliefMm
         }
-        val names = listOf("Route up to 50 km/h", "Route 50-100 km/h", "Route over 100 km/h", "Route")
-        val byBand = RouteGeometry.runs(simple).groupBy({ it.first }, { it.second })
-        for ((band, runs) in byBand.toSortedMap()) {
-            val mesh = Mesh(names[band], RouteGeometry.bandColors[band])
-            for (run in runs) {
-                // Densify to ~0.8 mm so the route follows the relief between GPS points.
-                val path = mutableListOf<Pair<Double, Double>>(); val lift = mutableListOf<Double>()
-                val ids = run.map { index.getValue(it) }
-                for ((k, i) in ids.withIndex()) {
-                    if (k == 0) { path += sm[i]; lift += gpsRelief(i); continue }
-                    val (x0, y0) = sm[ids[k - 1]]; val (x1, y1) = sm[i]
-                    val steps = max(1, ceil(sqrt((x1 - x0).let { it * it } + (y1 - y0).let { it * it }) * s / 0.8).toInt())
-                    for (st in 1..steps) {
-                        val f = st.toDouble() / steps
-                        path += (x0 + (x1 - x0) * f) to (y0 + (y1 - y0) * f)
-                        lift += gpsRelief(ids[k - 1]) * (1 - f) + gpsRelief(i) * f
-                    }
-                }
-                val z0 = path.map { (x, y) -> groundAt(x, y) - 0.8 }
-                val z1 = path.mapIndexed { k, (x, y) -> groundAt(x, y) + o.routeHeightMm + lift[k] }
-                ribbon(mesh, path.map { it.first * s to it.second * s }, z0, z1, o.routeWidthMm / 2)
-            }
-            out += mesh
+        val probe = hw / s // half width in metres
+        val tops = DoubleArray(samples.size); val bottoms = DoubleArray(samples.size)
+        for ((k, smp) in samples.withIndex()) {
+            val (x, y, i) = smp
+            val g = listOf(0.0 to 0.0, probe to 0.0, -probe to 0.0, 0.0 to probe, 0.0 to -probe).map { (dx, dy) -> groundAt(x + dx, y + dy) }
+            tops[k] = g.max() + o.routeHeightMm + gpsRelief(i)
+            bottoms[k] = g.min() - 0.8
         }
-        val start = sm.first(); val end = sm.last()
-        out += cylinder("Start", "#F5F5F5", start.first * s, start.second * s, o.routeWidthMm * 1.4, groundAt(start.first, start.second) - 0.8,
-            groundAt(start.first, start.second) + o.routeHeightMm + 1.6 + gpsRelief(0))
-        out += cylinder("End", "#111111", end.first * s, end.second * s, o.routeWidthMm * 1.4, groundAt(end.first, end.second) - 0.8,
-            groundAt(end.first, end.second) + o.routeHeightMm + 1.6 + gpsRelief(simple.lastIndex))
+        val bySpeed = o.colors == Colors.BY_SPEED
+        val routeColor = "#E8590C"
+        fun bandOf(k: Int) = RouteGeometry.band(points[samples[k].third].speedKmh).let { if (it == RouteGeometry.UNKNOWN) RouteGeometry.SLOW else it }
+        val names = listOf("Route up to 50 km/h", "Route 50-100 km/h", "Route over 100 km/h")
+        val routeMeshes = if (bySpeed) (0..2).map { Mesh(names[it], RouteGeometry.bandColors[it], 2 + it) } else listOf(Mesh("Route", routeColor, 2))
+        fun meshFor(k: Int) = if (bySpeed) routeMeshes[bandOf(k)] else routeMeshes[0]
+        val xy = samples.map { (x, y, _) -> (x * s) to (y * s) }
+        for (k in 0 until samples.lastIndex) {
+            val mesh = meshFor(k)
+            if (dist(xy[k], xy[k + 1]) < 1e-4) continue
+            val lo = min(bottoms[k], bottoms[k + 1])
+            ribbon(mesh, listOf(xy[k], xy[k + 1]), listOf(lo, lo), listOf(tops[k], tops[k + 1]), hw)
+            // Round joint where the direction turns (and at every change of colour), so curves stay smooth.
+            val turn = if (k == 0) Double.MAX_VALUE else {
+                val (ax, ay) = xy[k - 1]; val (bx, by) = xy[k]; val (qx, qy) = xy[k + 1]
+                val a1 = Math.atan2(by - ay, bx - ax); val a2 = Math.atan2(qy - by, qx - bx)
+                abs(Math.IEEEremainder(a2 - a1, 2 * Math.PI))
+            }
+            if (turn > Math.toRadians(2.0) || (k > 0 && meshFor(k - 1) !== mesh)) addCylinder(mesh, xy[k].first, xy[k].second, hw, min(bottoms[k], lo), tops[k], 16)
+        }
+        val last = samples.lastIndex
+        addCylinder(meshFor(last - 1), xy[last].first, xy[last].second, hw, bottoms[last], tops[last], 16)
+        out += routeMeshes.filter { it.t.isNotEmpty() }
+        val marker = o.routeWidthMm * 1.4
+        out += cylinder("Start", "#F5F5F5", xy.first().first, xy.first().second, marker, bottoms.first(), tops.first() + 1.6).withFilament(if (bySpeed) 5 else 3)
+        out += cylinder("End", "#111111", xy.last().first, xy.last().second, marker, bottoms.last(), tops.last() + 1.6).withFilament(if (bySpeed) 6 else 4)
 
-        // Title plaque in front (towards the viewer, -y), joined to the ground.
+        // Title plaque in front (towards the viewer, -y), joined to the ground; optional second line (coordinates).
         if (title.isNotEmpty()) {
             val front = boundary.minOf { it.second } * s
             val width = (boundary.maxOf { it.first } - boundary.minOf { it.first }) * s
-            val pw = width * 0.78; val pd = o.sizeMm * 0.15; val overlap = if (o.shape == Shape.CIRCLE) pd * 0.45 else 2.0
+            val pw = width * 0.78; val pd = o.sizeMm * (if (subtitle.isNotEmpty()) 0.19 else 0.15)
+            val overlap = if (o.shape == Shape.CIRCLE) pd * 0.45 else 2.0
             val top = o.baseMm + 1.5
-            out += box("Plaque", FLAT_BASE, -pw / 2, front - pd, 0.0, pw / 2, front + overlap, top)
-            val shapes = Polygons.group(title)
-            if (shapes.isNotEmpty()) {
+            out += box("Plaque", if (hasTerrain) GROUND else FLAT_BASE, -pw / 2, front - pd, 0.0, pw / 2, front + overlap, top).withFilament(1)
+            val text = Mesh("Title", "#F5F5F5", if (bySpeed) 5 else 3)
+            fun place(contours: List<List<Pair<Double, Double>>>, centreY: Double, maxH: Double) {
+                val shapes = Polygons.group(contours)
+                if (shapes.isEmpty()) return
                 val xs = shapes.flatMap { it.outer.map { p -> p.first } }; val ys = shapes.flatMap { it.outer.map { p -> p.second } }
                 val tw = xs.max() - xs.min(); val th = ys.max() - ys.min()
-                val k = min(pw * 0.88 / tw, pd * 0.55 / th)
-                val ox = -(xs.min() + tw / 2) * k; val oy = front - pd / 2 - (ys.min() + th / 2) * k
-                val text = Mesh("Title", "#F5F5F5")
+                val k = min(pw * 0.88 / tw, maxH / th)
+                val ox = -(xs.min() + tw / 2) * k; val oy = centreY - (ys.min() + th / 2) * k
                 for (shape in shapes) extrude(text, shape, k, ox, oy, top - 0.3, top + 1.0)
-                out += text
             }
+            if (subtitle.isEmpty()) place(title, front - pd / 2, pd * 0.55)
+            else {
+                place(title, front - pd * 0.36, pd * 0.42)
+                place(subtitle, front - pd * 0.78, pd * 0.17)
+            }
+            if (text.t.isNotEmpty()) out += text
         }
         // Everything at positive coordinates.
         val minX = out.minOf { m -> m.v.minOf { it[0] } }; val minY = out.minOf { m -> m.v.minOf { it[1] } }
@@ -556,7 +758,13 @@ object Route3mf {
         quad(p[0], p[1], p[5], p[4]); quad(p[1], p[2], p[6], p[5]); quad(p[2], p[3], p[7], p[6]); quad(p[3], p[0], p[4], p[7])
     }
 
-    private fun cylinder(name: String, color: String, cx: Double, cy: Double, r: Double, z0: Double, z1: Double, n: Int = 24) = Mesh(name, color).apply {
+    private fun cylinder(name: String, color: String, cx: Double, cy: Double, r: Double, z0: Double, z1: Double, n: Int = 32) =
+        Mesh(name, color).also { addCylinder(it, cx, cy, r, z0, z1, n) }
+
+    private fun Mesh.withFilament(f: Int) = Mesh(name, color, f).also { m -> m.v += v; m.t += t }
+
+    /** A closed vertical cylinder added to [mesh] as its own shell. */
+    private fun addCylinder(mesh: Mesh, cx: Double, cy: Double, r: Double, z0: Double, z1: Double, n: Int) = mesh.apply {
         val bc = vertex(cx, cy, z0); val tc = vertex(cx, cy, z1)
         val b = (0 until n).map { val a = 2 * Math.PI * it / n; vertex(cx + r * cos(a), cy + r * sin(a), z0) }
         val t = (0 until n).map { val a = 2 * Math.PI * it / n; vertex(cx + r * cos(a), cy + r * sin(a), z1) }
@@ -610,6 +818,14 @@ object Route3mf {
      * Writes one object made of the [meshes] as parts (3MF components), so slicers load a single model whose
      * parts can each get a filament; overlapping parts (the route sunk into the ground) are resolved by the slicer.
      */
+    /** Slicers' triangle-painting code for a 1-based filament (PrusaSlicer TriangleSelector state, as Bambu uses too). */
+    fun paintCode(filament: Int): String = when {
+        filament <= 0 -> ""
+        filament == 1 -> "4"
+        filament == 2 -> "8"
+        else -> "%XC".format(filament - 3)
+    }
+
     fun write(meshes: List<Mesh>, out: OutputStream, title: String) {
         val zip = ZipOutputStream(out)
         fun entry(name: String, text: String) { zip.putNextEntry(ZipEntry(name)); zip.write(text.toByteArray(Charsets.UTF_8)); zip.closeEntry() }
@@ -620,7 +836,7 @@ object Route3mf {
         zip.putNextEntry(ZipEntry("3D/3dmodel.model"))
         val w = zip.bufferedWriter(Charsets.UTF_8)
         w.write("""<?xml version="1.0" encoding="UTF-8"?>""" + "\n")
-        w.write("""<model unit="millimeter" xml:lang="en-US" xmlns="http://schemas.microsoft.com/3dmanufacturing/core/2015/02">""" + "\n")
+        w.write("""<model unit="millimeter" xml:lang="en-US" xmlns="http://schemas.microsoft.com/3dmanufacturing/core/2015/02" xmlns:slic3rpe="http://schemas.slic3r.org/3mf/2017/06">""" + "\n")
         w.write("""<metadata name="Title">${xml(title)}</metadata><metadata name="Application">OpenOBD</metadata>""" + "\n")
         w.write("<resources>\n<basematerials id=\"1\">")
         meshes.forEach { w.write("<base name=\"${xml(it.name)}\" displaycolor=\"${it.color}\"/>") }
@@ -629,7 +845,10 @@ object Route3mf {
             w.write("<object id=\"${i + 2}\" name=\"${xml(mesh.name)}\" type=\"model\" pid=\"1\" pindex=\"$i\"><mesh><vertices>")
             mesh.v.forEach { w.write("<vertex x=\"${f(it[0], 3)}\" y=\"${f(it[1], 3)}\" z=\"${f(it[2], 3)}\"/>") }
             w.write("</vertices><triangles>")
-            mesh.t.forEach { w.write("<triangle v1=\"${it[0]}\" v2=\"${it[1]}\" v3=\"${it[2]}\"/>") }
+            // Colour painting by filament: Bambu Studio reads paint_color, PrusaSlicer / Orca read mmu_segmentation.
+            val paint = paintCode(mesh.filament)
+            val attrs = if (paint.isEmpty()) "" else " paint_color=\"$paint\" slic3rpe:mmu_segmentation=\"$paint\""
+            mesh.t.forEach { w.write("<triangle v1=\"${it[0]}\" v2=\"${it[1]}\" v3=\"${it[2]}\"$attrs/>") }
             w.write("</triangles></mesh></object>\n")
         }
         val assembly = meshes.size + 2
@@ -643,7 +862,8 @@ object Route3mf {
 }
 
 /** Every user-visible phrase used in exports, for translation coverage. */
-val routeExportTexts = Route3mf.Shape.entries.map { it.label } + listOf(Terrarium.ATTRIBUTION) + listOf(
+val routeExportTexts = Route3mf.Shape.entries.map { it.label } + Route3mf.Colors.entries.map { it.label } +
+    Route3mf.Colors.entries.flatMap { c -> Route3mf.legend(c).map { it.second } } + listOf(Terrarium.ATTRIBUTION) + listOf(
     "Speed", "Engine speed", "Consumption", "Coolant", "Accelerator", "Boost", "Altitude", "Time into the trip",
     "Tap the route or move the slider to see what the car was doing there.", "The map needs an internet connection; the data below still works.",
     "Distance", "Duration", "Average speed (moving)", "Max speed", "Fuel used", "Average consumption", "Climb",

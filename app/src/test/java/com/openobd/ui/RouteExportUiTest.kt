@@ -81,15 +81,17 @@ class RouteExportUiTest {
             assertEquals(mime, sent.type)
             return reports.listFiles()!!.first { it.name.endsWith(".$ext") }.also { assertTrue("$ext is empty", it.length() > 500) }
         }
+        // A fake slope instead of downloading elevation tiles.
+        c.terrain = { _, _, _ -> com.openobd.core.trip.Terrain { lat, lon -> 600 + 3000 * (lat - 40.4) + 2000 * (lon + 3.7) } }
         // The PDF needs Android's native PDF engine, which Robolectric lacks: the device tests cover it (DemoSessionTest).
         for ((ext, mime) in listOf("gpx" to "application/gpx+xml", "html" to "text/html", "svg" to "image/svg+xml")) {
             openDialog()
             rule.onNodeWithTag("export_$ext").performClick()
-            shared(ext, mime)
+            val file = shared(ext, mime)
+            if (ext == "svg") assertTrue("poster has relief", file.readText().contains("data:image/png;base64,"))
         }
 
-        // 3D: a title, a circle, terrain (a fake hill instead of the download) and the title on a plaque.
-        c.terrain = { _, _ -> com.openobd.core.trip.Terrain { lat, lon -> 600 + 3000 * (lat - 40.4) + 2000 * (lon + 3.7) } }
+        // 3D: a title, a circle, terrain (the fake slope) and the title on a plaque.
         // The trip's name is the title of every export.
         rule.onNodeWithTag("tripName").performTextReplacement("Sierra loop")
         rule.onNodeWithContentDescription("Save").performClick()
@@ -99,10 +101,11 @@ class RouteExportUiTest {
         rule.onNodeWithTag("export_3mf").performClick()
         rule.waitForIdle()
         rule.onNodeWithTag("shape_CIRCLE").performClick()
+        rule.onNodeWithTag("coordsSwitch").performScrollTo().performClick()
         rule.onNodeWithTag("make3d").performScrollTo().performClick()
         val model = shared("3mf", "model/3mf")
         val xml = java.util.zip.ZipFile(model).use { z -> z.getInputStream(z.getEntry("3D/3dmodel.model")).readBytes().toString(Charsets.UTF_8) }
-        assertTrue(xml.contains("name=\"Terrain\"") && xml.contains("name=\"Plaque\"") && xml.contains("name=\"Title\"") && xml.contains("Sierra loop"))
+        assertTrue(xml.contains("name=\"Terrain\"") && xml.contains("name=\"Plaque\"") && xml.contains("name=\"Title\"") && xml.contains("Sierra loop") && xml.contains("paint_color="))
         assertTrue(model.name.startsWith("OpenOBD "))
     }
 

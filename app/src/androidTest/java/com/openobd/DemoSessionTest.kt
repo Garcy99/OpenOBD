@@ -181,7 +181,8 @@ class DemoSessionTest {
         }
         val info = com.openobd.core.trip.RouteInfo("Test drive", "Demo", pts.first().t, pts.last().t, 3.2, 0.2, 60.0, 149.0, 6.2)
         val file = java.io.File(app.cacheDir, "poster-test.pdf")
-        com.openobd.ui.screens.writePdf(file, com.openobd.core.trip.RoutePoster.layout(info, pts, { it }))
+        val slope = com.openobd.core.trip.Terrain { lat, lon -> 600 + 3000 * (lat - 40.4) + 2000 * (lon + 3.7) }
+        com.openobd.ui.screens.writePdf(file, com.openobd.core.trip.RoutePoster.layout(info, pts, { it }, terrain = slope, pxPerMm = 2.0))
         val bytes = file.readBytes()
         assertEquals("%PDF-", String(bytes.copyOfRange(0, 5), Charsets.US_ASCII))
         assertTrue("PDF size ${bytes.size}", bytes.size > 2000)

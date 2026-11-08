@@ -71,7 +71,7 @@ enum class RouteFormat(val ext: String, val mime: String, val title: String, val
     HTML("html", "text/html", "Interactive map (HTML)",
         "Anyone can open it in a browser, tap the route to see what the car was doing and save the GPX for their GPS."),
     PDF("pdf", "application/pdf", "Poster to print (PDF, A3)",
-        "Vector quality at any size: prints sharp on A3 and scales down to A4."),
+        "The route in vectors over the shaded relief: prints sharp on A3 and scales down to A4."),
     SVG("svg", "image/svg+xml", "Vector image (SVG)",
         "The same poster to edit or send to a print shop."),
     THREE_MF("3mf", "model/3mf", "3D print (3MF, multicolour)",
@@ -101,6 +101,8 @@ fun RouteExportDialog(trip: TripRecord, points: List<TrackPoint>, car: String, o
     var withTerrain by remember { mutableStateOf(true) }
     var relief by remember { mutableStateOf(2.0) }
     var titleOnModel by remember { mutableStateOf(true) }
+    var withCoordinates by remember { mutableStateOf(false) }
+    var colors by remember { mutableStateOf(Route3mf.Colors.FOUR) }
     val label: (String) -> String = { tr(it) }
 
     fun info() = RouteInfo(
@@ -114,10 +116,11 @@ fun RouteExportDialog(trip: TripRecord, points: List<TrackPoint>, car: String, o
         val info = info()
         scope.launch {
             runCatching {
-                val terrain = if (format == RouteFormat.THREE_MF && withTerrain) {
+                val usesTerrain = format == RouteFormat.THREE_MF || format == RouteFormat.PDF || format == RouteFormat.SVG
+                val terrain = if (usesTerrain && withTerrain) {
                     status = tr("Downloading terrain…")
-                    app.terrain(points) { i, n -> status = tr("Downloading terrain… %1\$s of %2\$s", i, n) }
-                        .also { if (it == null) error = tr("The terrain could not be downloaded: the model has flat ground.") }
+                    app.terrain(points, if (format == RouteFormat.THREE_MF) 640 else 1500) { i, n -> status = tr("Downloading terrain… %1\$s of %2\$s", i, n) }
+                        .also { if (it == null) error = tr("The terrain could not be downloaded: exported without relief.") }
                 } else null
                 status = null
                 withContext(Dispatchers.Default) {
@@ -126,11 +129,13 @@ fun RouteExportDialog(trip: TripRecord, points: List<TrackPoint>, car: String, o
                     when (format) {
                         RouteFormat.GPX -> file.writeText(Gpx.write(info, points))
                         RouteFormat.HTML -> file.writeText(RouteHtml.write(info, points, label, units))
-                        RouteFormat.SVG -> file.writeText(RoutePoster.svg(RoutePoster.layout(info, points, label, units)))
-                        RouteFormat.PDF -> writePdf(file, RoutePoster.layout(info, points, label, units))
+                        RouteFormat.SVG -> file.writeText(RoutePoster.svg(RoutePoster.layout(info, points, label, units, terrain = terrain)))
+                        RouteFormat.PDF -> writePdf(file, RoutePoster.layout(info, points, label, units, terrain = terrain))
                         RouteFormat.THREE_MF -> {
                             val outlines = if (titleOnModel) com.openobd.ui.textOutlines(info.title) else emptyList()
-                            val meshes = Route3mf.meshes(points, Route3mf.Options(shape = shape, exaggeration = relief), terrain, outlines)
+                            val coords = if (titleOnModel && withCoordinates) com.openobd.ui.textOutlines(
+                                com.openobd.core.trip.RouteGeometry.coordinates(points.first().lat, points.first().lon)) else emptyList()
+                            val meshes = Route3mf.meshes(points, Route3mf.Options(shape = shape, exaggeration = relief, colors = colors), terrain, outlines, coords)
                             file.outputStream().use { Route3mf.write(meshes, it, info.title) }
                         }
                     }
@@ -149,6 +154,16 @@ fun RouteExportDialog(trip: TripRecord, points: List<TrackPoint>, car: String, o
             Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                 Text(title, fontWeight = FontWeight.SemiBold, modifier = Modifier.testTag("routeTitle"))
                 Text(tr("Title of every export. Change it with the trip's name."), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Column(Modifier.weight(1f)) {
+                        Text(tr("Terrain around the route"))
+                        Text(tr("Real relief under the poster and in the 3D model, from open elevation data (downloads a few map tiles)."),
+                            style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
+                    Switch(withTerrain, { withTerrain = it }, modifier = Modifier.testTag("terrainSwitch"))
+                }
+                if (withTerrain) Text(tr(com.openobd.core.trip.Terrarium.ATTRIBUTION), style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant)
                 RouteFormat.entries.forEach { f ->
                     val icon: ImageVector = when (f) {
                         RouteFormat.GPX -> Icons.Default.Navigation
@@ -173,17 +188,7 @@ fun RouteExportDialog(trip: TripRecord, points: List<TrackPoint>, car: String, o
                         androidx.compose.foundation.layout.FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                             Route3mf.Shape.entries.forEach { sh -> FilterChip(shape == sh, { shape = sh }, label = { Text(tr(sh.label)) }, modifier = Modifier.testTag("shape_${sh.name}")) }
                         }
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Column(Modifier.weight(1f)) {
-                                Text(tr("Terrain around the route"))
-                                Text(tr("Real relief from open elevation data (downloads a few map tiles)."), style = MaterialTheme.typography.bodySmall,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant)
-                            }
-                            Switch(withTerrain, { withTerrain = it })
-                        }
                         if (withTerrain) {
-                            Text(tr(com.openobd.core.trip.Terrarium.ATTRIBUTION), style = MaterialTheme.typography.labelSmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant)
                             Text(tr("Relief exaggeration"), style = MaterialTheme.typography.labelLarge)
                             androidx.compose.foundation.layout.FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                                 listOf(1.0, 2.0, 3.0, 5.0).forEach { x -> FilterChip(relief == x, { relief = x }, label = { Text("×" + x.toInt()) }) }
@@ -193,6 +198,17 @@ fun RouteExportDialog(trip: TripRecord, points: List<TrackPoint>, car: String, o
                             Text(tr("Title on the model"), Modifier.weight(1f))
                             Switch(titleOnModel, { titleOnModel = it })
                         }
+                        if (titleOnModel) Row(verticalAlignment = Alignment.CenterVertically) {
+                            Text(tr("GPS coordinates under the title"), Modifier.weight(1f))
+                            Switch(withCoordinates, { withCoordinates = it }, modifier = Modifier.testTag("coordsSwitch"))
+                        }
+                        Text(tr("Colours"), style = MaterialTheme.typography.labelLarge)
+                        androidx.compose.foundation.layout.FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                            Route3mf.Colors.entries.forEach { c -> FilterChip(colors == c, { colors = c }, label = { Text(tr(c.label)) }, modifier = Modifier.testTag("colors_${c.name}")) }
+                        }
+                        Text(tr("Each part comes painted with its filament number:") + " " +
+                            Route3mf.legend(colors).joinToString(" · ") { (n, what) -> "$n " + tr(what).replaceFirstChar { it.lowercase() } },
+                            style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                         Button(onClick = { export(RouteFormat.THREE_MF) }, enabled = busy == null, modifier = Modifier.fillMaxWidth().testTag("make3d")) {
                             Text(tr("Create 3D model"))
                         }
@@ -233,6 +249,12 @@ fun writePdf(file: File, poster: RoutePoster.Poster) {
                     color = color(st); style = Paint.Style.STROKE; strokeWidth = (s.strokeWidth * k).toFloat()
                 })
             }
+        }
+        is RoutePoster.Image -> {
+            val bmp = android.graphics.Bitmap.createBitmap(s.argb, s.width, s.height, android.graphics.Bitmap.Config.ARGB_8888)
+            c.drawBitmap(bmp, null, android.graphics.RectF((s.x * k).toFloat(), (s.y * k).toFloat(), ((s.x + s.w) * k).toFloat(), ((s.y + s.h) * k).toFloat()),
+                Paint(Paint.FILTER_BITMAP_FLAG))
+            bmp.recycle()
         }
         is RoutePoster.Text -> c.drawText(s.text, (s.x * k).toFloat(), (s.y * k).toFloat(), Paint(Paint.ANTI_ALIAS_FLAG).apply {
             color = color(s.color); textSize = (s.size * k).toFloat()

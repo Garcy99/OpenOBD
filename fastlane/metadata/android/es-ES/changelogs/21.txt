@@ -1,0 +1,4 @@
+• Póster con el relieve sombreado de la zona bajo la ruta
+• Ruta fiel en póster y 3D: una curva suave que pasa por todos los puntos GPS (sin ruido del GPS), con curvas cerradas redondas y sin picos
+• 3D: cada pieza llega pintada con su número de filamento (Bambu Studio, PrusaSlicer, Orca); 4 filamentos o colores por velocidad
+• 3D: coordenadas GPS opcionales bajo el título; la ruta se apoya siempre sobre el terreno

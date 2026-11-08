@@ -1,0 +1,4 @@
+• Poster with the shaded relief of the area under the route
+• Faithful route on poster and 3D: a smooth curve through every GPS point (GPS jitter removed), round hairpins, no spikes
+• 3D: every part comes painted with its filament number (Bambu Studio, PrusaSlicer, Orca); 4 filaments or colours by speed
+• 3D: optional GPS coordinates under the title; the route always rests on the ground

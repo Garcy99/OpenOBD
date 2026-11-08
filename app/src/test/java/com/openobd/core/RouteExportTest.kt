@@ -15,6 +15,7 @@ import java.io.ByteArrayInputStream
 import java.io.ByteArrayOutputStream
 import java.util.zip.ZipInputStream
 import javax.xml.parsers.DocumentBuilderFactory
+import kotlin.math.abs
 import kotlin.math.cos
 import kotlin.math.max
 import kotlin.math.sin
@@ -81,13 +82,14 @@ class RouteExportTest {
 
     @Test fun `3MF has watertight coloured parts that sit on the base`() {
         val meshes = Route3mf.meshes(points)
-        assertEquals(listOf("Base", "Route up to 50 km/h", "Route 50-100 km/h", "Route over 100 km/h", "Route", "Start", "End"), meshes.map { it.name })
+        assertEquals(listOf("Base", "Route", "Start", "End"), meshes.map { it.name })
+        assertEquals(listOf(1, 2, 3, 4), meshes.map { it.filament })
         meshes.forEach { assertSolid(it) }
         val base = meshes.first()
         val size = base.v.maxOf { it[0] } to base.v.maxOf { it[1] }
         assertTrue(size.first <= 150.01 && size.second <= 150.01)
         // Relief: the route is higher where the road is.
-        val route = meshes.drop(1).dropLast(2).flatMap { it.v }
+        val route = meshes.filter { it.name.startsWith("Route") }.flatMap { it.v }
         assertTrue(route.maxOf { it[2] } - route.minOf { it[2] } > 5)
         assertTrue(route.all { it[0] in 0.0..size.first && it[1] in 0.0..size.second })
 
@@ -97,11 +99,16 @@ class RouteExportTest {
         assertEquals(setOf("[Content_Types].xml", "_rels/.rels", "3D/3dmodel.model"), entries.keys)
         val model = xml(entries.getValue("3D/3dmodel.model"))
         val ns = "http://schemas.microsoft.com/3dmanufacturing/core/2015/02"
-        // Seven parts plus the object that groups them, which is the one thing built.
-        assertEquals(8, model.getElementsByTagNameNS(ns, "object").length)
-        assertEquals(7, model.getElementsByTagNameNS(ns, "base").length)
-        assertEquals(7, model.getElementsByTagNameNS(ns, "component").length)
+        // Four parts plus the object that groups them, which is the one thing built.
+        assertEquals(5, model.getElementsByTagNameNS(ns, "object").length)
+        assertEquals(4, model.getElementsByTagNameNS(ns, "base").length)
+        assertEquals(4, model.getElementsByTagNameNS(ns, "component").length)
         assertEquals(1, model.getElementsByTagNameNS(ns, "item").length)
+        // Every triangle painted with its part's filament, for Bambu Studio and PrusaSlicer / Orca.
+        val text = entries.getValue("3D/3dmodel.model")
+        assertTrue(text.contains("paint_color=\"8\" slic3rpe:mmu_segmentation=\"8\""))
+        assertTrue(text.contains("paint_color=\"1C\""))
+        assertEquals(listOf("4", "8", "0C", "1C", "2C", "3C"), (1..6).map { Route3mf.paintCode(it) })
     }
 
     /** Every edge used once in each direction (closed, consistently oriented) and positive volume (normals out). */
@@ -153,7 +160,7 @@ class RouteExportTest {
     @Test fun `terrain model in every shape with the title`() {
         for (shape in com.openobd.core.trip.Route3mf.Shape.entries) {
             val meshes = Route3mf.meshes(points, Route3mf.Options(shape = shape), hill, letterO)
-            assertEquals(listOf("Terrain", "Route up to 50 km/h", "Route 50-100 km/h", "Route over 100 km/h", "Route", "Start", "End", "Plaque", "Title"), meshes.map { it.name })
+            assertEquals(listOf("Terrain", "Route", "Start", "End", "Plaque", "Title"), meshes.map { it.name })
             meshes.forEach { assertSolid(it) }
             val ground = meshes.first()
             val w = ground.v.maxOf { it[0] } - ground.v.minOf { it[0] }; val h = ground.v.maxOf { it[1] } - ground.v.minOf { it[1] }
@@ -177,9 +184,66 @@ class RouteExportTest {
         }
     }
 
+    @Test fun `poster with shaded relief embeds a valid PNG under the route`() {
+        val poster = RoutePoster.layout(info, points, { it }, terrain = hill, pxPerMm = 1.0)
+        val img = poster.shapes.filterIsInstance<RoutePoster.Image>().single()
+        // The relief comes before the route, so the route is drawn on top.
+        assertTrue(poster.shapes.indexOf(img) < poster.shapes.indexOfFirst { it is RoutePoster.Line })
+        val shades = img.argb.filter { it ushr 24 == 0xFF }.map { it and 0xFF }.toSet()
+        assertTrue("relief has shading", shades.size > 10)
+        val png = com.openobd.core.trip.Png.encode(img.width, img.height, img.argb)
+        assertEquals(listOf(0x89, 0x50, 0x4E, 0x47), png.take(4).map { it.toInt() and 0xFF })
+        // IDAT inflates to one filter byte plus 4 bytes per pixel on each row.
+        val idatAt = String(png, Charsets.ISO_8859_1).indexOf("IDAT")
+        val len = java.nio.ByteBuffer.wrap(png, idatAt - 4, 4).int
+        val raw = java.util.zip.InflaterInputStream(png.copyOfRange(idatAt + 4, idatAt + 4 + len).inputStream()).readBytes()
+        assertEquals(img.height * (1 + img.width * 4), raw.size)
+        val svg = RoutePoster.svg(poster)
+        assertTrue(svg.contains("xlink:href=\"data:image/png;base64,") && svg.contains("Terrain Tiles"))
+        xml(svg)
+        // Without terrain: route only, no image.
+        assertTrue(RoutePoster.layout(info, points, { it }).shapes.none { it is RoutePoster.Image })
+    }
+
+    @Test fun `colours by speed and coordinates under the title`() {
+        val meshes = Route3mf.meshes(points, Route3mf.Options(colors = Route3mf.Colors.BY_SPEED), hill, letterO, letterO.map { c -> c.map { (x, y) -> x * 3 to y } })
+        assertEquals(listOf("Terrain", "Route up to 50 km/h", "Route 50-100 km/h", "Route over 100 km/h", "Start", "End", "Plaque", "Title"), meshes.map { it.name })
+        assertEquals(listOf(1, 2, 3, 4, 5, 6, 1, 5), meshes.map { it.filament })
+        meshes.forEach { assertSolid(it) }
+        // Two lines of text: the coordinates sit below the title, both on the plaque.
+        val title = meshes.last(); val plaque = meshes[meshes.size - 2]
+        val ys = title.v.map { it[1] }.sorted()
+        assertTrue(ys.first() >= plaque.v.minOf { it[1] } && ys.last() <= plaque.v.maxOf { it[1] })
+        assertEquals("40.41680° N, 3.67380° W", RouteGeometry.coordinates(points[0].lat, points[0].lon))
+    }
+
+    @Test fun `the route curve passes through every GPS point`() {
+        val curve = RouteGeometry.smooth(points, 3.0, 2.0)
+        val m = RouteGeometry.metres(points)
+        // Points at least 3 m apart are all kept, and the curve goes exactly through them.
+        for (p in m) {
+            val d = curve.minOf { (x, y, _) -> Math.hypot(x - p.first, y - p.second) }
+            assertTrue("off by $d m", d < 1e-6)
+        }
+        // Between points it never strays far from the straight line (no overshoot loops).
+        for ((x, y, i) in curve) {
+            val j = (i + 1).coerceAtMost(m.lastIndex)
+            val a = m[i]; val b = m[j]
+            val dx = b.first - a.first; val dy = b.second - a.second
+            val len = Math.hypot(dx, dy).coerceAtLeast(1e-9)
+            val off = abs((x - a.first) * dy - (y - a.second) * dx) / len
+            assertTrue("strays $off m", off < len * 0.5 + 0.5)
+        }
+        // GPS jitter while stopped (points under 3 m apart) is dropped.
+        val jitter = points.take(3) + List(20) { k -> points[2].copy(t = points[2].t + k, lat = points[2].lat + (k % 2) * 0.000005) } + points.drop(3)
+        assertTrue(RouteGeometry.smooth(jitter, 3.0, 2.0).size <= curve.size + 2)
+    }
+
     @Test fun `routes without speed or altitude still export`() {
         val bare = points.map { it.copy(speedKmh = null, alt = null, rpm = null) }
         assertEquals(listOf("Base", "Route", "Start", "End"), Route3mf.meshes(bare).map { it.name })
+        assertEquals(listOf("Base", "Route up to 50 km/h", "Start", "End"),
+            Route3mf.meshes(bare, Route3mf.Options(colors = Route3mf.Colors.BY_SPEED)).map { it.name })
         assertEquals(null, RouteGeometry.climb(bare))
         assertTrue(Gpx.write(info, bare).contains("<trkpt"))
         assertTrue(Route3mf.meshes(points.take(1)).isEmpty())

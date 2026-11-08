@@ -29,8 +29,9 @@ class AppContainer(private val app: Application) {
     /** Network client for vehicle lookups; replaceable in tests. */
     var http: com.openobd.core.specs.Http = com.openobd.core.specs.UrlHttp("OpenOBD/${com.openobd.BuildConfig.VERSION_NAME} (Android; open source)")
     /** Elevation around a route for 3D models; replaceable in tests. */
-    var terrain: suspend (List<com.openobd.core.garage.TrackPoint>, (Int, Int) -> Unit) -> com.openobd.core.trip.Terrain? = { pts, progress ->
-        com.openobd.data.TerrainDownloader(app, "OpenOBD/${com.openobd.BuildConfig.VERSION_NAME} (Android; open source)").around(pts, progress)
+    /** [Int] = detail in pixels across the area (more for posters). */
+    var terrain: suspend (List<com.openobd.core.garage.TrackPoint>, Int, (Int, Int) -> Unit) -> com.openobd.core.trip.Terrain? = { pts, detail, progress ->
+        com.openobd.data.TerrainDownloader(app, "OpenOBD/${com.openobd.BuildConfig.VERSION_NAME} (Android; open source)").around(pts, detail, progress)
     }
     val dtcDatabase: DtcDatabase by lazy {
         DtcDatabase(

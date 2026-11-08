@@ -21,8 +21,11 @@ import kotlin.math.max
 class TerrainDownloader(private val context: Context, private val userAgent: String) {
     private val dir = File(context.cacheDir, "terrain").apply { mkdirs() }
 
-    /** Elevation for the area around [points] (with room for the hexagon / circle around it), or null if offline. */
-    suspend fun around(points: List<TrackPoint>, progress: (Int, Int) -> Unit = { _, _ -> }): Terrain? = withContext(Dispatchers.IO) {
+    /**
+     * Elevation for the area around [points] (with room for the hexagon / circle around it), or null if offline.
+     * [detailPx]: pixels across the area to aim for (more for posters than for 3D models).
+     */
+    suspend fun around(points: List<TrackPoint>, detailPx: Int = 640, progress: (Int, Int) -> Unit = { _, _ -> }): Terrain? = withContext(Dispatchers.IO) {
         if (points.size < 2) return@withContext null
         val minLat = points.minOf { it.lat }; val maxLat = points.maxOf { it.lat }
         val minLon = points.minOf { it.lon }; val maxLon = points.maxOf { it.lon }
@@ -30,7 +33,7 @@ class TerrainDownloader(private val context: Context, private val userAgent: Str
         val spanM = max((maxLat - minLat) * 111_000, (maxLon - minLon) * 111_000 * cos(Math.toRadians(minLat))).coerceAtLeast(300.0)
         val padLat = spanM * 0.7 / 111_000; val padLon = spanM * 0.7 / (111_000 * cos(Math.toRadians(minLat)))
         val box = doubleArrayOf(minLat - padLat, minLon - padLon, maxLat + padLat, maxLon + padLon)
-        val z = Terrarium.zoomFor(box[0], box[1], box[2], box[3])
+        val z = Terrarium.zoomFor(box[0], box[1], box[2], box[3], targetPx = detailPx, maxTiles = if (detailPx > 1000) 36 else 16)
         val wanted = Terrarium.tiles(box[0], box[1], box[2], box[3], z)
         val tiles = HashMap<Pair<Int, Int>, FloatArray>()
         wanted.forEachIndexed { i, (x, y) ->
