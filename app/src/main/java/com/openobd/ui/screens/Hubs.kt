@@ -13,6 +13,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.BatteryChargingFull
 import androidx.compose.material.icons.filled.CheckCircle
+import androidx.compose.material.icons.filled.CloudDownload
 import androidx.compose.material.icons.filled.DirectionsCar
 import androidx.compose.material.icons.filled.Build
 import androidx.compose.material.icons.filled.Fullscreen
@@ -234,6 +235,12 @@ fun MoreScreen(onNavigate: (String) -> Unit) {
             GroupCard {
                 NavRow(Icons.Default.Hub, brand?.let { tr("%1\$s features", it.name) } ?: tr("Brand features & modules"),
                     tr("ABS, airbag, body, EV battery modules · manufacturer codes · brand PIDs")) { onNavigate(Routes.BRAND) }
+                GroupDivider()
+                NavRow(Icons.Default.Build, tr("Codings & adaptations"), tr("Change module settings, with a backup and undo for every change"),
+                    tint = Violet) { onNavigate(Routes.CODINGS) }
+                GroupDivider()
+                NavRow(Icons.Default.CloudDownload, tr("Community data (OBDb)"), tr("Manufacturer values for your make: battery, DPF, tyres, gearbox …"),
+                    tint = Violet) { onNavigate(Routes.PACKS) }
                 GroupDivider()
                 NavRow(Icons.Default.LocalFireDepartment, tr("Diesel particulate filter"), tr("Guided regeneration drive with live conditions and DPF values"),
                     tint = Orange) { onNavigate(Routes.DIESEL) }

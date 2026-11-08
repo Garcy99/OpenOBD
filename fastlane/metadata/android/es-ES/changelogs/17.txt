@@ -1,0 +1,3 @@
+• Accesos directos en Más > Para tu coche: Codificaciones y adaptaciones y Datos de la comunidad (OBDb)
+• Codificaciones también desde Diagnosis > Otros módulos
+• Los datos de la comunidad aparecen arriba en Paquetes de PIDs

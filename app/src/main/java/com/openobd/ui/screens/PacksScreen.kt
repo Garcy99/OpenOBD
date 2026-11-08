@@ -84,6 +84,8 @@ fun PacksScreen(onBack: () -> Unit) {
         Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
             Text(tr("Packs are sets of manufacturer PIDs, identifiers and codings for a make, model or engine. Share what you discovered, or use what others found. Values are only read; a coding is only written when you choose it in Codings, after a backup."),
                 style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            message?.let { Text(it, color = Good, style = MaterialTheme.typography.bodyMedium) }
+            ObdbSection(onAdded = { message = it })
 
             SectionCard(title = tr("Share your PIDs")) {
                 val pids = car?.customPids.orEmpty()
@@ -122,8 +124,6 @@ fun PacksScreen(onBack: () -> Unit) {
             }
             if (loading) LoadingBox(null)
             error?.let { ErrorText(it) }
-            ObdbSection(onAdded = { message = it })
-            message?.let { Text(it, color = Good, style = MaterialTheme.typography.bodyMedium) }
             catalog?.let { list ->
                 SectionCard(title = tr("Community packs")) {
                     if (list.isEmpty()) Text(tr("No packs yet. Be the first to share one!"))

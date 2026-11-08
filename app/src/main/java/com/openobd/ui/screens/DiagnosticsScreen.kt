@@ -17,6 +17,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Build
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.BatteryChargingFull
 import androidx.compose.material.icons.filled.Checklist
@@ -151,6 +152,9 @@ fun DiagnosticsScreen(onConnect: () -> Unit, onNavigate: (String) -> Unit) {
                     tint = Violet,
                     trailing = { done?.sumOf { it.dtcs.size }?.takeIf { it > 0 }?.let { Pill("$it", Bad) } },
                 ) { onNavigate(Routes.BRAND) }
+                GroupDivider()
+                NavRow(Icons.Default.Build, tr("Codings & adaptations"), tr("Change module settings, with a backup and undo for every change"),
+                    tint = Violet) { onNavigate(Routes.CODINGS) }
             }
 
             SectionLabel(tr("Inspections"))

@@ -1,0 +1,3 @@
+• Shortcuts in More > For your car: Codings & adaptations and Community data (OBDb)
+• Codings also from Diagnose > Other modules
+• Community data is now at the top of PID packs
