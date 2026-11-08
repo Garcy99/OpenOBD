@@ -11,6 +11,7 @@ import com.openobd.core.brand.WriteRecord
 import com.openobd.core.brand.CustomPid
 import com.openobd.core.brand.DtcDetails
 import com.openobd.core.brand.EcuModule
+import com.openobd.core.brand.IdKind
 import com.openobd.core.brand.Families
 import com.openobd.core.brand.ModuleClient
 import com.openobd.core.brand.ModuleDtc
@@ -135,7 +136,7 @@ class ModuleFeatures internal constructor(private val s: ObdSession) {
     private fun vehicleId() = s.garage.data.value.active?.id.orEmpty()
 
     /** Current value of a coding's identifier. */
-    suspend fun readCoding(c: Coding): IntArray = op { it.read(c.module(), c.didId) }
+    suspend fun readCoding(c: Coding): IntArray = op { it.read(c.module(), c.didId, c.kind) }
     suspend fun applyCoding(c: Coding, option: CodingOption): WriteOutcome = op { engine(it).apply(vehicleId(), c, option) }
     suspend fun undoWrite(r: WriteRecord): WriteOutcome = op { engine(it).undo(r) }
     suspend fun restoreWrite(r: WriteRecord): WriteOutcome = op { engine(it).retryRestore(r) }
@@ -223,21 +224,20 @@ class ModuleFeatures internal constructor(private val s: ObdSession) {
 
     // ------------------------------------------------------------------ identifier explorer
 
-    /** Which data identifiers [module] answers in [ids]. */
-    suspend fun scanIds(module: EcuModule, ids: IntRange, gmlanIds: Boolean, progress: (Int, Int) -> Unit): Map<Int, IntArray> =
-        op { it.scanIds(module, ids, gmlanIds, progress) }
+    /** Which identifiers of [kind] [module] answers in [ids]. */
+    suspend fun scanIds(module: EcuModule, ids: IntRange, kind: IdKind, progress: (Int, Int) -> Unit): Map<Int, IntArray> =
+        op { it.scanIds(module, ids, kind, progress) }
 
-    suspend fun readIds(module: EcuModule, ids: Collection<Int>, gmlanIds: Boolean): Map<Int, IntArray> =
-        op { it.readIds(module, ids, gmlanIds) }
+    suspend fun readIds(module: EcuModule, ids: Collection<Int>, kind: IdKind): Map<Int, IntArray> =
+        op { it.readIds(module, ids, kind) }
 
     /** Saves an identifier found with the explorer as a custom PID of the active car. */
-    suspend fun saveIdAsCustomPid(module: EcuModule, id: Int, gmlanIds: Boolean, length: Int) {
-        val request = if (gmlanIds) "1A%02X".format(id) else "22%04X".format(id)
+    suspend fun saveIdAsCustomPid(module: EcuModule, id: Int, kind: IdKind, length: Int) {
+        val (header, receive) = com.openobd.core.brand.CodingFinder.addressOf(module)
         val pid = CustomPid(
-            id = s.garage.newId(), name = "${module.shortName} " + (if (gmlanIds) "%02X".format(id) else "%04X".format(id)),
-            shortName = if (gmlanIds) "%02X".format(id) else "%04X".format(id), request = request,
+            id = s.garage.newId(), name = "${module.shortName} " + kind.idHex(id), shortName = kind.idHex(id), request = kind.readRequest(id),
             equation = if (length >= 2) "(A*256)+B" else "A", min = 0.0, max = if (length >= 2) 65535.0 else 255.0,
-            header = "%03X".format(module.tx), receive = "%03X".format(module.rx),
+            header = header, receive = receive, extAddr = com.openobd.core.brand.CodingFinder.extOf(module),
         )
         s.garage.updateActive { it.copy(customPids = it.customPids + pid) }
     }

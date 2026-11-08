@@ -153,6 +153,13 @@ class ModuleClient(private val elm: Elm327) : CodingBus {
     val supported: Boolean get() = elm.protocol.isCan
 
     private suspend fun Elm327.Locked.select(m: EcuModule) {
+        if (m.extAddr != null) {
+            // Frames are built by hand (address byte + ISO-TP PCI), so auto formatting stays off for the whole session.
+            at("ATSH %03X".format(m.tx))
+            if (!at("ATCRA %03X".format(m.rx))) { at("ATCF %03X".format(m.rx)); at("ATCM 7FF") }
+            at("ATCAF0")
+            return
+        }
         if (m.is29Bit) {
             at("ATCP18")
             at("ATSH DA%02XF1".format(m.tx))
@@ -189,8 +196,9 @@ class ModuleClient(private val elm: Elm327) : CodingBus {
     /** Sends [req] and returns the module's reply payloads, retrying once when the module answers "response pending". */
     private suspend fun Elm327.Locked.request(req: String, timeout: Long = 4000): List<EcuMessage> {
         repeat(3) {
-            val r = query(req, timeout)
-            val msgs = (r as? ObdResult.Data)?.messages.orEmpty()
+            val ext = currentModule?.takeIf { it.extAddr != null }
+            val msgs = if (ext != null) isoTp(ext, req.chunked(2).map { it.toInt(16) }, timeout)
+                else (query(req, timeout) as? ObdResult.Data)?.messages.orEmpty()
             val pending = msgs.isNotEmpty() && msgs.all { it.isNegative && it.data.getOrNull(2) == 0x78 }
             if (!pending) return msgs
             delay(800)
@@ -390,32 +398,39 @@ class ModuleClient(private val elm: Elm327) : CodingBus {
     suspend fun scanIds(
         m: EcuModule, ids: IntRange, gmlanIds: Boolean = false,
         progress: (Int, Int) -> Unit = { _, _ -> },
-    ): Map<Int, IntArray> = withModule(m) {
-        at("ATST19")
+    ): Map<Int, IntArray> = scanIds(m, ids, if (gmlanIds) IdKind.GMLAN else IdKind.UDS, progress)
+
+    /** Finds which identifiers of [kind] a module answers in [ids]. */
+    suspend fun scanIds(m: EcuModule, ids: IntRange, kind: IdKind, progress: (Int, Int) -> Unit = { _, _ -> }): Map<Int, IntArray> = withModule(m) {
+        if (m.extAddr == null) at("ATST19")
         val out = linkedMapOf<Int, IntArray>()
         val total = ids.count()
         ids.forEachIndexed { i, id ->
             if (i % 8 == 0) progress(i, total)
-            readIdLocked(id, gmlanIds, 1500)?.let { out[id] = it }
+            readIdLocked(id, kind, 1500)?.let { out[id] = it }
         }
         progress(total, total)
         out
     }
 
     /** Reads several identifiers in one module session (for watching values change while driving). */
-    suspend fun readIds(m: EcuModule, ids: Collection<Int>, gmlanIds: Boolean = false): Map<Int, IntArray> = withModule(m) {
-        ids.mapNotNull { id -> readIdLocked(id, gmlanIds, 2000)?.let { id to it } }.toMap()
+    suspend fun readIds(m: EcuModule, ids: Collection<Int>, gmlanIds: Boolean = false): Map<Int, IntArray> =
+        readIds(m, ids, if (gmlanIds) IdKind.GMLAN else IdKind.UDS)
+
+    suspend fun readIds(m: EcuModule, ids: Collection<Int>, kind: IdKind): Map<Int, IntArray> = withModule(m) {
+        ids.mapNotNull { id -> readIdLocked(id, kind, 2000)?.let { id to it } }.toMap()
     }
 
-    private suspend fun Elm327.Locked.readIdLocked(id: Int, gmlanIds: Boolean, timeout: Long): IntArray? {
-        return if (gmlanIds) {
-            positive(request("1A%02X".format(id and 0xFF), timeout), 0x1A)?.takeIf { it.data.getOrNull(1) == (id and 0xFF) }
-                ?.let { it.data.copyOfRange(2, it.data.size) }
-        } else {
-            positive(request("22%04X".format(id and 0xFFFF), timeout), 0x22)
-                ?.takeIf { it.data.size >= 3 && ((it.data[1] shl 8) or it.data[2]) == (id and 0xFFFF) }
-                ?.let { it.data.copyOfRange(3, it.data.size) }
-        }
+    /** The data after the identifier echo, or null (no answer / refused / another identifier). */
+    private suspend fun Elm327.Locked.readIdLocked(id: Int, kind: IdKind, timeout: Long): IntArray? =
+        echoed(request(kind.readRequest(id), timeout), kind, id)
+
+    private fun echoed(msgs: List<EcuMessage>, kind: IdKind, id: Int): IntArray? {
+        val echo = kind.idBytesOf(id)
+        val head = 1 + echo.size
+        return positive(msgs, kind.readService)
+            ?.takeIf { it.data.size >= head && echo.indices.all { i -> it.data[1 + i] == echo[i] } }
+            ?.let { it.data.copyOfRange(head, it.data.size) }
     }
 
     /** Reads any data identifier. Returns the raw bytes after the DID echo, or throws with the NRC text. */
@@ -434,22 +449,24 @@ class ModuleClient(private val elm: Elm327) : CodingBus {
     }
 
     /** Reads a DID for a coding; module refusals become [WriteRefused]. */
-    override suspend fun read(m: EcuModule, did: Int): IntArray = withModule(m) {
-        val msgs = request("22%04X".format(did), 4000)
-        positive(msgs, 0x22)?.takeIf { it.data.size >= 3 && ((it.data[1] shl 8) or it.data[2]) == did }
-            ?.let { return@withModule it.data.copyOfRange(3, it.data.size) }
-        refused(msgs, 0x22)
+    override suspend fun read(m: EcuModule, did: Int, kind: IdKind): IntArray = withModule(m) {
+        val msgs = request(kind.readRequest(did), 4000)
+        echoed(msgs, kind, did)?.let { return@withModule it }
+        refused(msgs, kind.readService)
     }
 
-    /** UDS WriteDataByIdentifier (2E) in [session]; the module is put back in the default session afterwards. */
-    override suspend fun write(m: EcuModule, did: Int, data: IntArray, session: Int) = withModule(m) {
+    /**
+     * Writes an identifier (UDS 2E, or 3B for KWP2000 / GMLAN local identifiers) in [session]; the module is put
+     * back in the default session afterwards.
+     */
+    override suspend fun write(m: EcuModule, did: Int, data: IntArray, session: Int, kind: IdKind) = withModule(m) {
         inSession(session) {
-            val payload = listOf(0x2E, did shr 8, did and 0xFF) + data.toList()
+            val payload = listOf(kind.writeService) + kind.idBytesOf(did) + data.toList()
             val msgs = send(m, payload, 6000)
-            if (positive(msgs, 0x2E) == null) {
+            if (positive(msgs, kind.writeService) == null) {
                 // "Response pending" that never resolved inside the timeout: the read-back decides.
                 if (msgs.any { it.isNegative && it.data.getOrNull(2) == 0x78 }) return@inSession
-                refused(msgs, 0x2E)
+                refused(msgs, kind.writeService)
             }
         }
     }
@@ -464,14 +481,16 @@ class ModuleClient(private val elm: Elm327) : CodingBus {
     }
 
     private suspend fun <T> Elm327.Locked.inSession(session: Int, block: suspend Elm327.Locked.() -> T): T {
-        if (session != 1) {
+        val change = session > 1
+        if (change) {
             val r = request("10%02X".format(session), 3000)
             if (positive(r, 0x10) == null) refused(r, 0x10)
         }
         try {
             return block()
         } finally {
-            if (session != 1) withContext(NonCancellable) { request("1001", 2000) }
+            // UDS default session is 01, KWP2000's is 81.
+            if (change) withContext(NonCancellable) { request(if (session >= 0x80) "1081" else "1001", 2000) }
         }
     }
 
@@ -480,40 +499,77 @@ class ModuleClient(private val elm: Elm327) : CodingBus {
      * into ISO-TP frames by hand with CAN auto formatting off, because ELM327 chips only send single frames.
      */
     private suspend fun Elm327.Locked.send(m: EcuModule, payload: List<Int>, timeout: Long): List<EcuMessage> {
-        val hex = payload.joinToString("") { "%02X".format(it) }
-        if (payload.size <= 7) return request(hex, timeout)
+        if (m.extAddr == null && payload.size <= 7) return request(payload.joinToString("") { "%02X".format(it) }, timeout)
+        return isoTp(m, payload, timeout)
+    }
+
+    /**
+     * ISO-TP by hand with CAN auto formatting off: single / first / consecutive frames out, flow control both
+     * ways, and the reply reassembled. With [EcuModule.extAddr] every frame starts with the address byte
+     * (BMW / MINI gateway), which ELM327 chips cannot do themselves.
+     */
+    private suspend fun Elm327.Locked.isoTp(m: EcuModule, payload: List<Int>, timeout: Long): List<EcuMessage> {
         require(payload.size <= 0xFFF) { "Request too long" }
+        val prefix = listOfNotNull(m.extAddr)
+        fun hex(f: List<Int>) = (prefix + f).let { it + List(8 - it.size) { 0x55 } }.take(8).joinToString("") { "%02X".format(it) }
+        val keepRaw = m.extAddr != null
         try {
-            check(at("ATCAF0")) { "The adapter cannot send long requests" }
-            val first = listOf(0x10 or (payload.size shr 8), payload.size and 0xFF) + payload.take(6)
-            val fc = rawFrames(command(first.joinToString("") { "%02X".format(it) }, 2000), m)
-                .firstOrNull { it.isNotEmpty() && it[0] shr 4 == 3 } ?: throw WriteRefused(null, "No answer")
-            if (fc[0] and 0x0F == 2) throw WriteRefused(null, "Request too long for the module")
-            val blockSize = fc.getOrElse(1) { 0 }
-            val stMin = fc.getOrElse(2) { 0 }.let { if (it <= 0x7F) it.toLong() else 1L }
-            val chunks = payload.drop(6).chunked(7)
-            var reply: List<IntArray> = emptyList()
-            chunks.forEachIndexed { i, c ->
-                val last = i == chunks.lastIndex
-                val endOfBlock = blockSize > 0 && (i + 1) % blockSize == 0
-                val frame = listOf(0x20 or ((i + 1) and 0x0F)) + c + List(7 - c.size) { 0x55 }
-                val text = frame.joinToString("") { "%02X".format(it) }
-                if (last || endOfBlock) {
-                    at("ATR1")
-                    val lines = rawFrames(command(text, if (last) timeout else 2000), m)
-                    if (last) reply = lines
-                    else if (lines.none { it.isNotEmpty() && it[0] shr 4 == 3 && it[0] and 0x0F == 0 }) throw WriteRefused(null, "No answer")
-                    if (!last) at("ATR0")
-                } else {
-                    if (i == 0 || (blockSize > 0 && i % blockSize == 0)) at("ATR0")
-                    command(text, 500)
+            if (!keepRaw) check(at("ATCAF0")) { "The adapter cannot send long requests" }
+            val sfMax = 7 - prefix.size
+            val replies = mutableListOf<EcuMessage>()
+            var buffer: MutableList<Int>? = null
+            var expected = 0
+            var flowControl: IntArray? = null
+            fun feed(lines: List<String>) {
+                for (raw in rawFrames(lines, m)) {
+                    val f = raw.drop(prefix.size)
+                    if (f.isEmpty()) continue
+                    val pci = f[0]
+                    when (pci shr 4) {
+                        0 -> if (pci in 1..7 && f.size > pci) replies += EcuMessage("%03X".format(m.rx), f.subList(1, 1 + pci).toIntArray())
+                        1 -> if (f.size >= 2) { expected = ((pci and 0x0F) shl 8) or f[1]; buffer = f.drop(2).toMutableList() }
+                        2 -> buffer?.addAll(f.drop(1))
+                        3 -> flowControl = f.toIntArray()
+                    }
                 }
-                if (stMin > 0) delay(stMin)
             }
-            // Single-frame reply: PCI length then payload.
-            return reply.filter { it.isNotEmpty() && it[0] in 1..7 }.map { EcuMessage("%03X".format(m.rx), it.copyOfRange(1, 1 + minOf(it[0], it.size - 1))) }
+            if (payload.size <= sfMax) {
+                feed(command(hex(listOf(payload.size) + payload), timeout))
+            } else {
+                val firstData = 6 - prefix.size
+                feed(command(hex(listOf(0x10 or (payload.size shr 8), payload.size and 0xFF) + payload.take(firstData)), 2000))
+                val fc = flowControl ?: throw WriteRefused(null, "No answer")
+                if (fc[0] and 0x0F == 2) throw WriteRefused(null, "Request too long for the module")
+                val blockSize = fc.getOrElse(1) { 0 }
+                val stMin = fc.getOrElse(2) { 0 }.let { if (it <= 0x7F) it.toLong() else 1L }
+                val chunks = payload.drop(firstData).chunked(7 - prefix.size)
+                chunks.forEachIndexed { i, c ->
+                    val last = i == chunks.lastIndex
+                    val endOfBlock = blockSize > 0 && (i + 1) % blockSize == 0
+                    val text = hex(listOf(0x20 or ((i + 1) and 0x0F)) + c)
+                    if (last || endOfBlock) {
+                        at("ATR1")
+                        flowControl = null
+                        feed(command(text, if (last) timeout else 2000))
+                        if (!last) {
+                            if (flowControl?.let { it[0] and 0x0F == 0 } != true) throw WriteRefused(null, "No answer")
+                            at("ATR0")
+                        }
+                    } else {
+                        if (i == 0) at("ATR0")
+                        command(text, 500)
+                    }
+                    if (stMin > 0) delay(stMin)
+                }
+            }
+            // A long reply: send flow control ("send everything") and collect the consecutive frames.
+            if (buffer != null && buffer!!.size < expected) {
+                feed(command(hex(listOf(0x30, 0x00, 0x00)), timeout))
+            }
+            buffer?.let { b -> if (b.size >= expected) replies += EcuMessage("%03X".format(m.rx), b.take(expected).toIntArray()) }
+            return replies
         } finally {
-            withContext(NonCancellable) { at("ATR1"); at("ATCAF1") }
+            withContext(NonCancellable) { at("ATR1"); if (!keepRaw) at("ATCAF1") }
         }
     }
 
@@ -577,9 +633,8 @@ class ModuleClient(private val elm: Elm327) : CodingBus {
     // ------------------------------------------------------------------ custom / manufacturer PIDs
 
     private fun moduleFor(p: CustomPid): EcuModule? {
-        val h = p.headerId ?: return null
-        return if (h <= 0x7FF) EcuModule(p.name, p.name, h, p.receiveId ?: (h + 8))
-        else EcuModule(p.name, p.name, (h shr 8) and 0xFF, 0xF1, is29Bit = true)
+        if (p.headerId == null) return null
+        return moduleOf(p.name, p.header, p.receive, p.extAddr)
     }
 
     private fun extract(p: CustomPid, msgs: List<EcuMessage>): IntArray? {
@@ -594,7 +649,7 @@ class ModuleClient(private val elm: Elm327) : CodingBus {
     suspend fun readCustom(pids: List<CustomPid>): Map<String, IntArray> {
         val out = HashMap<String, IntArray>()
         val readable = pids.filter { p -> runCatching { p.service in CustomPid.READ_ONLY_SERVICES }.getOrDefault(false) }
-        for ((_, group) in readable.groupBy { it.header.trim().uppercase() to it.receive.trim().uppercase() }) {
+        for ((_, group) in readable.groupBy { Triple(it.header.trim().uppercase(), it.receive.trim().uppercase(), it.extAddr.trim().uppercase()) }) {
             val module = moduleFor(group.first())
             // One request per identifier, however many values are decoded from its reply.
             val byRequest = group.groupBy { it.request.uppercase() }

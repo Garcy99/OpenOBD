@@ -226,3 +226,91 @@ class CodingFinderTest {
         assertEquals("241" to "641", com.openobd.core.brand.CodingFinder.addressOf(gm))
     }
 }
+
+/** Codings and identifiers on other brands' protocols: KWP2000, GMLAN and BMW-style extended addressing. */
+class CrossBrandCodingTest {
+    private fun rig(headers: Boolean = true): Triple<DemoTransport, ModuleClient, ObdClient> = runBlocking {
+        val t = DemoTransport(latencyMs = 0)
+        t.open()
+        val elm = Elm327(t)
+        elm.initialize(ElmConfig(headersOn = headers))
+        val obd = ObdClient(elm).also { it.discover() }
+        Triple(t, ModuleClient(elm), obd)
+    }
+
+    private fun engine(mc: ModuleClient, history: MutableMap<String, WriteRecord>): CodingEngine {
+        var n = 0
+        return CodingEngine(mc, save = { history[it.id] = it }, newId = { "w${n++}" }, now = { 0L })
+    }
+
+    @Test fun `KWP2000 local identifier coding`() = runBlocking {
+        val (t, mc, _) = rig()
+        val c = Coding("k", "Hill hold", header = "760", did = "10", byte = 1, mask = 0x80, kind = com.openobd.core.brand.IdKind.KWP, session = 0,
+            options = listOf(CodingOption("Off", "00"), CodingOption("On", "80")), risk = WriteRisk.SAFE)
+        assertNull(c.validate())
+        val h = linkedMapOf<String, WriteRecord>()
+        val e = engine(mc, h)
+        assertTrue(e.apply("car", c, c.options[0]).ok)
+        assertArrayEquals(intArrayOf(0x01, 0x00, 0x00), t.kwpData.getValue(0x760).getValue(0x10))
+        assertTrue(e.undo(h.values.first()).ok)
+        assertArrayEquals(intArrayOf(0x01, 0x80, 0x00), t.kwpData.getValue(0x760).getValue(0x10))
+        assertNotNull(c.copy(did = "0010").validate()) // KWP local identifiers are one byte
+    }
+
+    @Test fun `GMLAN identifier coding`() = runBlocking {
+        val (t, mc, _) = rig()
+        mc.gmlan = true
+        val c = Coding("g", "Brake option", header = "243", receive = "643", did = "2B", byte = 1, mask = 0x04, kind = com.openobd.core.brand.IdKind.GMLAN,
+            session = 0, options = listOf(CodingOption("Off", "00"), CodingOption("On", "04")))
+        val h = linkedMapOf<String, WriteRecord>()
+        val out = engine(mc, h).apply("car", c, c.options[0])
+        assertTrue(out.message + out.reason, out.ok)
+        assertArrayEquals(intArrayOf(0x00, 0x00), t.gmlanData.getValue(0x243).getValue(0x2B))
+        assertNotNull(c.copy(did = "90").validate()) // GMLAN VIN is never written
+    }
+
+    private val dme = com.openobd.core.brand.EcuModule("DME", "DME", 0x6F1, 0x612, extAddr = 0x12)
+
+    @Test fun `BMW modules behind the gateway`() = runBlocking {
+        for (headers in listOf(true, false)) {
+            val (t, mc, obd) = rig(headers)
+            // A 17-byte VIN comes back in several frames: flow control is sent by hand.
+            val vin = mc.read(dme, 0xF190)
+            assertEquals("headers=$headers", t.vin, vin.map { it.toChar() }.joinToString(""))
+            assertEquals(listOf("P0171-00"), mc.scan(dme).dtcs.map { it.fullCode })
+            val pid = com.openobd.core.brand.CustomPid("p", "Oil temperature", "Oil", "224402", "((A*256)+B)-90", header = "6F1", extAddr = "12")
+            assertNull(pid.validate())
+            assertEquals(40.0, pid.toSensor().decode(mc.readCustom(listOf(pid)).getValue(pid.key))!!, 1e-9)
+
+            // Coding in the cluster: a 10-byte identifier is written in several frames.
+            val c = Coding("b", "Needle sweep", header = "6F1", extAddr = "60", did = "3000", byte = 3, mask = 0x40,
+                options = listOf(CodingOption("Off", "00"), CodingOption("On", "40")))
+            assertNull(c.validate())
+            assertEquals(0x660, c.module().rx)
+            val h = linkedMapOf<String, WriteRecord>()
+            val e = engine(mc, h)
+            val out = e.apply("car", c, c.options[0])
+            assertTrue(out.message + out.reason, out.ok)
+            assertEquals(0x01, t.codingData.getValue(0x10060).getValue(0x3000)[3])
+            assertTrue(e.undo(h.values.first()).ok)
+            assertEquals(0x41, t.codingData.getValue(0x10060).getValue(0x3000)[3])
+            // Normal OBD still works afterwards.
+            assertEquals(2, obd.readPids(listOf(0x0C, 0x0D)).size)
+        }
+    }
+
+    @Test fun `explorer finds and saves identifiers of any protocol`() = runBlocking {
+        val (_, mc, _) = rig()
+        val abs = com.openobd.core.brand.EcuModule("ABS", "ABS", 0x760, 0x768)
+        assertEquals(setOf(0x10), mc.scanIds(abs, 0x00..0x20, com.openobd.core.brand.IdKind.KWP).keys)
+        assertEquals(setOf(0x3000), mc.scanIds(com.openobd.core.brand.EcuModule("KOMBI", "KOMBI", 0x6F1, 0x660, extAddr = 0x60), 0x2FFE..0x3002, com.openobd.core.brand.IdKind.UDS).keys)
+        val change = com.openobd.core.brand.BitChange(0x10, 1, 0x80, 0x80, 0x00)
+        val coding = com.openobd.core.brand.CodingFinder.toCoding("x", "Hill hold", abs, change, "On", "Off", com.openobd.core.brand.IdKind.KWP)
+        assertNull(coding.validate())
+        assertEquals("10", coding.did)
+        val bmw = com.openobd.core.brand.CodingFinder.toCoding("y", "Sweep", com.openobd.core.brand.EcuModule("KOMBI", "KOMBI", 0x6F1, 0x660, extAddr = 0x60),
+            com.openobd.core.brand.BitChange(0x3000, 3, 0x40, 0x41, 0x01), "On", "Off")
+        assertEquals("6F1" to "60", bmw.header to bmw.extAddr)
+        assertEquals("", bmw.receive)
+    }
+}

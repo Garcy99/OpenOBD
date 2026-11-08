@@ -48,24 +48,76 @@ object Obdb {
     private fun norm(s: String) = java.text.Normalizer.normalize(s, java.text.Normalizer.Form.NFD)
         .replace(Regex("\\p{M}+"), "").lowercase().filter { it.isLetterOrDigit() }
 
-    private val shared = mapOf("vauxhallopel" to setOf("vauxhall", "opel"), "nissaninfiniti" to setOf("nissan", "infiniti"))
+    /** Names the app or a registry may use for a make, normalised, to OBDb's make names (normalised). */
+    private val aliases = mapOf(
+        "opel" to "vauxhallopel", "vauxhall" to "vauxhallopel", "opelvauxhall" to "vauxhallopel", "vauxhallopel" to "vauxhallopel",
+        "mercedes" to "mercedesbenz", "mercedesbenz" to "mercedesbenz", "mb" to "mercedesbenz",
+        "vw" to "volkswagen", "landrover" to "landrover", "rangerover" to "landrover",
+        "alfa" to "alfaromeo", "rollsroyce" to "rollsroyce", "citroen" to "citroen", "chevy" to "chevrolet",
+    )
+
+    /**
+     * Makes that share platforms and engine computers, so a related make's data often works too
+     * (a Seat Leon and a Golf, a Citroën and a Peugeot, a Lexus and a Toyota ...).
+     */
+    private val groups: List<Set<String>> = listOf(
+        setOf("volkswagen", "audi", "seat", "cupra", "skoda", "porsche"),
+        setOf("peugeot", "citroen", "ds", "vauxhallopel"),
+        setOf("fiat", "alfaromeo", "jeep", "chrysler", "dodge", "ram", "abarth", "lancia"),
+        setOf("chevrolet", "gmc", "buick", "cadillac", "holden", "vauxhallopel"),
+        setOf("toyota", "lexus", "scion", "daihatsu"),
+        setOf("hyundai", "kia", "genesis"),
+        setOf("renault", "dacia"),
+        setOf("nissan", "infiniti", "nissaninfiniti"),
+        setOf("bmw", "mini", "rollsroyce"),
+        setOf("mercedesbenz", "smart"),
+        setOf("ford", "lincoln", "mercury"),
+        setOf("honda", "acura"),
+        setOf("jaguar", "landrover"),
+        setOf("volvo", "polestar"),
+        setOf("mg", "saic"),
+    )
+
+    private fun canonical(make: String): Set<String> {
+        val n = norm(make)
+        val a = aliases[n] ?: n
+        // "Nissan" matches both Nissan and the shared Nissan / Infiniti set.
+        return setOf(a) + (if (a == "nissan" || a == "infiniti") setOf("nissaninfiniti") else emptySet())
+    }
+
+    private fun modelScore(e: ObdbEntry, model: String?): Int {
+        val md = model?.let(::norm)?.takeIf { it.isNotEmpty() }
+        val firstWord = model?.trim()?.split(' ', '-')?.firstOrNull()?.let(::norm).orEmpty()
+        val em = norm(e.model)
+        return when {
+            em.isEmpty() -> 2
+            md != null && md.startsWith(em) -> 0
+            firstWord.isNotEmpty() && em.startsWith(firstWord) -> 1
+            else -> 3
+        }
+    }
 
     /** Catalog entries for a car, most specific first: the model's own repository, then the make's general one. */
     fun forCar(index: List<ObdbEntry>, make: String?, model: String?): List<ObdbEntry> {
-        val mk = make?.let(::norm)?.takeIf { it.isNotEmpty() } ?: return emptyList()
-        val sameMake = index.filter { e -> val m = norm(e.make); m == mk || mk in shared[m].orEmpty() }
-        val md = model?.let(::norm)?.takeIf { it.isNotEmpty() }
-        val firstWord = model?.trim()?.split(' ', '-')?.firstOrNull()?.let(::norm).orEmpty()
-        fun score(e: ObdbEntry): Int {
-            val em = norm(e.model)
-            return when {
-                em.isEmpty() -> 2
-                md != null && md.startsWith(em) -> 0
-                firstWord.isNotEmpty() && em.startsWith(firstWord) -> 1
-                else -> 3
-            }
-        }
-        return sameMake.filter { score(it) < 3 }.sortedWith(compareBy<ObdbEntry> { score(it) }.thenByDescending { it.signals })
+        if (make.isNullOrBlank()) return emptyList()
+        val makes = canonical(make)
+        val sameMake = index.filter { e -> canonical(e.make).any { it in makes } }
+        // Model unknown or not in the catalog: the make's largest sets (other models often share engines and modules).
+        val matching = sameMake.filter { modelScore(it, model) < 3 }.ifEmpty { sameMake }
+        return matching.sortedWith(compareBy<ObdbEntry> { modelScore(it, model) }.thenByDescending { it.signals })
+    }
+
+    /**
+     * Entries of makes in the same group (platform sharing), for when the car's own make has little or nothing:
+     * same model name first, then the related makes' general sets and their largest models.
+     */
+    fun related(index: List<ObdbEntry>, make: String?, model: String?, limit: Int = 4): List<ObdbEntry> {
+        if (make.isNullOrBlank()) return emptyList()
+        val own = canonical(make)
+        val others = groups.filter { g -> own.any { it in g } }.flatten().toSet() - own
+        return index.filter { e -> canonical(e.make).any { it in others } }
+            .sortedWith(compareBy<ObdbEntry> { modelScore(it, model).let { s -> if (s == 3) 4 else s } }.thenByDescending { it.signals })
+            .take(limit)
     }
 
     /** Every entry, sorted for browsing. */
@@ -139,7 +191,7 @@ object Obdb {
 
     /**
      * Converts one signal set into read-only custom PIDs. [year] drops commands whose year filter excludes the car.
-     * Signals that need extended addressing (some BMW / Mercedes modules) and services other than reads are skipped.
+     * Services other than reads (01, 21, 22) are skipped.
      */
     fun signals(text: String, year: Int?): List<CustomPid> {
         val root = json.parseToJsonElement(text).jsonObject
@@ -147,7 +199,9 @@ object Obdb {
         var n = 0
         for (c in (root["commands"] as? JsonArray).orEmpty()) {
             val cmd = c as? JsonObject ?: continue
-            if (!(cmd["eax"] as? JsonPrimitive)?.content.isNullOrBlank()) continue
+            // Extended addressing (BMW / MINI behind the 6F1 gateway, some Toyota modules): the address goes first in every frame.
+            val eax = (cmd["eax"] as? JsonPrimitive)?.content?.uppercase().orEmpty()
+            if (eax.isNotEmpty() && !Regex("[0-9A-F]{2}").matches(eax)) continue
             if (!filterMatches(cmd["filter"] as? JsonObject, year)) continue
             val hdr = (cmd["hdr"] as? JsonPrimitive)?.content?.uppercase() ?: continue
             val rax = (cmd["rax"] as? JsonPrimitive)?.content?.uppercase().orEmpty()
@@ -155,6 +209,7 @@ object Obdb {
                 ?.let { it.key to ((it.value as? JsonPrimitive)?.content?.uppercase() ?: "") } ?: continue
             if (service !in setOf("01", "21", "22") || !Regex("([0-9A-F]{2}){1,2}").matches(id)) continue
             val header = when (hdr.length) { 3 -> hdr; 4 -> "${hdr}F1"; else -> continue }
+            if (eax.isNotEmpty() && hdr.length != 3) continue
             val receive = if (hdr.length == 3 && rax.length == 3) rax else ""
             for (sig in (cmd["signals"] as? JsonArray).orEmpty()) {
                 val so = sig as? JsonObject ?: continue
@@ -180,6 +235,7 @@ object Obdb {
                     id = "obdb${n++}", name = name, shortName = name.take(14), request = service + id, equation = formula,
                     min = if (enumerated) 0.0 else min, max = max, unit = if (enumerated) "" else unit(unitName),
                     header = header, receive = receive, labels = labels, source = SOURCE + (if (path.isNotBlank()) " · $path" else ""),
+                    extAddr = eax,
                 )
             }
         }
@@ -189,9 +245,9 @@ object Obdb {
     /** OBDb's category of a converted PID ("Engine", "Battery", ...). */
     fun group(p: CustomPid): String = p.source.substringAfter(" · ", "").substringBefore('.').ifBlank { "Other" }
 
-    private val dpfWords = listOf("soot", "regen", "particulate", "dpf", "fap")
+    private val dpfWords = listOf("soot", "regen", "particulate", "dpf", "fap", "gpf", "opf")
 
-    /** Diesel particulate filter values: soot, regenerations, differential pressure ... */
+    /** Particulate filter values (diesel DPF / FAP, petrol GPF / OPF): soot, regenerations, differential pressure ... */
     fun isDpf(p: CustomPid): Boolean = p.name.lowercase().let { n -> dpfWords.any { n.contains(it) } }
 
     /** Wraps chosen PIDs as a pack, with OBDb's attribution. */

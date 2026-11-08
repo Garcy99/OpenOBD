@@ -109,7 +109,27 @@ class DemoTransport(
     val codingData: MutableMap<Int, MutableMap<Int, IntArray>> = mutableMapOf(
         0x726 to mutableMapOf(0x0101 to intArrayOf(0x05, 0x00, 0x10), 0x0909 to intArrayOf(0x00)),
         0x720 to mutableMapOf(0x0600 to intArrayOf(0x01, 0x22, 0x04, 0x00, 0x80, 0x10, 0x00, 0x03, 0x00, 0x40, 0x00, 0x07)),
+        // DME live value (oil temperature + 40) and KOMBI coding behind the BMW gateway
+        0x10012 to mutableMapOf(0x4402 to intArrayOf(0x00, 0x82)),
+        0x10060 to mutableMapOf(0x3000 to intArrayOf(0x10, 0x02, 0x00, 0x41, 0x00, 0x00, 0x07, 0x80, 0x00, 0x01)),
     )
+    /** KWP2000 local identifiers (21 / 3B) per module, and GMLAN identifiers (1A / 3B). */
+    val kwpData: MutableMap<Int, MutableMap<Int, IntArray>> = mutableMapOf(0x760 to mutableMapOf(0x10 to intArrayOf(0x01, 0x80, 0x00)))
+    val gmlanData: MutableMap<Int, MutableMap<Int, IntArray>> = mutableMapOf(0x243 to mutableMapOf(0x2B to intArrayOf(0x00, 0x04)))
+
+    /**
+     * BMW-style modules behind the gateway: requests go to 0x6F1 with the module address as the first byte,
+     * replies come from 0x600 + address with 0xF1 first (ISO 15765 extended addressing). Their identifiers live
+     * in [codingData] under 0x10000 + address.
+     */
+    val gatewayModules: Map<Int, SimModule> = mapOf(
+        0x12 to SimModule(0x612, "DME", "7 812 345", mutableListOf(Triple("P0171", 0x00, 0x2F))),
+        0x60 to SimModule(0x660, "KOMBI", "9 287 654", mutableListOf()),
+    )
+    private var gwBuffer: MutableList<Int>? = null
+    private var gwLength = 0
+    private var gwPending: Pair<SimModule, List<List<Int>>>? = null
+
     /** Identifiers that need security access to write (answer 7F 2E 33). */
     val lockedDids = mutableSetOf(0x0909)
     /** Diagnostic session per module. */
@@ -240,6 +260,7 @@ class DemoTransport(
         // Odd length -> trailing "expected responses" digit
         val hex = if (cmd.length % 2 == 1) cmd.dropLast(1) else cmd
         val rawBytes = hex.chunked(2).map { it.toInt(16) }
+        if (!caf && can11 && header == "6F1" && carAnswers) { connectedToCar = true; return gatewayReply(rawBytes) }
         // Long requests sent frame by frame with auto formatting off: answer the first frame with flow control,
         // collect consecutive frames, and handle the request once complete.
         if (!caf && can11 && rawBytes.isNotEmpty() && header != defaultHeader) {
@@ -374,6 +395,8 @@ class DemoTransport(
      * GMLAN behaviour: UDS / KWP code services are rejected, \$A9 \$81 sends one UUDT frame per code on 0x5xx
      * (raw, no PCI), \$04 clears. Returns null for requests handled like any other module.
      */
+    private fun tx(m: SimModule): Int = (modules.entries + opelMsModules.entries).firstOrNull { it.value === m }?.key ?: -1
+
     private fun gmlanReply(m: SimModule, b: List<Int>): List<String>? {
         val rxHex = "%03X".format(m.rx)
         fun usdt(vararg payload: Int) = if (accepts(m.rx)) format(rxHex, payload.toList()) else listOf("NO DATA")
@@ -385,7 +408,15 @@ class DemoTransport(
             0x1A -> when (b.getOrNull(1)) {
                 0x90 -> usdt(0x5A, 0x90, *(m.vin ?: vin).map { it.code }.toIntArray())
                 0xC1 -> usdt(0x5A, 0xC1, *m.partNumber.map { it.code }.toIntArray())
-                else -> usdt(0x7F, 0x1A, 0x31)
+                else -> gmlanData[tx(m)]?.get(b[1])?.let { usdt(0x5A, b[1], *it) } ?: usdt(0x7F, 0x1A, 0x31)
+            }
+            0x3B -> {
+                val store = gmlanData[tx(m)]?.takeIf { b.getOrNull(1) in it } ?: return usdt(0x7F, 0x3B, 0x31)
+                val data = b.drop(2).toIntArray()
+                if (data.size != store.getValue(b[1]).size) return usdt(0x7F, 0x3B, 0x13)
+                writes++
+                store[b[1]] = data
+                usdt(0x7B, b[1])
             }
             0xA9 -> {
                 val uudt = m.rx - 0x100
@@ -395,6 +426,45 @@ class DemoTransport(
                 frames.map { f -> join(listOf("%03X".format(uudt)) + f.map(::hex)) }
             }
             else -> null
+        }
+    }
+
+    private fun gatewayFrame(m: SimModule, f: List<Int>): String {
+        val frame = (listOf(0xF1) + f).let { it + List((8 - it.size).coerceAtLeast(0)) { 0 } }
+        return join(listOfNotNull("%03X".format(m.rx).takeIf { headers }) + frame.map(::hex))
+    }
+
+    /** Extended addressing through the BMW-style gateway, with ISO-TP flow control both ways. */
+    private fun gatewayReply(b: List<Int>): List<String> {
+        val target = b.getOrNull(0) ?: return listOf("?")
+        val pci = b.getOrElse(1) { 0 }
+        if (pci shr 4 == 3) {
+            // Our flow control: send the rest of a long reply.
+            val (m, frames) = gwPending ?: return listOf("NO DATA")
+            gwPending = null
+            return frames.map { gatewayFrame(m, it) }
+        }
+        val m = gatewayModules[target] ?: return listOf("NO DATA")
+        if (!accepts(m.rx)) return listOf("NO DATA")
+        fun reply(payload: List<Int>?): List<String> {
+            if (payload == null) return listOf("NO DATA")
+            if (payload.size <= 6) return listOf(gatewayFrame(m, listOf(payload.size) + payload))
+            gwPending = m to payload.drop(5).chunked(6).mapIndexed { i, c -> listOf(0x20 or ((i + 1) and 0x0F)) + c }
+            return listOf(gatewayFrame(m, listOf(0x10 or (payload.size shr 8), payload.size and 0xFF) + payload.take(5)))
+        }
+        return when (pci shr 4) {
+            0 -> reply(moduleReply(0x10000 + target, m, b.drop(2).take(pci and 0x0F)))
+            1 -> {
+                gwLength = ((pci and 0x0F) shl 8) or b.getOrElse(2) { 0 }
+                gwBuffer = b.drop(3).toMutableList()
+                listOf(gatewayFrame(m, listOf(0x30, 0x00, 0x00)))
+            }
+            2 -> {
+                val buf = gwBuffer ?: return listOf("NO DATA")
+                buf += b.drop(2)
+                if (buf.size < gwLength) emptyList() else { gwBuffer = null; reply(moduleReply(0x10000 + target, m, buf.take(gwLength))) }
+            }
+            else -> listOf("NO DATA")
         }
     }
 
@@ -420,6 +490,15 @@ class DemoTransport(
         return when (b[0]) {
             0x3E -> listOf(0x7E, 0x00)
             0x10 -> { sessions[tx] = b.getOrElse(1) { 1 }; listOf(0x50, b.getOrElse(1) { 1 }, 0x00, 0x32, 0x01, 0xF4) }
+            0x21 -> kwpData[tx]?.get(b[1])?.let { listOf(0x61, b[1]) + it.toList() } ?: neg(0x31)
+            0x3B -> {
+                val store = kwpData[tx]?.takeIf { b[1] in it } ?: return neg(0x31)
+                val data = b.drop(2).toIntArray()
+                if (data.size != store.getValue(b[1]).size) return neg(0x13)
+                writes++
+                store[b[1]] = data
+                listOf(0x7B, b[1])
+            }
             0x2E -> {
                 val did = (b[1] shl 8) or b[2]
                 val store = codingData[tx]?.takeIf { did in it } ?: return neg(0x31)

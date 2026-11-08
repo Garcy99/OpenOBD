@@ -184,12 +184,13 @@ private fun PidEditor(initial: CustomPid, isNew: Boolean, onDismiss: () -> Unit,
     var equation by remember { mutableStateOf(initial.equation) }
     var header by remember { mutableStateOf(initial.header) }
     var receive by remember { mutableStateOf(initial.receive) }
+    var ext by remember { mutableStateOf(initial.extAddr) }
     var min by remember { mutableStateOf(initial.min.toString()) }
     var max by remember { mutableStateOf(initial.max.toString()) }
     var unit by remember { mutableStateOf(initial.unit) }
     var testResult by remember { mutableStateOf<String?>(null) }
     val pid = initial.copy(name = name.trim(), shortName = short.trim(), request = request.trim().uppercase(), equation = equation.trim(),
-        header = header.trim().uppercase(), receive = receive.trim().uppercase(), min = min.toDoubleOrNull() ?: 0.0,
+        header = header.trim().uppercase(), receive = receive.trim().uppercase(), extAddr = ext.trim().uppercase(), min = min.toDoubleOrNull() ?: 0.0,
         max = max.toDoubleOrNull() ?: 100.0, unit = unit.trim())
     val error = pid.validate()
 
@@ -212,6 +213,8 @@ private fun PidEditor(initial: CustomPid, isNew: Boolean, onDismiss: () -> Unit,
                     OutlinedTextField(unit, { unit = it }, label = { Text(tr("Unit")) }, singleLine = true, modifier = Modifier.weight(1f))
                 }
                 OutlinedTextField(receive, { receive = it.uppercase() }, label = { Text(tr("Response ID (optional, default header+8)")) }, singleLine = true, modifier = Modifier.fillMaxWidth())
+                OutlinedTextField(ext, { ext = it.uppercase().filter { c -> c.isLetterOrDigit() }.take(2) }, label = { Text(tr("Extended address")) },
+                    supportingText = { Text(tr("BMW / MINI: module address, with Module ID 6F1")) }, singleLine = true, modifier = Modifier.fillMaxWidth())
                 Text(tr("Functions: Signed(A), Int16(A,B), {A:7} for bit 7, Min, Max, Abs. Example: ((A*256)+B)/16"),
                     style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 error?.let { ErrorText(tr(it)) }

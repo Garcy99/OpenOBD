@@ -78,7 +78,7 @@ class ObdbTest {
             "signals": [{"id": "NEW", "name": "New car only", "fmt": {"len": 8, "max": 255}}]},
           { "hdr": "7E0", "rax": "7E8", "cmd": {"21": "01"}, "filter": {"to": 2012},
             "signals": [{"id": "OLD", "name": "Old car only", "fmt": {"len": 8, "max": 255, "unit": "rpm"}}]},
-          { "hdr": "7E0", "eax": "F1", "cmd": {"22": "0202"},
+          { "hdr": "6F1", "eax": "12", "cmd": {"22": "4402"},
             "signals": [{"id": "EAX", "name": "Extended address", "fmt": {"len": 8, "max": 255}}]},
           { "hdr": "7E0", "cmd": {"2E": "0303"},
             "signals": [{"id": "WRITE", "name": "Never", "fmt": {"len": 8, "max": 255}}]}
@@ -90,7 +90,10 @@ class ObdbTest {
     @Test fun `signal set becomes a read only pack`() {
         val pack = Obdb.toPack(entry, sample, year = 2010)
         val names = pack.pids.map { it.name }
-        assertEquals(listOf("Oil temperature", "Soot load", "Gear", "Lamp", "Old car only"), names)
+        assertEquals(listOf("Oil temperature", "Soot load", "Gear", "Lamp", "Old car only", "Extended address"), names)
+        val bmw = pack.pids.last()
+        assertEquals("6F1" to "12", bmw.header to bmw.extAddr)
+        assertEquals("", bmw.receive)
         pack.pids.forEach { assertNull("${it.name}: ${it.validate()}", it.validate()) }
         assertEquals("Vauxhall / Opel (OBDb)", pack.name)
         assertEquals(Obdb.ATTRIBUTION, pack.description)
@@ -123,7 +126,7 @@ class ObdbTest {
         assertEquals(0x10, newer.headerId!! shr 8 and 0xFF)
         assertTrue(pack.pids.none { it.name == "Old car only" })
         // Unknown year: everything readable is offered
-        assertEquals(6, Obdb.toPack(entry, sample, year = null).pids.size)
+        assertEquals(7, Obdb.toPack(entry, sample, year = null).pids.size)
     }
 
     @Test fun `pack passes the normal pack checks and merges`() {
@@ -137,22 +140,47 @@ class ObdbTest {
         assertEquals(0, PidPacks.merge(merged.pids, emptyList(), again) { "q${n++}" }.added)
     }
 
-    @Test fun `catalog matching finds Opel under Vauxhall Opel`() {
+    @Test fun `catalog matching uses the app's make names and platform groups`() {
         val index = listOf(
             ObdbEntry("VauxhallOpel", "VauxhallOpel", "", 300),
             ObdbEntry("Opel-Corsa", "Opel", "Corsa", 20),
             ObdbEntry("Volkswagen-Golf", "Volkswagen", "Golf", 100),
+            ObdbEntry("Volkswagen", "Volkswagen", "", 400),
             ObdbEntry("Land-Rover-Defender", "Land Rover", "Defender", 40),
             ObdbEntry("Skoda-Octavia", "Skoda", "Octavia", 40),
+            ObdbEntry("Peugeot-208", "Peugeot", "208", 500),
+            ObdbEntry("BMW-3-Series", "BMW", "3-Series", 600),
+            ObdbEntry("Mercedes-Benz-C-Class", "Mercedes-Benz", "C-Class", 26),
+            ObdbEntry("NissanInfiniti", "NissanInfiniti", "", 50),
         )
-        assertEquals(listOf("VauxhallOpel"), Obdb.forCar(index, "Opel", "Astra").map { it.repo })
+        // The app calls the brand "Opel / Vauxhall"; registries say "OPEL" or "Vauxhall".
+        assertEquals(listOf("VauxhallOpel"), Obdb.forCar(index, "Opel / Vauxhall", "Astra").map { it.repo })
         assertEquals(listOf("VauxhallOpel"), Obdb.forCar(index, "VAUXHALL", null).map { it.repo })
-        assertEquals("Skoda-Octavia", Obdb.forCar(index, "Škoda", "Octavia Combi").single().repo)
         assertEquals("Opel-Corsa", Obdb.forCar(index, "Opel", "Corsa").first().repo)
-        assertEquals("Volkswagen-Golf", Obdb.forCar(index, "Volkswagen", "Golf GTI").single().repo)
+        // No general set and an unlisted model: the make's largest sets.
+        assertEquals("Peugeot-208", Obdb.forCar(index, "Peugeot", "5008").single().repo)
+        assertEquals("Skoda-Octavia", Obdb.forCar(index, "Škoda", "Octavia Combi").single().repo)
+        assertEquals("Volkswagen-Golf", Obdb.forCar(index, "VW", "Golf GTI").first().repo)
         assertEquals("Land-Rover-Defender", Obdb.forCar(index, "Land Rover", "Defender").single().repo)
-        assertEquals("Land Rover Defender", index[3].title)
+        assertEquals("Mercedes-Benz-C-Class", Obdb.forCar(index, "MERCEDES-BENZ", "C 220").single().repo)
+        assertEquals(listOf("NissanInfiniti"), Obdb.forCar(index, "Infiniti", null).map { it.repo })
+        // A Seat has no data of its own here: the Volkswagen group is offered; a Citroën gets Peugeot (and Opel).
+        assertTrue(Obdb.forCar(index, "SEAT", "Leon").isEmpty())
+        assertEquals("Volkswagen", Obdb.related(index, "SEAT", "Leon").first().repo)
+        assertTrue("Peugeot-208" in Obdb.related(index, "Citroën", "C3").map { it.repo })
+        assertEquals(listOf("BMW-3-Series"), Obdb.related(index, "MINI", "Cooper").map { it.repo })
+        assertEquals("Land Rover Defender", index[4].title)
         assertEquals(listOf("Opel-Corsa", "VauxhallOpel"), Obdb.search(index, "corsa").map { it.repo } + Obdb.search(index, "vauxhall").map { it.repo })
         assertTrue(Obdb.forCar(index, null, null).isEmpty())
+    }
+
+    @Test fun `every brand the app knows gets community data`() {
+        val file = java.io.File("src/main/assets/obdb/index.json").takeIf { it.exists() } ?: java.io.File("app/src/main/assets/obdb/index.json")
+        val index = Obdb.decodeIndex(file.readText())
+        // Tesla is the only brand without any OBDb data.
+        val missing = com.openobd.core.brand.Brands.all.filter { it.id != "other" && it.id != "tesla" }
+            .filter { b -> Obdb.forCar(index, b.name, null).isEmpty() && Obdb.related(index, b.name, null).isEmpty() }
+            .map { it.name }
+        assertEquals(emptyList<String>(), missing)
     }
 }

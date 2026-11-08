@@ -22,9 +22,18 @@ data class EcuModule(
     val is29Bit: Boolean = false,
     /** Modules on a secondary bus (e.g. Ford MS-CAN) need an adapter with a bus switch. */
     val secondaryBus: Boolean = false,
+    /**
+     * ISO 15765 extended addressing: the first data byte of every frame is the target address (BMW / MINI send
+     * everything to 0x6F1 with the module address first; replies come from 0x600 + address with 0xF1 first).
+     */
+    val extAddr: Int? = null,
 ) {
-    val id: String get() = (if (secondaryBus) "ms:" else "") + (if (is29Bit) "29:" else "") + "%03X".format(tx)
-    val addressLabel: String get() = if (is29Bit) "18DA%02XF1".format(tx) else "%03X → %03X".format(tx, rx)
+    val id: String get() = (if (secondaryBus) "ms:" else "") + (if (is29Bit) "29:" else "") + "%03X".format(tx) + (extAddr?.let { ":%02X".format(it) } ?: "")
+    val addressLabel: String get() = when {
+        is29Bit -> "18DA%02XF1".format(tx)
+        extAddr != null -> "%03X/%02X → %03X".format(tx, extAddr, rx)
+        else -> "%03X → %03X".format(tx, rx)
+    }
 }
 
 /**
@@ -52,6 +61,23 @@ data class Brand(val id: String, val name: String, val family: BrandFamily, val 
 
 private fun m(name: String, short: String, tx: Int, rx: Int, cat: ModuleCategory, secondary: Boolean = false) =
     EcuModule(name, short, tx, rx, cat, secondaryBus = secondary)
+
+/** A BMW / MINI module behind the gateway: requests on 0x6F1 with [addr] first, replies on 0x600 + [addr]. */
+private fun bmw(name: String, short: String, addr: Int, cat: ModuleCategory) =
+    EcuModule(name, short, 0x6F1, 0x600 + addr, cat, extAddr = addr)
+
+private fun bmwModules() = listOf(
+    bmw("Engine (DME / DDE)", "DME", 0x12, ModuleCategory.POWERTRAIN),
+    bmw("Transmission (EGS)", "EGS", 0x18, ModuleCategory.POWERTRAIN),
+    bmw("Stability control (DSC)", "DSC", 0x29, ModuleCategory.CHASSIS),
+    bmw("Airbag (ACSM)", "ACSM", 0x01, ModuleCategory.CHASSIS),
+    bmw("Car access / front electronics (CAS / FEM)", "CAS", 0x40, ModuleCategory.BODY),
+    bmw("Instrument cluster (KOMBI)", "KOMBI", 0x60, ModuleCategory.BODY),
+    bmw("Head unit", "HU", 0x63, ModuleCategory.INFOTAINMENT),
+    bmw("Footwell / lights module (FRM)", "FRM", 0x72, ModuleCategory.BODY),
+    bmw("Climate (IHKA)", "IHKA", 0x78, ModuleCategory.BODY),
+    bmw("Gateway (ZGW)", "ZGW", 0x10, ModuleCategory.NETWORK),
+)
 
 object Families {
     /** Ford / Mazda MS-CAN: 125 kbps, ISO 15765 formatting. */
@@ -240,9 +266,10 @@ object Families {
     val STELLANTIS = BrandFamily("stellantis", "Stellantis / FCA / PSA", obdBase,
         "Stellantis brands use a secure gateway (2018+) that blocks clearing codes on most modules without an authorised unlock. " +
             "Use Discover modules to see which modules answer on your car.")
-    val BMW = BrandFamily("bmw", "BMW / MINI", obdBase,
-        "BMW/MINI modules are addressed through the central gateway with extended addressing (ID 6F1), which ELM327 adapters can't handle reliably. " +
-            "Engine data, generic codes and custom PIDs work.")
+    val BMW = BrandFamily("bmw", "BMW / MINI", obdBase + bmwModules(),
+        "BMW / MINI modules are reached through the central gateway with extended addressing (requests to 6F1 with the module address first). " +
+            "OpenOBD frames these by hand, so they work with ordinary ELM327 adapters too; not every module exists on every model. " +
+            "Use an adapter set to 500 kbps CAN (D-CAN, 2008+).")
     val MERCEDES = BrandFamily("mercedes", "Mercedes-Benz / smart", obdBase,
         "Module addresses differ between model series. Use Discover modules to find the modules on your car.")
     val HONDA = BrandFamily("honda", "Honda / Acura", obdBase,

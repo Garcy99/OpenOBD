@@ -6,6 +6,29 @@ import kotlinx.serialization.Serializable
 @Serializable
 enum class WriteRisk { SAFE, DANGEROUS }
 
+/**
+ * How a module's identifiers are read and written. UDS (most cars since ~2008): 22 / 2E with 2-byte identifiers.
+ * KWP2000 (many 2000-2010 cars: VAG, BMW E-series, Renault, Japanese brands): 21 / 3B with 1-byte local identifiers.
+ * GMLAN (GM, Opel / Vauxhall, Chevrolet ~2005-2017): 1A / 3B with 1-byte identifiers.
+ */
+@Serializable
+enum class IdKind(val label: String, val readService: Int, val writeService: Int, val idBytes: Int) {
+    UDS("UDS (22 / 2E)", 0x22, 0x2E, 2),
+    KWP("KWP2000 (21 / 3B)", 0x21, 0x3B, 1),
+    GMLAN("GMLAN (1A / 3B)", 0x1A, 0x3B, 1);
+
+    fun idHex(id: Int) = if (idBytes == 2) "%04X".format(id) else "%02X".format(id)
+    fun readRequest(id: Int) = "%02X".format(readService) + idHex(id)
+    fun idBytesOf(id: Int): List<Int> = if (idBytes == 2) listOf(id shr 8, id and 0xFF) else listOf(id and 0xFF)
+
+    /** Identification records (VIN, part and serial numbers) are never written. */
+    fun isIdentification(id: Int) = when (this) {
+        UDS -> id in 0xF100..0xF1FF
+        KWP -> id in 0x80..0x9F
+        GMLAN -> id in 0x90..0x9F || id in 0xC0..0xCF
+    }
+}
+
 /** One choice of a coding, e.g. "On" = bits 0x04 set. [value] is hex, already in position under the mask. */
 @Serializable
 data class CodingOption(val label: String, val value: String)
@@ -24,7 +47,7 @@ data class Coding(
     val header: String,
     /** Reply id; blank = header + 8. */
     val receive: String = "",
-    /** Data identifier, 4 hex digits. */
+    /** Data identifier: 4 hex digits for UDS, 2 for KWP2000 / GMLAN local identifiers. */
     val did: String,
     val byte: Int,
     val mask: Int = 0xFF,
@@ -32,12 +55,15 @@ data class Coding(
     val risk: WriteRisk = WriteRisk.DANGEROUS,
     /** What can go wrong, shown before a dangerous write. */
     val warning: String = "",
-    /** Diagnostic session for the write (03 = extended). */
+    /** Diagnostic session for the write (UDS 03 = extended; 0 = stay in the default session). */
     val session: Int = 3,
     val tested: Boolean = false,
     val source: String = "",
     /** The module is on the second (medium-speed) bus. */
     val secondaryBus: Boolean = false,
+    val kind: IdKind = IdKind.UDS,
+    /** Extended address (BMW / MINI module address behind 6F1), 2 hex digits; blank = normal addressing. */
+    val extAddr: String = "",
 ) {
     val didId: Int get() = did.toInt(16)
 
@@ -45,12 +71,13 @@ data class Coding(
         if (name.isBlank()) return "Name is required"
         if (!Regex("^[0-9A-Fa-f]{3}([0-9A-Fa-f]{3})?$").matches(header.trim())) return "Header must be a CAN ID like 7E0"
         if (receive.isNotBlank() && !Regex("^[0-9A-Fa-f]{3}$").matches(receive.trim())) return "Reply ID must be a CAN ID like 7E8"
-        if (!Regex("^[0-9A-Fa-f]{4}$").matches(did)) return "Identifier must be 4 hex digits, e.g. 0101"
-        // F1xx are identification records (VIN, part numbers ...): never written.
-        if (didId in 0xF100..0xF1FF) return "Identification records cannot be written"
+        if (kind.idBytes == 2 && !Regex("^[0-9A-Fa-f]{4}$").matches(did)) return "Identifier must be 4 hex digits, e.g. 0101"
+        if (kind.idBytes == 1 && !Regex("^[0-9A-Fa-f]{2}$").matches(did)) return "Local identifier must be 2 hex digits, e.g. 10"
+        if (extAddr.isNotBlank() && !Regex("^[0-9A-Fa-f]{2}$").matches(extAddr.trim())) return "Extended address must be 2 hex digits, e.g. 60"
+        if (kind.isIdentification(didId)) return "Identification records cannot be written"
         if (byte !in 0..255) return "Byte must be 0 to 255"
         if (mask !in 1..0xFF) return "Mask must be 01 to FF"
-        if (session !in 1..0x7F) return "Invalid session"
+        if (session !in 0..0xFF) return "Invalid session"
         if (options.size < 2) return "At least two options are needed"
         for (o in options) {
             val v = o.value.toIntOrNull(16) ?: return "Option values must be hex, e.g. 04"
@@ -61,12 +88,13 @@ data class Coding(
         return null
     }
 
-    fun module(): EcuModule = moduleOf(name, header, receive).copy(secondaryBus = secondaryBus)
+    fun module(): EcuModule = moduleOf(name, header, receive, extAddr).copy(secondaryBus = secondaryBus)
 
     companion object {
         /** Validation messages of codings and routines, for translation. */
         val texts = listOf(
-            "Name is required", "Header must be a CAN ID like 7E0", "Reply ID must be a CAN ID like 7E8", "Identifier must be 4 hex digits, e.g. 0101",
+            "Name is required", "Header must be a CAN ID like 7E0", "Local identifier must be 2 hex digits, e.g. 10",
+            "Extended address must be 2 hex digits, e.g. 60", "Reply ID must be a CAN ID like 7E8", "Identifier must be 4 hex digits, e.g. 0101",
             "Identification records cannot be written", "Byte must be 0 to 255", "Mask must be 01 to FF", "Invalid session",
             "At least two options are needed", "Option values must be hex, e.g. 04", "An option value uses bits outside the mask",
             "Every option needs a name", "Two options have the same value", "Start must be a routine request 3101…",
@@ -112,6 +140,7 @@ data class Routine(
     val session: Int = 3,
     val tested: Boolean = false,
     val source: String = "",
+    val extAddr: String = "",
 ) {
     fun validate(): String? {
         if (name.isBlank()) return "Name is required"
@@ -120,16 +149,23 @@ data class Routine(
         if (!Regex("^3101([0-9A-Fa-f]{2}){2,30}$").matches(start)) return "Start must be a routine request 3101…"
         if (stop.isNotBlank() && !Regex("^3102([0-9A-Fa-f]{2}){2,30}$").matches(stop)) return "Stop must be a request 3102…"
         if (result.isNotBlank() && !Regex("^3103([0-9A-Fa-f]{2}){2,30}$").matches(result)) return "Result must be a request 3103…"
+        if (extAddr.isNotBlank() && !Regex("^[0-9A-Fa-f]{2}$").matches(extAddr.trim())) return "Extended address must be 2 hex digits, e.g. 60"
         return null
     }
 
-    fun module(): EcuModule = moduleOf(name, header, receive)
+    fun module(): EcuModule = moduleOf(name, header, receive, extAddr)
 }
 
-internal fun moduleOf(name: String, header: String, receive: String): EcuModule {
+internal fun moduleOf(name: String, header: String, receive: String, extAddr: String = ""): EcuModule {
     val h = header.trim().toInt(16)
-    return if (header.trim().length == 3) EcuModule(name, name, h, receive.trim().takeIf { it.isNotEmpty() }?.toInt(16) ?: (h + 8))
-    else EcuModule(name, name, (h shr 8) and 0xFF, 0xF1, is29Bit = true)
+    val ext = extAddr.trim().takeIf { it.isNotEmpty() }?.toInt(16)
+    val rx = receive.trim().takeIf { it.isNotEmpty() }?.toInt(16)
+    return when {
+        header.trim().length != 3 -> EcuModule(name, name, (h shr 8) and 0xFF, 0xF1, is29Bit = true)
+        // BMW style: 6F1 to everyone, replies on 0x600 + address.
+        ext != null -> EcuModule(name, name, h, rx ?: (if (h == 0x6F1) 0x600 + ext else h + 8), extAddr = ext)
+        else -> EcuModule(name, name, h, rx ?: (h + 8))
+    }
 }
 
 /** What happened to one write, kept per car so every change can be undone. */
@@ -157,6 +193,8 @@ data class WriteRecord(
     val reason: String = "",
     /** This entry puts back the record with this id. */
     val undoOf: String = "",
+    val kind: IdKind = IdKind.UDS,
+    val extAddr: String = "",
 ) {
     val undoable: Boolean get() = did.isNotEmpty() && before.isNotEmpty() && status == WriteStatus.APPLIED
     val needsRestore: Boolean get() = did.isNotEmpty() && before.isNotEmpty() && (status == WriteStatus.RESTORE_FAILED || status == WriteStatus.PENDING)
@@ -164,10 +202,10 @@ data class WriteRecord(
 
 /** The car-side operations the engine needs; [ModuleClient] in the app, fakes in tests. */
 interface CodingBus {
-    /** Whole data of a DID (after the echo). Throws [WriteRefused] or another exception. */
-    suspend fun read(m: EcuModule, did: Int): IntArray
-    /** Writes the whole data of a DID in [session]. Throws [WriteRefused] when the module says no. */
-    suspend fun write(m: EcuModule, did: Int, data: IntArray, session: Int)
+    /** Whole data of an identifier (after the echo). Throws [WriteRefused] or another exception. */
+    suspend fun read(m: EcuModule, did: Int, kind: IdKind = IdKind.UDS): IntArray
+    /** Writes the whole data of an identifier in [session] (0 / 1 = default session). Throws [WriteRefused] when the module says no. */
+    suspend fun write(m: EcuModule, did: Int, data: IntArray, session: Int, kind: IdKind = IdKind.UDS)
     /** Sends a routine request and returns the positive reply data. Throws [WriteRefused]. */
     suspend fun routine(m: EcuModule, request: String, session: Int): IntArray
 }
@@ -241,7 +279,7 @@ class CodingEngine(
 
     suspend fun apply(vehicleId: String, coding: Coding, option: CodingOption): WriteOutcome {
         val m = coding.module()
-        val before = try { bus.read(m, coding.didId) } catch (e: Exception) {
+        val before = try { bus.read(m, coding.didId, coding.kind) } catch (e: Exception) {
             return WriteOutcome(OutcomeKind.NOT_CHANGED, READ_FAILED, reason(e))
         }
         if (coding.byte >= before.size) return WriteOutcome(OutcomeKind.NOT_CHANGED, TOO_SHORT)
@@ -250,6 +288,7 @@ class CodingEngine(
         val rec = WriteRecord(
             id = newId(), vehicleId = vehicleId, time = now(), name = coding.name, detail = option.label, header = coding.header,
             receive = coding.receive, did = coding.did.uppercase(), session = coding.session, before = hex(before), after = hex(after),
+            kind = coding.kind, extAddr = coding.extAddr,
         )
         save(rec) // the backup exists before the first byte is written
         return writeChecked(rec, before, after, DONE)
@@ -261,11 +300,11 @@ class CodingEngine(
      */
     suspend fun undo(record: WriteRecord): WriteOutcome {
         require(record.undoable)
-        val m = moduleOf(record.name, record.header, record.receive)
+        val m = moduleOf(record.name, record.header, record.receive, record.extAddr)
         val did = record.did.toInt(16)
         val original = bytes(record.before)
         val changed = bytes(record.after)
-        val current = try { bus.read(m, did) } catch (e: Exception) { return WriteOutcome(OutcomeKind.NOT_CHANGED, READ_FAILED, reason(e)) }
+        val current = try { bus.read(m, did, record.kind) } catch (e: Exception) { return WriteOutcome(OutcomeKind.NOT_CHANGED, READ_FAILED, reason(e)) }
         if (current.size != original.size) return WriteOutcome(OutcomeKind.NOT_CHANGED, SIZE_CHANGED)
         val target = current.copyOf()
         for (i in original.indices) if (original[i] != changed[i]) target[i] = original[i]
@@ -276,6 +315,7 @@ class CodingEngine(
         val rec = WriteRecord(
             id = newId(), vehicleId = record.vehicleId, time = now(), name = record.name, detail = record.detail, header = record.header,
             receive = record.receive, did = record.did, session = record.session, before = hex(current), after = hex(target), undoOf = record.id,
+            kind = record.kind, extAddr = record.extAddr,
         )
         save(rec)
         val out = writeChecked(rec, current, target, UNDONE)
@@ -284,22 +324,23 @@ class CodingEngine(
     }
 
     private suspend fun writeChecked(rec0: WriteRecord, before: IntArray, after: IntArray, okMessage: String): WriteOutcome {
-        val m = moduleOf(rec0.name, rec0.header, rec0.receive)
+        val m = moduleOf(rec0.name, rec0.header, rec0.receive, rec0.extAddr)
         val did = rec0.did.toInt(16)
+        val kind = rec0.kind
         suspend fun done(kind: OutcomeKind, status: WriteStatus, message: String, reason: String = ""): WriteOutcome {
             val r = rec0.copy(status = status, message = message, reason = reason)
             save(r)
             return WriteOutcome(kind, message, reason, r)
         }
-        val writeError = try { bus.write(m, did, after, rec0.session); null } catch (e: Exception) { e }
-        val readBack = runCatching { bus.read(m, did) }.getOrNull()
+        val writeError = try { bus.write(m, did, after, rec0.session, kind); null } catch (e: Exception) { e }
+        val readBack = runCatching { bus.read(m, did, kind) }.getOrNull()
         if (writeError == null && readBack != null && readBack.contentEquals(after)) return done(OutcomeKind.DONE, WriteStatus.APPLIED, okMessage)
         val why = reason(writeError)
         if (readBack != null && readBack.contentEquals(before)) return done(OutcomeKind.NOT_CHANGED, WriteStatus.UNCHANGED, NOTHING_CHANGED, why)
         // Something unexpected is in the module now (or it does not answer): put the backup back.
         repeat(2) {
-            runCatching { bus.write(m, did, before, rec0.session) }
-            val check = runCatching { bus.read(m, did) }.getOrNull()
+            runCatching { bus.write(m, did, before, rec0.session, kind) }
+            val check = runCatching { bus.read(m, did, kind) }.getOrNull()
             if (check != null && check.contentEquals(before)) return done(OutcomeKind.RESTORED, WriteStatus.RESTORED, RESTORED, why)
         }
         return done(OutcomeKind.NEEDS_ATTENTION, WriteStatus.RESTORE_FAILED, RESTORE_FAILED, why)
@@ -307,12 +348,12 @@ class CodingEngine(
 
     /** Writes the backup of a record whose restore failed (or whose write was interrupted) again. */
     suspend fun retryRestore(record: WriteRecord): WriteOutcome {
-        val m = moduleOf(record.name, record.header, record.receive)
+        val m = moduleOf(record.name, record.header, record.receive, record.extAddr)
         val did = record.did.toInt(16)
         val original = bytes(record.before)
-        val current = runCatching { bus.read(m, did) }.getOrNull()
-        if (current == null || !current.contentEquals(original)) runCatching { bus.write(m, did, original, record.session) }
-        val check = runCatching { bus.read(m, did) }.getOrNull()
+        val current = runCatching { bus.read(m, did, record.kind) }.getOrNull()
+        if (current == null || !current.contentEquals(original)) runCatching { bus.write(m, did, original, record.session, record.kind) }
+        val check = runCatching { bus.read(m, did, record.kind) }.getOrNull()
         return if (check != null && check.contentEquals(original)) {
             val r = record.copy(status = WriteStatus.RESTORED, message = BACK)
             save(r); WriteOutcome(OutcomeKind.RESTORED, BACK, record = r)
@@ -322,7 +363,7 @@ class CodingEngine(
     /** Runs a routine; on any failure the stop request is sent. */
     suspend fun run(vehicleId: String, routine: Routine): WriteOutcome {
         val m = routine.module()
-        val rec = WriteRecord(newId(), vehicleId, now(), routine.name, routine.start, routine.header, routine.receive, session = routine.session)
+        val rec = WriteRecord(newId(), vehicleId, now(), routine.name, routine.start, routine.header, routine.receive, session = routine.session, extAddr = routine.extAddr)
         save(rec)
         return try {
             bus.routine(m, routine.start, routine.session)
@@ -393,16 +434,22 @@ object CodingFinder {
         a.indices.filter { a[it] != b[it] }.map { i -> BitChange(id, i, a[i] xor b[i], a[i], b[i]) }
     }
 
-    /** Header / reply id strings for a module, as codings store them. */
-    fun addressOf(m: EcuModule): Pair<String, String> =
-        if (m.is29Bit) "DA%02XF1".format(m.tx) to "" else "%03X".format(m.tx) to (if (m.rx != m.tx + 8) "%03X".format(m.rx) else "")
+    /** Header / reply id strings for a module, as codings and custom PIDs store them. */
+    fun addressOf(m: EcuModule): Pair<String, String> = when {
+        m.is29Bit -> "DA%02XF1".format(m.tx) to ""
+        m.extAddr != null -> "%03X".format(m.tx) to (if (m.tx == 0x6F1 && m.rx == 0x600 + m.extAddr) "" else "%03X".format(m.rx))
+        else -> "%03X".format(m.tx) to (if (m.rx != m.tx + 8) "%03X".format(m.rx) else "")
+    }
 
-    fun toCoding(id: String, name: String, m: EcuModule, c: BitChange, beforeLabel: String, afterLabel: String): Coding {
+    fun extOf(m: EcuModule): String = m.extAddr?.let { "%02X".format(it) } ?: ""
+
+    fun toCoding(id: String, name: String, m: EcuModule, c: BitChange, beforeLabel: String, afterLabel: String, kind: IdKind = IdKind.UDS): Coding {
         val (header, receive) = addressOf(m)
         return Coding(
-            id = id, name = name, header = header, receive = receive, did = "%04X".format(c.did), byte = c.byte, mask = c.mask,
+            id = id, name = name, header = header, receive = receive, did = kind.idHex(c.did), byte = c.byte, mask = c.mask,
             options = listOf(CodingOption(beforeLabel, "%02X".format(c.before and c.mask)), CodingOption(afterLabel, "%02X".format(c.after and c.mask))),
             risk = WriteRisk.DANGEROUS, tested = false, source = "Identifier explorer", secondaryBus = m.secondaryBus,
+            kind = kind, session = if (kind == IdKind.UDS) 3 else 0, extAddr = extOf(m),
         )
     }
 }

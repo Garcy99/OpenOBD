@@ -110,7 +110,7 @@ object PidPacks {
 
     /** Adds a pack's codings and routines; the same setting (module, identifier, bits) or routine is not added twice. */
     fun mergeCodings(codings: List<Coding>, routines: List<Routine>, pack: PidPack, newId: () -> String): Triple<List<Coding>, List<Routine>, Int> {
-        fun key(c: Coding) = "${c.header.uppercase()}/${c.did.uppercase()}/${c.byte}/${c.mask}"
+        fun key(c: Coding) = "${c.header.uppercase()}/${c.extAddr.uppercase()}/${c.kind}/${c.did.uppercase()}/${c.byte}/${c.mask}"
         fun rkey(r: Routine) = "${r.header.uppercase()}/${r.start.uppercase()}"
         val have = codings.map(::key).toMutableSet()
         val haveR = routines.map(::rkey).toMutableSet()
@@ -125,7 +125,7 @@ object PidPacks {
      */
     fun merge(existing: List<CustomPid>, existingModules: List<EcuModule>, pack: PidPack, newId: () -> String): MergeResult {
         // Several values often come from one request (different bytes or bits), so the formula is part of the key.
-        fun key(p: CustomPid) = p.request.uppercase() + "@" + p.header.trim().uppercase() + "#" + p.equation.replace(" ", "")
+        fun key(p: CustomPid) = p.request.uppercase() + "@" + p.header.trim().uppercase() + "/" + p.extAddr.trim().uppercase() + "#" + p.equation.replace(" ", "")
         val have = existing.map(::key).toMutableSet()
         val added = mutableListOf<CustomPid>()
         var skipped = 0

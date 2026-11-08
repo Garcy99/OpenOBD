@@ -39,6 +39,18 @@ OpenOBD never sends security access (`27`), so modules that need it answer "lock
 }]
 ```
 
+Codings work on any brand that lets its modules be written without security access:
+
+| Field | Meaning |
+|---|---|
+| `kind` | `"UDS"` (default; `22` / `2E`, 4-digit identifier, most cars since ~2008), `"KWP"` (KWP2000 `21` / `3B`, 2-digit local identifier, many 2000-2010 cars) or `"GMLAN"` (`1A` / `3B`, GM / Opel / Vauxhall / Chevrolet) |
+| `header` / `receive` | module request / reply CAN ID (`"7E0"`, or `"DA10F1"` for 29-bit) |
+| `extAddr` | extended address for modules behind a gateway: BMW / MINI use `"header": "6F1"` and the module address here (`"60"` = cluster); replies default to 0x600 + address |
+| `session` | diagnostic session for the write: `3` (UDS extended, default), `0` = none, or e.g. `137` (0x89) for KWP2000 |
+| `secondaryBus` | `true` for modules on MS-CAN (switch adapters) |
+
+Custom PIDs accept `extAddr` too, so BMW / MINI values read through the gateway.
+
 `byte` counts from the first data byte after the identifier; `mask` is the bits the setting uses
 (decimal in JSON) and every option `value` is hex, already in position. Only publish codings you tested
 on a real car (`"tested": true`), and say where they came from.

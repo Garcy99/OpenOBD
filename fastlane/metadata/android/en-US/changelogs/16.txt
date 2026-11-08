@@ -1,0 +1,4 @@
+• BMW / MINI: modules behind the gateway (extended addressing) with ordinary ELM327 adapters: codes, identifiers, OBDb data and codings
+• Codings and the identifier explorer also speak KWP2000 (2000-2010 cars) and GMLAN (GM / Opel / Chevrolet)
+• Community data for every brand: make names fixed and suggestions from the same group (Seat↔VW, Citroën↔Peugeot, Lexus↔Toyota…)
+• Particulate filter values for petrol cars too (GPF / OPF)

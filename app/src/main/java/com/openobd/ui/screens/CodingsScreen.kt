@@ -177,7 +177,8 @@ fun CodingsScreen(onBack: () -> Unit, onConnect: () -> Unit) {
                             if (c.risk == WriteRisk.DANGEROUS) Pill(tr("Dangerous"), Bad) else Pill(tr("Safe"), Good)
                         }
                         if (c.description.isNotBlank()) Text(c.description, style = MaterialTheme.typography.bodySmall)
-                        Text(listOfNotNull("${c.header} · ${c.did} · " + tr("byte %1\$s", c.byte) + " · " + tr("bits %1\$s", "%02X".format(c.mask)),
+                        Text(listOfNotNull(c.header + (if (c.extAddr.isNotBlank()) "/" + c.extAddr else "") + " · " +
+                            (if (c.kind != com.openobd.core.brand.IdKind.UDS) c.kind.name + " " else "") + "${c.did} · " + tr("byte %1\$s", c.byte) + " · " + tr("bits %1\$s", "%02X".format(c.mask)),
                             if (c.tested) tr("Tested on a real car") else tr("Not tested"), c.source.takeIf { it.isNotBlank() }).joinToString(" · "),
                             style = MaterialTheme.typography.bodySmall, color = if (c.tested) MaterialTheme.colorScheme.onSurfaceVariant else Warn)
                         val wrongBus = c.secondaryBus != (bus == Bus.MS)
@@ -324,6 +325,7 @@ private fun statusLabel(s: WriteStatus): Pair<String, androidx.compose.ui.graphi
 }
 
 /** Types in a coding from a forum list: module, identifier, byte, bits and the two values. */
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 fun CodingEditor(initial: Coding? = null, onDismiss: () -> Unit, onSave: (Coding) -> Unit) {
     var name by remember { mutableStateOf(initial?.name.orEmpty()) }
@@ -338,6 +340,9 @@ fun CodingEditor(initial: Coding? = null, onDismiss: () -> Unit, onSave: (Coding
     var onValue by remember { mutableStateOf(initial?.options?.getOrNull(1)?.value ?: "") }
     var safe by remember { mutableStateOf(initial?.risk == WriteRisk.SAFE) }
     var ms by remember { mutableStateOf(initial?.secondaryBus ?: false) }
+    var kind by remember { mutableStateOf(initial?.kind ?: com.openobd.core.brand.IdKind.UDS) }
+    var ext by remember { mutableStateOf(initial?.extAddr.orEmpty()) }
+    var session by remember { mutableStateOf("%02X".format(initial?.session ?: 3)) }
     var error by remember { mutableStateOf<String?>(null) }
     AlertDialog(
         onDismissRequest = onDismiss,
@@ -347,12 +352,31 @@ fun CodingEditor(initial: Coding? = null, onDismiss: () -> Unit, onSave: (Coding
                 Text(tr("Copy the values from a coding list (module address, identifier, byte and bits). Only use lists for your exact model."),
                     style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 OutlinedTextField(name, { name = it }, label = { Text(tr("Name")) }, singleLine = true, modifier = Modifier.fillMaxWidth())
+                Text(tr("Protocol"), style = MaterialTheme.typography.labelLarge)
+                FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    com.openobd.core.brand.IdKind.entries.forEach { k ->
+                        FilterChip(kind == k, {
+                            kind = k
+                            session = if (k == com.openobd.core.brand.IdKind.UDS) "03" else "00"
+                            did = did.take(k.idBytes * 2)
+                        }, label = { Text(k.label) })
+                    }
+                }
+                Text(tr("UDS: most cars since about 2008. KWP2000: many 2000-2010 cars. GMLAN: GM, Opel / Vauxhall and Chevrolet of about 2005-2017."),
+                    style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                     OutlinedTextField(header, { header = it.uppercase().take(6) }, label = { Text(tr("Module ID")) }, placeholder = { Text("726") }, singleLine = true, modifier = Modifier.weight(1f))
                     OutlinedTextField(receive, { receive = it.uppercase().take(3) }, label = { Text(tr("Reply ID")) }, placeholder = { Text("72E") }, singleLine = true, modifier = Modifier.weight(1f))
                 }
                 Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                    OutlinedTextField(did, { did = it.uppercase().take(4) }, label = { Text(tr("Identifier")) }, placeholder = { Text("0101") }, singleLine = true, modifier = Modifier.weight(1f))
+                    OutlinedTextField(ext, { ext = it.uppercase().filter { c -> c.isLetterOrDigit() }.take(2) }, label = { Text(tr("Extended address")) }, placeholder = { Text("60") },
+                        supportingText = { Text(tr("BMW / MINI: module address, with Module ID 6F1")) }, singleLine = true, modifier = Modifier.weight(1f))
+                    OutlinedTextField(session, { session = it.uppercase().take(2) }, label = { Text(tr("Session (hex)")) },
+                        supportingText = { Text(tr("00 = none")) }, singleLine = true, modifier = Modifier.weight(1f))
+                }
+                Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    OutlinedTextField(did, { did = it.uppercase().take(kind.idBytes * 2) }, label = { Text(tr("Identifier")) },
+                        placeholder = { Text(if (kind.idBytes == 2) "0101" else "10") }, singleLine = true, modifier = Modifier.weight(1f))
                     OutlinedTextField(byte, { byte = it.filter(Char::isDigit).take(3) }, label = { Text(tr("Byte")) }, singleLine = true,
                         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number), modifier = Modifier.weight(1f))
                     OutlinedTextField(mask, { mask = it.uppercase().take(2) }, label = { Text(tr("Bits (hex)")) }, placeholder = { Text("04") }, singleLine = true, modifier = Modifier.weight(1f))
@@ -387,7 +411,7 @@ fun CodingEditor(initial: Coding? = null, onDismiss: () -> Unit, onSave: (Coding
                     byte = byte.toIntOrNull() ?: -1, mask = mask.toIntOrNull(16) ?: 0,
                     options = listOf(CodingOption(off.trim(), offValue.trim()), CodingOption(on.trim(), onValue.trim())),
                     risk = if (safe) WriteRisk.SAFE else WriteRisk.DANGEROUS, tested = false, source = initial?.source ?: tr("Typed in"),
-                    secondaryBus = ms,
+                    secondaryBus = ms, kind = kind, extAddr = ext.trim(), session = session.toIntOrNull(16) ?: -1,
                 )
                 val e = c.validate()
                 if (e != null) error = tr(e) else onSave(c)

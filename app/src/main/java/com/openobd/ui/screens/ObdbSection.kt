@@ -104,6 +104,11 @@ fun ObdbSection(onAdded: (String) -> Unit) {
             Text(tr("For your car"), style = MaterialTheme.typography.labelLarge)
             suggested.forEach { EntryRow(it) }
         }
+        val related = remember(index, make, car?.specs?.model) { Obdb.related(index, make, car?.specs?.model) }
+        if (related.isNotEmpty()) {
+            Text(tr("Same manufacturer group (shared engines and modules, may also work)"), style = MaterialTheme.typography.labelLarge)
+            related.forEach { EntryRow(it) }
+        }
         OutlinedTextField(query, { query = it }, leadingIcon = { Icon(Icons.Default.Search, null) }, singleLine = true,
             label = { Text(tr("Search make or model")) }, modifier = Modifier.fillMaxWidth().testTag("obdbSearch"))
         if (query.trim().length >= 2) {

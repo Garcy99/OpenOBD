@@ -179,16 +179,19 @@ fun ServiceGuidesScreen(onBack: () -> Unit, onDieselHelper: () -> Unit) {
 
 // ------------------------------------------------------------------ identifier explorer
 
-private data class IdRange(val label: String, val range: IntRange, val gmlan: Boolean)
+private data class IdRange(val label: String, val range: IntRange, val kind: com.openobd.core.brand.IdKind)
 
 private val ranges = listOf(
-    IdRange("UDS F180-F1FF", 0xF180..0xF1FF, false),
-    IdRange("UDS 0100-01FF", 0x0100..0x01FF, false),
-    IdRange("UDS 0D00-0DFF", 0x0D00..0x0DFF, false),
-    IdRange("UDS 1000-10FF", 0x1000..0x10FF, false),
-    IdRange("UDS 2000-20FF", 0x2000..0x20FF, false),
-    IdRange("UDS D000-D0FF", 0xD000..0xD0FF, false),
-    IdRange("GMLAN 1A 00-FF", 0x00..0xFF, true),
+    IdRange("UDS F180-F1FF", 0xF180..0xF1FF, com.openobd.core.brand.IdKind.UDS),
+    IdRange("UDS 0100-01FF", 0x0100..0x01FF, com.openobd.core.brand.IdKind.UDS),
+    IdRange("UDS 0D00-0DFF", 0x0D00..0x0DFF, com.openobd.core.brand.IdKind.UDS),
+    IdRange("UDS 1000-10FF", 0x1000..0x10FF, com.openobd.core.brand.IdKind.UDS),
+    IdRange("UDS 2000-20FF", 0x2000..0x20FF, com.openobd.core.brand.IdKind.UDS),
+    IdRange("UDS 3000-30FF", 0x3000..0x30FF, com.openobd.core.brand.IdKind.UDS),
+    IdRange("UDS 0600-06FF", 0x0600..0x06FF, com.openobd.core.brand.IdKind.UDS),
+    IdRange("UDS D000-D0FF", 0xD000..0xD0FF, com.openobd.core.brand.IdKind.UDS),
+    IdRange("KWP2000 21 00-FF", 0x00..0xFF, com.openobd.core.brand.IdKind.KWP),
+    IdRange("GMLAN 1A 00-FF", 0x00..0xFF, com.openobd.core.brand.IdKind.GMLAN),
 )
 
 @OptIn(androidx.compose.foundation.layout.ExperimentalLayoutApi::class)
@@ -220,7 +223,7 @@ fun IdExplorerScreen(onBack: () -> Unit, onConnect: () -> Unit) {
         val m = module ?: return@LaunchedEffect
         while (watching && isActive) {
             val ids = watched.filterValues { it }.keys
-            if (ids.isNotEmpty()) runCatching { session.modules.readIds(m, ids, range.gmlan) }.onSuccess { r ->
+            if (ids.isNotEmpty()) runCatching { session.modules.readIds(m, ids, range.kind) }.onSuccess { r ->
                 r.forEach { (id, bytes) -> found[id]?.let { previous[id] = it }; found[id] = bytes }
             }
             delay(1000)
@@ -257,7 +260,7 @@ fun IdExplorerScreen(onBack: () -> Unit, onConnect: () -> Unit) {
                     error = null; found.clear(); watched.clear(); watching = false
                     scope.launch {
                         try {
-                            val r = session.modules.scanIds(m, range.range, range.gmlan) { i, n -> progress = i to n }
+                            val r = session.modules.scanIds(m, range.range, range.kind) { i, n -> progress = i to n }
                             found.putAll(r)
                         } catch (e: Exception) { error = e.message }
                         progress = null
@@ -276,21 +279,21 @@ fun IdExplorerScreen(onBack: () -> Unit, onConnect: () -> Unit) {
                         Row(Modifier.fillMaxWidth().padding(vertical = 2.dp), verticalAlignment = Alignment.CenterVertically) {
                             Checkbox(watched[id] == true, { watched[id] = it })
                             Column(Modifier.weight(1f)) {
-                                Text(if (range.gmlan) "%02X".format(id) else "%04X".format(id), fontFamily = com.openobd.ui.theme.Inter, fontWeight = FontWeight.Bold)
+                                Text(range.kind.idHex(id), fontFamily = com.openobd.ui.theme.Inter, fontWeight = FontWeight.Bold)
                                 Text(bytes.joinToString(" ") { "%02X".format(it) }.take(60), fontFamily = com.openobd.ui.theme.Inter, style = MaterialTheme.typography.bodySmall,
                                     color = if (changed) Good else MaterialTheme.colorScheme.onSurface,
                                     modifier = if (changed) Modifier.background(Good.copy(alpha = 0.12f), RoundedCornerShape(4.dp)) else Modifier)
                                 val ascii = bytes.filter { it in 0x20..0x7E }.map { it.toChar() }.joinToString("")
                                 if (ascii.length >= 4 && ascii.length >= bytes.size / 2) Text("\"$ascii\"", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                             }
-                            TextButton(onClick = { scope.launch { session.modules.saveIdAsCustomPid(m, id, range.gmlan, bytes.size); savedMsg = tr("Saved as a custom PID. Edit its name and formula in Custom PIDs.") } }) {
+                            TextButton(onClick = { scope.launch { session.modules.saveIdAsCustomPid(m, id, range.kind, bytes.size); savedMsg = tr("Saved as a custom PID. Edit its name and formula in Custom PIDs.") } }) {
                                 Text(tr("Save"))
                             }
                         }
                     }
                 }
             }
-            if (found.isNotEmpty() && m != null && !range.gmlan) {
+            if (found.isNotEmpty() && m != null) {
                 SectionCard(title = tr("Find a setting")) {
                     Text(tr("1. Take a snapshot. 2. Change one setting with the car's own menu (for example automatic locking). 3. Compare: the bits that changed hold that setting. Sensors also change on their own, so change the setting back and compare again to be sure."),
                         style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
@@ -298,7 +301,7 @@ fun IdExplorerScreen(onBack: () -> Unit, onConnect: () -> Unit) {
                         OutlinedButton(onClick = {
                             comparing = true; changes = null
                             scope.launch {
-                                runCatching { session.modules.readIds(m, found.keys, false) }.onSuccess { snapshot = it }.onFailure { error = it.message }
+                                runCatching { session.modules.readIds(m, found.keys, range.kind) }.onSuccess { snapshot = it }.onFailure { error = it.message }
                                 comparing = false
                             }
                         }, enabled = !comparing) { Text(tr("Take snapshot")) }
@@ -306,7 +309,7 @@ fun IdExplorerScreen(onBack: () -> Unit, onConnect: () -> Unit) {
                             val before = snapshot ?: return@Button
                             comparing = true
                             scope.launch {
-                                runCatching { session.modules.readIds(m, before.keys, false) }
+                                runCatching { session.modules.readIds(m, before.keys, range.kind) }
                                     .onSuccess { after -> changes = com.openobd.core.brand.CodingFinder.diff(before, after); snapshot = after }
                                     .onFailure { error = it.message }
                                 comparing = false
@@ -319,7 +322,7 @@ fun IdExplorerScreen(onBack: () -> Unit, onConnect: () -> Unit) {
                         if (list.isEmpty()) Text(tr("Nothing changed."), style = MaterialTheme.typography.bodyMedium)
                         list.forEach { c ->
                             Row(Modifier.fillMaxWidth().padding(vertical = 2.dp), verticalAlignment = Alignment.CenterVertically) {
-                                Text("%04X · ".format(c.did) + tr("byte %1\$s", c.byte) + " · " + tr("bits %1\$s", "%02X".format(c.mask)) + ": %02X → %02X".format(c.before, c.after),
+                                Text(range.kind.idHex(c.did) + " · " + tr("byte %1\$s", c.byte) + " · " + tr("bits %1\$s", "%02X".format(c.mask)) + ": %02X → %02X".format(c.before, c.after),
                                     fontFamily = com.openobd.ui.theme.Inter, style = MaterialTheme.typography.bodySmall, modifier = Modifier.weight(1f))
                                 TextButton(onClick = { naming = c }) { Text(tr("Save as coding")) }
                             }
@@ -351,8 +354,8 @@ fun IdExplorerScreen(onBack: () -> Unit, onConnect: () -> Unit) {
             confirmButton = {
                 TextButton(onClick = {
                     if (m == null) return@TextButton
-                    val coding = com.openobd.core.brand.CodingFinder.toCoding(app.garage.newId(), name.ifBlank { "%04X byte %d".format(c.did, c.byte) }, m, c,
-                        beforeLabel.ifBlank { "Before" }, afterLabel.ifBlank { "After" }).let { it.copy(source = tr(it.source)) }
+                    val coding = com.openobd.core.brand.CodingFinder.toCoding(app.garage.newId(), name.ifBlank { "%s byte %d".format(range.kind.idHex(c.did), c.byte) }, m, c,
+                        beforeLabel.ifBlank { "Before" }, afterLabel.ifBlank { "After" }, range.kind).let { it.copy(source = tr(it.source)) }
                     naming = null
                     scope.launch {
                         app.garage.updateActive { v -> v.copy(codings = v.codings + coding) }

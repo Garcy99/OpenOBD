@@ -1,0 +1,4 @@
+• BMW / MINI: módulos detrás de la pasarela (direccionamiento extendido) con adaptadores ELM327 normales: códigos, identificadores, datos OBDb y codificaciones
+• Codificaciones y explorador de identificadores también en KWP2000 (coches de 2000-2010) y GMLAN (GM / Opel / Chevrolet)
+• Datos de la comunidad para todas las marcas: nombres de marca corregidos y sugerencias del mismo grupo (Seat↔VW, Citroën↔Peugeot, Lexus↔Toyota…)
+• Valores de filtro de partículas también para gasolina (GPF / OPF)

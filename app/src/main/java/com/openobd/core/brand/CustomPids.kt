@@ -27,6 +27,8 @@ data class CustomPid(
     val labels: Map<String, String> = emptyMap(),
     /** Where the definition came from, e.g. "OBDb (CC BY-SA 4.0)". */
     val source: String = "",
+    /** Extended address (BMW / MINI module address behind 6F1, Toyota sub-modules), 2 hex digits; blank = none. */
+    val extAddr: String = "",
 ) {
     val key: String get() = "X_$id"
     val requestBytes: List<Int> get() = request.chunked(2).map { it.toInt(16) }
@@ -41,6 +43,7 @@ data class CustomPid(
         // Custom PIDs are polled again and again: only services that read data are allowed, never clear / write / routines.
         if (service !in READ_ONLY_SERVICES) return "Only read requests are allowed (services 01, 02, 09, 21, 22, 1A, AA)"
         if (header.isNotBlank() && !Regex("^[0-9A-Fa-f]{3}([0-9A-Fa-f]{3})?([0-9A-Fa-f]{2})?$").matches(header.trim())) return "Header must be a CAN ID like 7E0"
+        if (extAddr.isNotBlank() && (header.trim().length != 3 || !Regex("^[0-9A-Fa-f]{2}$").matches(extAddr.trim()))) return "Extended address must be 2 hex digits, e.g. 60"
         return try { Equation(equation); null } catch (e: Exception) { "Equation: ${e.message}" }
     }
 
