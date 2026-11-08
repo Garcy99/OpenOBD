@@ -199,7 +199,9 @@ object Gpx {
  * for their own GPS. Map tiles and the Leaflet library load from the internet; without it the data still shows.
  */
 object RouteHtml {
-    fun write(info: RouteInfo, points: List<TrackPoint>, label: (String) -> String, units: Units = Units()): String {
+    /** [terrain]: also embeds a coloured relief of the area as a map layer that works without internet. */
+    fun write(info: RouteInfo, points: List<TrackPoint>, label: (String) -> String, units: Units = Units(), terrain: Terrain? = null): String {
+        val relief = terrain?.let { reliefLayer(points, it) } ?: "null"
         val gpx = java.util.Base64.getEncoder().encodeToString(Gpx.write(info, points).toByteArray(Charsets.UTF_8))
         fun n(v: Float?, d: Int) = v?.let { f(it.toDouble(), d) } ?: "null"
         val data = points.joinToString(",", "[", "]") { p ->
@@ -210,6 +212,7 @@ object RouteHtml {
             "speed" to "Speed", "rpm" to "Engine speed", "cons" to "Consumption", "coolant" to "Coolant", "pedal" to "Accelerator",
             "boost" to "Boost", "alt" to "Altitude", "time" to "Time into the trip", "tap" to "Tap the route or move the slider to see what the car was doing there.",
             "offline" to "The map needs an internet connection; the data below still works.",
+            "map" to "Map", "relief" to "Relief", "elev" to Terrarium.ATTRIBUTION,
         ).joinToString(",", "{", "}") { (k, v) -> "$k:${js(label(v))}" }
         val stats = listOfNotNull(
             label("Distance") to units.distance(info.distanceKm),
@@ -250,7 +253,7 @@ footer{color:var(--muted);font-size:12px;text-align:center;margin:18px 0}
 <footer>${xml(label("Made with OpenOBD"))} · ${xml(label("Map data © OpenStreetMap contributors"))}</footer>
 </main>
 <script>
-const D=$data,L$=$labels,C=${RouteGeometry.bandColors.joinToString(",", "[", "]") { "\"$it\"" }},U=${units.js()};
+const D=$data,R=$relief,L$=$labels,C=${RouteGeometry.bandColors.joinToString(",", "[", "]") { "\"$it\"" }},U=${units.js()};
 function band(s){return s==null?3:s<=50?0:s<=100?1:2}
 function fmtT(t){const h=Math.floor(t/3600),m=Math.floor(t%3600/60),s=t%60;return (h?h+':'+String(m).padStart(2,'0'):m)+':'+String(s).padStart(2,'0')}
 function row(k,v){return v==null?'':'<div class="s"><span>'+k+'</span><b>'+v+'</b></div>'}
@@ -263,7 +266,17 @@ if(map){marker.setLatLng([p[0],p[1]]);}}
 slider.addEventListener('input',e=>show(+e.target.value));
 function nearest(lat,lon){let b=0,d=1e18;const k=Math.cos(lat*Math.PI/180);for(let i=0;i<D.length;i++){const x=(D[i][1]-lon)*k,y=D[i][0]-lat,q=x*x+y*y;if(q<d){d=q;b=i}}return b}
 function init(){if(typeof L==='undefined'){document.getElementById('map').innerHTML='<p style="padding:16px">'+L$.offline+'</p>';show(0);return}
-map=L.map('map');L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png',{maxZoom:19,attribution:'&copy; OpenStreetMap contributors'}).addTo(map);
+map=L.map('map');
+// Map tiles that allow files opened from the phone (no web address to send as referrer, which OpenStreetMap's own
+// servers require): OpenTopoMap, then Esri, then the relief embedded in this file.
+const P=[['https://{s}.tile.opentopomap.org/{z}/{x}/{y}.png',{subdomains:'abc',maxZoom:17,attribution:'Map data &copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors, SRTM | Map style &copy; <a href="https://opentopomap.org">OpenTopoMap</a> (CC-BY-SA)'}],
+['https://server.arcgisonline.com/ArcGIS/rest/services/World_Topo_Map/MapServer/tile/{z}/{y}/{x}',{maxZoom:19,attribution:'Tiles &copy; Esri'}]];
+const relief=R?L.imageOverlay(R.url,R.b,{attribution:L$.elev}):null;let tiles=null,ctl=null;
+function setCtl(){if(ctl)map.removeControl(ctl);ctl=null;if(!relief)return;const base={};if(tiles)base[L$.map]=tiles;base[L$.relief]=relief;ctl=L.control.layers(base,null,{collapsed:false}).addTo(map)}
+function useTiles(k){if(tiles)map.removeLayer(tiles);tiles=null;if(k>=P.length){if(relief)relief.addTo(map);setCtl();return}
+let errors=0;tiles=L.tileLayer(P[k][0],P[k][1]);tiles.on('tileerror',()=>{if(++errors===3)useTiles(k+1)});tiles.addTo(map);setCtl()}
+useTiles(0);
+L.polyline(D.map(p=>[p[0],p[1]]),{color:'#fff',weight:10,opacity:.9}).addTo(map);
 let seg=[],b=band(D[0]&&D[0][3]);for(let i=0;i<D.length;i++){const p=D[i],pb=band(p[3]);seg.push([p[0],p[1]]);
 if(pb!==b||i===D.length-1){const l=L.polyline(seg,{color:C[b],weight:6,opacity:.95}).addTo(map);l.on('click',e=>show(nearest(e.latlng.lat,e.latlng.lng)));seg=[[p[0],p[1]]];b=pb}}
 L.circleMarker([D[0][0],D[0][1]],{radius:7,color:'#fff',weight:2,fillColor:'#16a34a',fillOpacity:1}).addTo(map);
@@ -274,6 +287,25 @@ map.fitBounds(D.map(p=>[p[0],p[1]]),{padding:[20,20]});map.on('click',e=>show(ne
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" onload="init()" onerror="init()"></script>
 </body></html>
 """
+    }
+
+    /** The coloured relief around the route as a Leaflet image layer: {url, b: [[south, west], [north, east]]}. */
+    private fun reliefLayer(points: List<TrackPoint>, terrain: Terrain, longest: Int = 1200): String? {
+        if (points.size < 2) return null
+        val minLat = points.minOf { it.lat }; val maxLat = points.maxOf { it.lat }
+        val minLon = points.minOf { it.lon }; val maxLon = points.maxOf { it.lon }
+        val k = cos(Math.toRadians((minLat + maxLat) / 2))
+        val pad = max(max(maxLat - minLat, (maxLon - minLon) * k) * 0.3, 0.005)
+        val s = minLat - pad; val n = maxLat + pad; val w = minLon - pad / k; val e = maxLon + pad / k
+        // Web Mercator rows, as the map draws the image.
+        val yTop = Terrarium.tileY(n, 0); val yBottom = Terrarium.tileY(s, 0)
+        val aspect = (yBottom - yTop) / (Terrarium.tileX(e, 0) - Terrarium.tileX(w, 0))
+        val pw = if (aspect <= 1) longest else (longest / aspect).toInt(); val ph = if (aspect <= 1) (longest * aspect).toInt() else longest
+        val (iw, ih, px) = RoutePoster.relief(terrain, pw.toDouble(), ph.toDouble(), 1.0) { x, y ->
+            Terrarium.lat(yTop + (yBottom - yTop) * y / ph, 0) to (w + (e - w) * x / pw)
+        } ?: return null
+        val png = java.util.Base64.getEncoder().encodeToString(Png.encode(iw, ih, px))
+        return "{url:\"data:image/png;base64,$png\",b:[[${f(s, 6)},${f(w, 6)}],[${f(n, 6)},${f(e, 6)}]]}"
     }
 }
 
@@ -402,6 +434,11 @@ object RoutePoster {
                 run += pt; band = b
             }
             if (run.size >= 2) shapes += Line(run, RouteGeometry.bandColors[band], stroke)
+            // On the coloured relief, a white edge keeps the route readable over greens and browns.
+            if (shapes.any { it is Image }) {
+                val casing = Line(curve.map { (x, y, _) -> xy(x to y) }, "#FFFFFF", stroke * 1.9)
+                shapes.add(shapes.indexOfFirst { it is Line && it.color != "#D6D3CC" && it.width == stroke }.coerceAtLeast(0), casing)
+            }
             val s = xy(m.first()); val e = xy(m.last())
             shapes += Circle(s.first, s.second, stroke * 1.6, "#16A34A", "#FFFFFF", stroke * 0.5)
             shapes += Circle(e.first, e.second, stroke * 1.6, ink, "#FFFFFF", stroke * 0.5)
@@ -455,10 +492,12 @@ object RoutePoster {
     }
 
     /**
-     * Shaded relief of the box: light from the north-west, a soft tint from low (sage) to high (sand), so the
-     * coloured route stays the strongest thing on the page. Pixels without elevation are transparent.
+     * Shaded relief of the box: light from the north-west over colours by altitude, like a relief map (greens in
+     * the lowlands, sand and browns on the slopes, pale peaks; the sea in blue). The colours follow the share of
+     * the area at each height, so flat and mountainous areas both show the whole range. Pixels without elevation
+     * are transparent.
      */
-    private fun relief(terrain: Terrain, wMm: Double, hMm: Double, pxPerMm: Double, at: (Double, Double) -> Pair<Double, Double>): Triple<Int, Int, IntArray>? {
+    internal fun relief(terrain: Terrain, wMm: Double, hMm: Double, pxPerMm: Double, at: (Double, Double) -> Pair<Double, Double>): Triple<Int, Int, IntArray>? {
         val w = (wMm * pxPerMm).toInt().coerceIn(2, 2400); val h = (hMm * pxPerMm).toInt().coerceIn(2, 2400)
         // Elevation with a border for smoothing and slopes. Poster pixels are smaller than the elevation data's, so
         // the grid is smoothed and slopes are taken over a few pixels; otherwise the data's steps show as stripes.
@@ -474,6 +513,14 @@ object RoutePoster {
         if (missing > e.size * 3 / 4) return null
         val known = e.filter { !it.isNaN() }
         val lo = known.min(); val hi = known.max(); val range = max(hi - lo, 1.0)
+        val raw = e.copyOf()
+        // Height -> 0..1, half by rank in the area and half by plain height, from a sample of the grid.
+        val sample = known.filterIndexed { i, _ -> i % 7 == 0 }.sorted()
+        fun level(v: Double): Double {
+            var a = 0; var b = sample.size
+            while (a < b) { val m = (a + b) / 2; if (sample[m] < v) a = m + 1 else b = m }
+            return 0.5 * a / max(1, sample.size) + 0.5 * (v - lo) / range
+        }
         val fill = known.average()
         val valid = BooleanArray(e.size) { !e[it].isNaN() }
         for (k in e.indices) if (!valid[k]) e[k] = fill
@@ -490,7 +537,14 @@ object RoutePoster {
         val cell = max(0.5, sqrt(((la - lb) * 110_540).let { it * it } + ((loA - loB) * 111_320 * cos(Math.toRadians(la))).let { it * it }))
         val zf = 1.6
         val light = doubleArrayOf(-0.5, 0.5, 0.7071)
-        val low = intArrayOf(0xE6, 0xEC, 0xDD); val high = intArrayOf(0xEA, 0xDF, 0xCC)
+        val ramp = listOf(0.0 to 0x7FAE72, 0.22 to 0xA6C98B, 0.42 to 0xD5DCA4, 0.6 to 0xE6D2A0, 0.76 to 0xC9A37C, 0.9 to 0xAE9481, 1.0 to 0xF3F0EA)
+        fun tint(t: Double): IntArray {
+            val k = ramp.indexOfLast { it.first <= t }.coerceIn(0, ramp.size - 2)
+            val (t0, c0) = ramp[k]; val (t1, c1) = ramp[k + 1]
+            val u = ((t - t0) / (t1 - t0)).coerceIn(0.0, 1.0)
+            return IntArray(3) { ch -> val sh = 16 - 8 * ch; ((c0 shr sh and 0xFF) * (1 - u) + (c1 shr sh and 0xFF) * u).toInt() }
+        }
+        val sea = intArrayOf(0xA7, 0xC8, 0xE8)
         val px = IntArray(w * h)
         val st = 2
         for (j in 0 until h) for (i in 0 until w) {
@@ -501,12 +555,10 @@ object RoutePoster {
             val dy = (e[(gj - st) * gw + gi] - e[(gj + st) * gw + gi]) / (2 * st * cell) * zf
             val nl = sqrt(dx * dx + dy * dy + 1)
             val shade = ((-dx * light[0] - dy * light[1] + light[2]) / nl / light[2]).coerceIn(0.0, 1.35)
-            val t = (c - lo) / range
-            val k = 0.58 + 0.42 * min(shade, 1.0); val glow = (shade - 1).coerceAtLeast(0.0) * 0.6
-            val rgb = IntArray(3) { ch ->
-                val base = low[ch] + (high[ch] - low[ch]) * t
-                (base * k + (255 - base * k) * glow).toInt().coerceIn(0, 255)
-            }
+            val isSea = lo <= 0.0 && raw[gj * gw + gi] <= 0.0
+            val base = if (isSea) sea else tint(level(c))
+            val k = if (isSea) 1.0 else 0.6 + 0.4 * min(shade, 1.0); val glow = if (isSea) 0.0 else (shade - 1).coerceAtLeast(0.0) * 0.5
+            val rgb = IntArray(3) { ch -> (base[ch] * k + (255 - base[ch] * k) * glow).toInt().coerceIn(0, 255) }
             px[j * w + i] = (0xFF shl 24) or (rgb[0] shl 16) or (rgb[1] shl 8) or rgb[2]
         }
         return Triple(w, h, px)
@@ -531,5 +583,5 @@ val routeExportTexts = Route3mf.texts + listOf(Terrarium.ATTRIBUTION) + listOf(
     "Speed", "Engine speed", "Consumption", "Coolant", "Accelerator", "Boost", "Altitude", "Time into the trip",
     "Tap the route or move the slider to see what the car was doing there.", "The map needs an internet connection; the data below still works.",
     "Distance", "Duration", "Average speed (moving)", "Max speed", "Fuel used", "Average consumption", "Climb",
-    "Save GPX for your GPS", "Made with OpenOBD", "Map data © OpenStreetMap contributors",
+    "Save GPX for your GPS", "Made with OpenOBD", "Map data © OpenStreetMap contributors", "Map", "Relief",
 ) + Units.texts

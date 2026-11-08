@@ -66,7 +66,7 @@ enum class RouteFormat(val ext: String, val mime: String, val title: String, val
     GPX("gpx", "application/gpx+xml", "GPS file (GPX)",
         "For Garmin, OsmAnd, Komoot, Google Earth and other GPS apps. The car's values travel with every point."),
     HTML("html", "text/html", "Interactive map (HTML)",
-        "Anyone can open it in a browser, tap the route to see what the car was doing and save the GPX for their GPS."),
+        "Anyone can open it in a browser, tap the route to see what the car was doing and save the GPX for their GPS. With terrain, the relief is inside the file and shows even offline."),
     PDF("pdf", "application/pdf", "Poster to print (PDF, A3)",
         "The route in vectors over the shaded relief: prints sharp on A3 and scales down to A4."),
     SVG("svg", "image/svg+xml", "Vector image (SVG)",
@@ -107,10 +107,10 @@ fun RouteExportDialog(trip: TripRecord, points: List<TrackPoint>, car: String, o
         val info = info()
         scope.launch {
             runCatching {
-                val usesTerrain = format == RouteFormat.PDF || format == RouteFormat.SVG
+                val usesTerrain = format == RouteFormat.PDF || format == RouteFormat.SVG || format == RouteFormat.HTML
                 val terrain = if (usesTerrain && withTerrain) {
                     status = tr("Downloading terrain…")
-                    app.terrain(points, 1500) { i, n -> status = tr("Downloading terrain… %1\$s of %2\$s", i, n) }
+                    app.terrain(points, if (format == RouteFormat.HTML) 1000 else 1500) { i, n -> status = tr("Downloading terrain… %1\$s of %2\$s", i, n) }
                         .also { if (it == null) error = tr("The terrain could not be downloaded: exported without relief.") }
                 } else null
                 status = null
@@ -119,7 +119,7 @@ fun RouteExportDialog(trip: TripRecord, points: List<TrackPoint>, car: String, o
                     val file = File(dir, fileName(info) + "." + format.ext)
                     when (format) {
                         RouteFormat.GPX -> file.writeText(Gpx.write(info, points))
-                        RouteFormat.HTML -> file.writeText(RouteHtml.write(info, points, label, units))
+                        RouteFormat.HTML -> file.writeText(RouteHtml.write(info, points, label, units, terrain))
                         RouteFormat.SVG -> file.writeText(RoutePoster.svg(RoutePoster.layout(info, points, label, units, terrain = terrain)))
                         RouteFormat.PDF -> writePdf(file, RoutePoster.layout(info, points, label, units, terrain = terrain))
                         RouteFormat.THREE_MF -> error("3D models are made in their own screen")
@@ -142,7 +142,7 @@ fun RouteExportDialog(trip: TripRecord, points: List<TrackPoint>, car: String, o
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Column(Modifier.weight(1f)) {
                         Text(tr("Terrain around the route"))
-                        Text(tr("Real relief under the poster, from open elevation data (downloads a few map tiles)."),
+                        Text(tr("Real relief under the poster and the web map, from open elevation data (downloads a few map tiles)."),
                             style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
                     Switch(withTerrain, { withTerrain = it }, modifier = Modifier.testTag("terrainSwitch"))

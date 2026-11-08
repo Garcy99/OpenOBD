@@ -131,13 +131,15 @@ No adapter yet? Choose **Demo** as the connection: a simulated car with codes, m
 - **Trips** saved automatically with a GPS track on an OpenStreetMap map: tap any point for the speed, rpm,
   consumption and time there
 - **Export a trip**: **GPX** for any GPS (Garmin, OsmAnd, Komoot, Google Earth) with the car's values in every point;
-  an **interactive HTML map** anyone can open in a browser to tap the route, see the same data and save the GPX;
-  a **poster** (PDF A3 / SVG) with the route in vectors over the shaded relief of the area; and a **printable 3D map**
+  an **interactive HTML map** anyone can open in a browser to tap the route, see the same data and save the GPX
+  (OpenTopoMap base map, plus the coloured relief built into the file so it also works offline);
+  a **poster** (PDF A3 / SVG) with the route in vectors over the relief of the area, coloured by altitude; and a **printable 3D map**
   (3MF, multicolour): the real terrain around the route coloured by altitude (Alpine, Forest, Desert or Stone styles),
   with lakes, main roads and, for small areas, buildings from OpenStreetMap, cut as a hexagon, circle or square, with
   the trip's name (and optionally its GPS coordinates) on a plaque. A live 3D preview turns and zooms while you choose
   size, relief exaggeration, maximum height, base thickness and detail; the screen shows the total height and the
-  filament list, and every triangle comes painted with its filament number for Bambu Studio, PrusaSlicer and Orca
+  filament list, and the file uses PrusaSlicer's 3MF dialect, so Bambu Studio, PrusaSlicer and Orca load each part with
+  its filament and the altitude bands painted (set each filament's colour as the list shows)
 - **Home-screen widget**, backup and restore
 
 ### Connection
@@ -285,7 +287,8 @@ app/src/main/java/com/openobd/
     the phone; packs made from it keep that attribution and licence.
     `app/src/main/assets/obdb/index.json` (the list of makes and models) is derived from it.
   - Maps: © [OpenStreetMap](https://www.openstreetmap.org/copyright) contributors. Water, roads and buildings in 3D
-    maps come from OpenStreetMap through the [Overpass API](https://overpass-api.de/) (ODbL).
+    maps come from OpenStreetMap through the [Overpass API](https://overpass-api.de/) (ODbL). The shared HTML map
+    shows [OpenTopoMap](https://opentopomap.org/) tiles (CC-BY-SA), or Esri's World Topo Map if those fail.
   - Elevation for 3D models: [Terrain Tiles](https://registry.opendata.aws/terrain-tiles/) on AWS Open Data (SRTM,
     GMTED, ETOPO and national elevation models).
   - Vehicle data: European Environment Agency, RDW, DVLA, NHTSA vPIC and US EPA fueleconomy.gov open data.

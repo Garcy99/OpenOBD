@@ -155,7 +155,7 @@ fun Route3dScreen(tripId: String, onBack: () -> Unit) {
                 withContext(Dispatchers.IO) {
                     val info = RouteInfo(title, "", t.start, t.end, t.distanceKm, t.fuelL, t.avgSpeed, t.maxSpeed, t.avgL100)
                     val dir = File(context.cacheDir, "reports").apply { mkdirs() }
-                    File(dir, fileName(info) + ".3mf").also { f -> f.outputStream().buffered().use { Route3mf.write(m, it, title) } }
+                    File(dir, fileName(info) + ".3mf").also { f -> f.outputStream().buffered().use { Route3mf.write(m, it, title, "OpenOBD " + com.openobd.BuildConfig.VERSION_NAME) } }
                 }
             }.onSuccess { shareFile(context, it, "model/3mf") }
                 .onFailure { error = tr("Could not create the file: %1\$s", it.message ?: "") }

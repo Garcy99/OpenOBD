@@ -121,8 +121,12 @@ class RouteExportUiTest {
         waitFor(60_000) { runCatching { rule.onNodeWithTag("make3d").assertIsEnabled() }.isSuccess }
         rule.onNodeWithTag("make3d").performClick()
         val model = shared("3mf", "model/3mf")
-        val xml = java.util.zip.ZipFile(model).use { z -> z.getInputStream(z.getEntry("3D/3dmodel.model")).readBytes().toString(Charsets.UTF_8) }
-        assertTrue(xml.contains("name=\"Terrain\"") && xml.contains("name=\"Roads\"") && xml.contains("name=\"Plaque\"") && xml.contains("name=\"Title\"") && xml.contains("Sierra loop") && xml.contains("paint_color="))
+        val (xml, config) = java.util.zip.ZipFile(model).use { z ->
+            listOf("3D/3dmodel.model", "Metadata/Slic3r_PE_model.config").map { z.getInputStream(z.getEntry(it)).readBytes().toString(Charsets.UTF_8) }
+        }
+        assertTrue(listOf("Terrain", "Roads", "Plaque", "Title").all { config.contains("key=\"name\" value=\"$it\"") } && xml.contains("Sierra loop"))
+        // Altitude bands and water painted inside the terrain part, for the slicers.
+        assertTrue(xml.contains("slic3rpe:mmu_segmentation=") && xml.contains("PrusaSlicer 3MF"))
         assertTrue("desert colours and water", xml.contains(com.openobd.core.trip.Route3mf.Theme.DESERT.low) && xml.contains(com.openobd.core.trip.Route3mf.Theme.DESERT.water))
         assertTrue(model.name.startsWith("OpenOBD "))
     }

@@ -503,44 +503,65 @@ object Route3mf {
     }
 
     /**
-     * One object made of the parts (3MF components). Colours: base materials (one per filament) referenced by
-     * each triangle, so viewers show them; and triangle painting by filament number, which Bambu Studio
-     * (paint_color) and PrusaSlicer / Orca (mmu_segmentation) load even from files they did not create.
+     * Written in PrusaSlicer's 3MF dialect, which Bambu Studio, PrusaSlicer and Orca all import with its colours: one
+     * object whose parts are ranges of triangles (Metadata/Slic3r_PE_model.config), each part with its filament
+     * ("extruder"), and the triangles of other colours inside a part (the terrain's altitude bands, water) painted
+     * with their filament (slic3rpe:mmu_segmentation). Bambu Studio only reads parts and painting from 3MF files it
+     * recognises (its own, or PrusaSlicer's by the "PrusaSlicer" in the application name), and adds the filaments
+     * the model uses. Base materials carry the real colours for plain 3MF viewers.
      */
-    fun write(model: Model, out: OutputStream, title: String) {
+    fun write(model: Model, out: OutputStream, title: String, application: String = "OpenOBD") {
         val zip = ZipOutputStream(out)
         fun entry(name: String, text: String) { zip.putNextEntry(ZipEntry(name)); zip.write(text.toByteArray(Charsets.UTF_8)); zip.closeEntry() }
         entry("[Content_Types].xml", """<?xml version="1.0" encoding="UTF-8"?>
-<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="model" ContentType="application/vnd.ms-package.3dmanufacturing-3dmodel+xml"/></Types>""")
+<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="model" ContentType="application/vnd.ms-package.3dmanufacturing-3dmodel+xml"/><Default Extension="config" ContentType="text/xml"/></Types>""")
         entry("_rels/.rels", """<?xml version="1.0" encoding="UTF-8"?>
 <Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Target="/3D/3dmodel.model" Id="rel0" Type="http://schemas.microsoft.com/3dmanufacturing/2013/01/3dmodel"/></Relationships>""")
         zip.putNextEntry(ZipEntry("3D/3dmodel.model"))
         val w = zip.bufferedWriter(Charsets.UTF_8)
         w.write("""<?xml version="1.0" encoding="UTF-8"?>""" + "\n")
         w.write("""<model unit="millimeter" xml:lang="en-US" xmlns="http://schemas.microsoft.com/3dmanufacturing/core/2015/02" xmlns:slic3rpe="http://schemas.slic3r.org/3mf/2017/06">""" + "\n")
-        w.write("""<metadata name="Title">${xml(title)}</metadata><metadata name="Application">OpenOBD</metadata>""" + "\n")
+        w.write("""<metadata name="slic3rpe:Version3mf">1</metadata><metadata name="slic3rpe:MmPaintingVersion">1</metadata>""" + "\n")
+        w.write("""<metadata name="Title">${xml(title)}</metadata><metadata name="Application">${xml(application)} (PrusaSlicer 3MF)</metadata>""" + "\n")
         w.write("""<metadata name="Description">${xml(model.filaments.joinToString("; ") { "${it.number} ${it.color} ${it.roles.joinToString(", ")}" })}</metadata>""" + "\n")
         w.write("<resources>\n<basematerials id=\"1\">")
         model.filaments.forEach { w.write("<base name=\"${xml(it.number.toString() + " " + it.roles.joinToString(", "))}\" displaycolor=\"${it.color}\"/>") }
         w.write("</basematerials>\n")
-        model.meshes.forEachIndexed { i, mesh ->
-            val own = model.filamentOf(mesh.color) - 1
-            w.write("<object id=\"${i + 2}\" name=\"${xml(mesh.name)}\" type=\"model\" pid=\"1\" pindex=\"$own\"><mesh><vertices>")
-            mesh.v.forEach { w.write("<vertex x=\"${f(it[0], 3)}\" y=\"${f(it[1], 3)}\" z=\"${f(it[2], 3)}\"/>") }
-            w.write("</vertices><triangles>")
+        w.write("<object id=\"2\" name=\"${xml(title)}\" type=\"model\" pid=\"1\" pindex=\"0\"><mesh><vertices>")
+        model.meshes.forEach { mesh -> mesh.v.forEach { w.write("<vertex x=\"${f(it[0], 3)}\" y=\"${f(it[1], 3)}\" z=\"${f(it[2], 3)}\"/>") } }
+        w.write("</vertices><triangles>")
+        val ranges = mutableListOf<IntArray>() // first triangle, last triangle, filament
+        var vOffset = 0; var tOffset = 0
+        for (mesh in model.meshes) {
+            val own = model.filamentOf(mesh.color)
             for ((k, t) in mesh.t.withIndex()) {
                 val fil = model.filamentOf(mesh.c[k])
-                val paint = paintCode(fil)
-                w.write("<triangle v1=\"${t[0]}\" v2=\"${t[1]}\" v3=\"${t[2]}\" pid=\"1\" p1=\"${fil - 1}\" paint_color=\"$paint\" slic3rpe:mmu_segmentation=\"$paint\"/>")
+                w.write("<triangle v1=\"${t[0] + vOffset}\" v2=\"${t[1] + vOffset}\" v3=\"${t[2] + vOffset}\" p1=\"${fil - 1}\"")
+                if (fil != own) w.write(" slic3rpe:mmu_segmentation=\"${paintCode(fil)}\"")
+                w.write("/>")
             }
-            w.write("</triangles></mesh></object>\n")
+            ranges += intArrayOf(tOffset, tOffset + mesh.t.size - 1, own)
+            vOffset += mesh.v.size; tOffset += mesh.t.size
         }
-        val assembly = model.meshes.size + 2
-        w.write("<object id=\"$assembly\" name=\"${xml(title)}\" type=\"model\"><components>")
-        model.meshes.indices.forEach { w.write("<component objectid=\"${it + 2}\"/>") }
-        w.write("</components></object>\n</resources>\n<build><item objectid=\"$assembly\"/></build>\n</model>\n")
+        w.write("</triangles></mesh></object>\n</resources>\n<build><item objectid=\"2\" printable=\"1\"/></build>\n</model>\n")
         w.flush()
         zip.closeEntry()
+        val config = buildString {
+            append("<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<config>\n <object id=\"2\" instances_count=\"1\">\n")
+            append("  <metadata type=\"object\" key=\"name\" value=\"${xml(title)}\"/>\n")
+            append("  <metadata type=\"object\" key=\"extruder\" value=\"1\"/>\n")
+            model.meshes.forEachIndexed { i, mesh ->
+                val (first, last, fil) = ranges[i].let { Triple(it[0], it[1], it[2]) }
+                append("  <volume firstid=\"$first\" lastid=\"$last\">\n")
+                append("   <metadata type=\"volume\" key=\"name\" value=\"${xml(mesh.name)}\"/>\n")
+                append("   <metadata type=\"volume\" key=\"volume_type\" value=\"ModelPart\"/>\n")
+                append("   <metadata type=\"volume\" key=\"extruder\" value=\"$fil\"/>\n")
+                append("   <metadata type=\"volume\" key=\"matrix\" value=\"1 0 0 0 0 1 0 0 0 0 1 0 0 0 0 1\"/>\n")
+                append("  </volume>\n")
+            }
+            append(" </object>\n</config>\n")
+        }
+        entry("Metadata/Slic3r_PE_model.config", config)
         zip.finish()
     }
 

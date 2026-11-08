@@ -104,20 +104,33 @@ class RouteExportTest {
         val bytes = ByteArrayOutputStream().also { Route3mf.write(model, it, "Trip") }.toByteArray()
         val entries = mutableMapOf<String, String>()
         ZipInputStream(ByteArrayInputStream(bytes)).use { z -> generateSequence { z.nextEntry }.forEach { entries[it.name] = z.readBytes().toString(Charsets.UTF_8) } }
-        assertEquals(setOf("[Content_Types].xml", "_rels/.rels", "3D/3dmodel.model"), entries.keys)
+        assertEquals(setOf("[Content_Types].xml", "_rels/.rels", "3D/3dmodel.model", "Metadata/Slic3r_PE_model.config"), entries.keys)
         val doc = xml(entries.getValue("3D/3dmodel.model"))
         val ns = "http://schemas.microsoft.com/3dmanufacturing/core/2015/02"
-        // Four parts plus the object that groups them, which is the one thing built; one base material per filament.
-        assertEquals(5, doc.getElementsByTagNameNS(ns, "object").length)
-        assertEquals(model.filaments.size, doc.getElementsByTagNameNS(ns, "base").length)
-        assertEquals(4, doc.getElementsByTagNameNS(ns, "component").length)
+        // PrusaSlicer's dialect, which Bambu Studio recognises by the application name: one object, one build item.
+        assertEquals(1, doc.getElementsByTagNameNS(ns, "object").length)
         assertEquals(1, doc.getElementsByTagNameNS(ns, "item").length)
-        // Every triangle carries its colour (base material) and its filament painting, for Bambu Studio and PrusaSlicer / Orca.
-        val tris = doc.getElementsByTagNameNS(ns, "triangle")
-        assertEquals(model.triangles, tris.length)
+        assertEquals(model.filaments.size, doc.getElementsByTagNameNS(ns, "base").length)
         val text = entries.getValue("3D/3dmodel.model")
-        assertTrue(text.contains("pid=\"1\" p1=\"1\" paint_color=\"8\" slic3rpe:mmu_segmentation=\"8\""))
-        assertTrue(text.contains("paint_color=\"1C\""))
+        assertTrue(text.contains("<metadata name=\"Application\">OpenOBD (PrusaSlicer 3MF)</metadata>"))
+        assertTrue(text.contains("<metadata name=\"slic3rpe:Version3mf\">1</metadata>"))
+        assertEquals(model.triangles, doc.getElementsByTagNameNS(ns, "triangle").length)
+        // Parts are triangle ranges with their filament, covering every triangle once.
+        val config = xml(entries.getValue("Metadata/Slic3r_PE_model.config"))
+        val volumes = config.getElementsByTagName("volume")
+        assertEquals(meshes.size, volumes.length)
+        var next = 0
+        for (i in 0 until volumes.length) {
+            val v = volumes.item(i) as org.w3c.dom.Element
+            assertEquals(next, v.getAttribute("firstid").toInt())
+            next = v.getAttribute("lastid").toInt() + 1
+            val meta = (0 until v.getElementsByTagName("metadata").length).associate { k ->
+                (v.getElementsByTagName("metadata").item(k) as org.w3c.dom.Element).let { it.getAttribute("key") to it.getAttribute("value") }
+            }
+            assertEquals(meshes[i].name, meta["name"])
+            assertEquals(model.filamentOf(meshes[i].color).toString(), meta["extruder"])
+        }
+        assertEquals(model.triangles, next)
         assertEquals(listOf("4", "8", "0C", "1C", "2C", "3C"), (1..6).map { Route3mf.paintCode(it) })
     }
 
