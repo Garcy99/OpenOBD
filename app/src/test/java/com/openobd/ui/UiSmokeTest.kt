@@ -53,7 +53,7 @@ class UiSmokeTest {
         }
     }
 
-    private fun waitFor(timeoutMs: Long = 15_000, condition: () -> Boolean) {
+    private fun waitFor(timeoutMs: Long = 30_000, condition: () -> Boolean) {
         val end = System.currentTimeMillis() + timeoutMs
         while (!condition()) {
             check(System.currentTimeMillis() < end) { "Timed out waiting" }

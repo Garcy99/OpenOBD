@@ -67,8 +67,7 @@ class AutoTripUiTest {
         rule.onNodeWithTag("autoTripsSwitch").performClick()
         rule.onNodeWithTag("carBt_00:11:22:33:44:55").performScrollTo().performClick()
         waitFor { c.settings.settings.value.autoTrips && c.settings.settings.value.autoTripDevice == radio.address }
-        // The adapter itself is not offered as the car's radio... except that it is listed with a warning.
-        assertTrue(rule.onAllNodesWithText("The next time the phone joins Opel Astra", substring = true).fetchSemanticsNodes().isNotEmpty())
+        assertEquals("Opel Astra", c.settings.settings.value.autoTripDeviceName)
 
         // The demo car stands in for the adapter from here on.
         runBlocking { c.settings.update { it.copy(connectionType = ConnectionType.DEMO) } }
