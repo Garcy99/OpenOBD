@@ -57,6 +57,19 @@ class TripVideoDeviceTest {
             assertTrue("duration $lastUs", lastUs in 2_800_000L..3_100_000L)
         }
         assertTrue(last > 0.5f)
+        // The path for devices without a real GPU: drawn in memory, handed to the encoder in YUV.
+        file.delete()
+        val w = com.openobd.video.Mp4Writer.open(file, listOf(720 to 1280), 30, surfaceInput = false)
+        val r = TripVideoRenderer(video, ground, area, w.width, w.height, "Test drive", "Demo", Units(), { it }, "")
+        for (f in 0 until 30) w.frame { c -> r.draw(c, f * 3) }
+        w.finish()
+        val ex = MediaExtractor().apply { setDataSource(file.path) }
+        assertEquals("tracks (memory path) in a ${file.length()}-byte file", 1, ex.trackCount)
+        ex.selectTrack(0)
+        var frames = 0
+        while (ex.sampleTime >= 0) { frames++; ex.advance() }
+        ex.release()
+        assertTrue("frames (memory path) $frames", frames >= 28)
         ground.recycle()
     }
 }

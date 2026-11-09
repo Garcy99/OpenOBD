@@ -84,18 +84,32 @@ object TripVideoMaker {
         return Bitmap.createBitmap(px, w, h, Bitmap.Config.ARGB_8888) to tr(raster.second)
     }
 
-    /** Draws and encodes every frame into [file]; [progress] 0..1. */
+    /**
+     * Draws and encodes every frame into [file]; [progress] 0..1. Tries the GPU path first; when the encoder gets
+     * nothing from it (devices without a real GPU), starts again drawing in memory.
+     */
     suspend fun encode(file: File, renderer: (Int, Int) -> TripVideoRenderer, vertical: Boolean, video: TripVideo, progress: (Float) -> Unit) = withContext(Dispatchers.Default) {
         val sizes = if (vertical) listOf(1080 to 1920, 720 to 1280) else listOf(1920 to 1080, 1280 to 720)
-        val writer = Mp4Writer.open(file, sizes, video.fps)
+        if (!write(file, sizes, true, renderer, video, progress)) {
+            file.delete()
+            write(file, sizes, false, renderer, video, progress)
+        }
+    }
+
+    /** One attempt; false when the GPU path delivers nothing to the encoder. */
+    private suspend fun write(file: File, sizes: List<Pair<Int, Int>>, gpu: Boolean, renderer: (Int, Int) -> TripVideoRenderer,
+                              video: TripVideo, progress: (Float) -> Unit): Boolean {
+        val writer = Mp4Writer.open(file, sizes, video.fps, gpu)
         try {
             val r = renderer(writer.width, writer.height)
             for (f in 0 until video.frames) {
                 coroutineContext.ensureActive()
                 writer.frame { c -> r.draw(c, f) }
+                if (gpu && f == 15 && !writer.producing(3000)) { writer.close(); return false }
                 if (f % 10 == 0) progress(f.toFloat() / video.frames)
             }
             writer.finish()
+            return true
         } catch (e: Exception) {
             writer.close(); file.delete(); throw e
         }

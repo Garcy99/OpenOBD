@@ -1,5 +1,6 @@
 package com.openobd.video
 
+import android.graphics.Bitmap
 import android.graphics.Canvas
 import android.media.MediaCodec
 import android.media.MediaCodecInfo
@@ -10,40 +11,90 @@ import java.io.Closeable
 import java.io.File
 
 /**
- * Writes an H.264 MP4 from frames drawn on a canvas, with the phone's hardware encoder. Frames are stamped
- * 1 / [fps] apart however long they take to draw, so the video plays at its real speed.
+ * Writes an H.264 MP4 from frames drawn on a canvas, with the phone's encoder. Frames are stamped 1 / [fps] apart
+ * however long they take to draw, so the video plays at its real speed.
+ *
+ * Normally frames are drawn by the GPU straight into the encoder ([surfaceInput]). Devices without a real GPU
+ * (some car head units, test emulators) never deliver those frames, so they draw in memory instead and hand the
+ * encoder the pictures in YUV ([surfaceInput] false), slower but everywhere.
  */
-class Mp4Writer(file: File, val width: Int, val height: Int, private val fps: Int, bitrate: Int) : Closeable {
+class Mp4Writer(file: File, val width: Int, val height: Int, private val fps: Int, bitrate: Int, val surfaceInput: Boolean = true) : Closeable {
     private val codec: MediaCodec = MediaCodec.createEncoderByType(MediaFormat.MIMETYPE_VIDEO_AVC)
-    private val surface: Surface
+    private val surface: Surface?
     private val muxer = MediaMuxer(file.path, MediaMuxer.OutputFormat.MUXER_OUTPUT_MPEG_4)
     private val info = MediaCodec.BufferInfo()
     private var track = -1
     private var started = false
-    private var written = 0L
+    /** Frames written to the file so far. */
+    var written = 0L
+        private set
+    private var queued = 0L
     private var finished = false
+    private val bitmap: Bitmap? = if (surfaceInput) null else Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
+    private val argb: IntArray? = if (surfaceInput) null else IntArray(width * height)
 
     init {
         val format = MediaFormat.createVideoFormat(MediaFormat.MIMETYPE_VIDEO_AVC, width, height).apply {
-            setInteger(MediaFormat.KEY_COLOR_FORMAT, MediaCodecInfo.CodecCapabilities.COLOR_FormatSurface)
+            setInteger(MediaFormat.KEY_COLOR_FORMAT,
+                if (surfaceInput) MediaCodecInfo.CodecCapabilities.COLOR_FormatSurface else MediaCodecInfo.CodecCapabilities.COLOR_FormatYUV420Flexible)
             setInteger(MediaFormat.KEY_BIT_RATE, bitrate)
             setInteger(MediaFormat.KEY_FRAME_RATE, fps)
             setInteger(MediaFormat.KEY_I_FRAME_INTERVAL, 1)
         }
         try {
             codec.configure(format, null, null, MediaCodec.CONFIGURE_FLAG_ENCODE)
-            surface = codec.createInputSurface()
+            surface = if (surfaceInput) codec.createInputSurface() else null
             codec.start()
         } catch (e: Exception) {
-            codec.release(); muxer.release(); throw e
+            codec.release(); muxer.release(); bitmap?.recycle(); throw e
         }
     }
 
     /** Draws one frame. */
     fun frame(draw: (Canvas) -> Unit) {
-        val c = surface.lockHardwareCanvas()
-        try { draw(c) } finally { surface.unlockCanvasAndPost(c) }
+        if (surface != null) {
+            val c = surface.lockHardwareCanvas()
+            try { draw(c) } finally { surface.unlockCanvasAndPost(c) }
+        } else {
+            val bmp = bitmap!!
+            draw(Canvas(bmp))
+            bmp.getPixels(argb!!, 0, width, 0, 0, width, height)
+            queueYuv(argb, false)
+        }
         drain(false)
+    }
+
+    /** Hands one picture to the encoder in its YUV layout (whatever its strides), or the end of the stream. */
+    private fun queueYuv(px: IntArray?, end: Boolean) {
+        var index: Int
+        do { index = codec.dequeueInputBuffer(10_000); if (index < 0) drain(false) } while (index < 0)
+        val pts = queued++ * 1_000_000L / fps
+        if (end || px == null) { codec.queueInputBuffer(index, 0, 0, pts, MediaCodec.BUFFER_FLAG_END_OF_STREAM); return }
+        val image = codec.getInputImage(index) ?: throw IllegalStateException("The video encoder gave no picture buffer")
+        val (yP, uP, vP) = image.planes.let { Triple(it[0], it[1], it[2]) }
+        val y = yP.buffer; val u = uP.buffer; val v = vP.buffer
+        for (row in 0 until height) {
+            val base = row * width
+            for (col in 0 until width) {
+                val p = px[base + col]
+                val r = (p shr 16) and 0xFF; val g = (p shr 8) and 0xFF; val b = p and 0xFF
+                y.put(row * yP.rowStride + col * yP.pixelStride, (((66 * r + 129 * g + 25 * b + 128) shr 8) + 16).toByte())
+                if (row % 2 == 0 && col % 2 == 0) {
+                    val cu = ((-38 * r - 74 * g + 112 * b + 128) shr 8) + 128
+                    val cv = ((112 * r - 94 * g - 18 * b + 128) shr 8) + 128
+                    u.put((row / 2) * uP.rowStride + (col / 2) * uP.pixelStride, cu.toByte())
+                    v.put((row / 2) * vP.rowStride + (col / 2) * vP.pixelStride, cv.toByte())
+                }
+            }
+        }
+        codec.queueInputBuffer(index, 0, width * height * 3 / 2, pts, 0)
+    }
+
+    /** True once the encoder has turned frames into video (waiting up to [timeoutMs] for it). */
+    fun producing(timeoutMs: Long): Boolean {
+        val end = System.currentTimeMillis() + timeoutMs
+        while (written == 0L && System.currentTimeMillis() < end) drain(false)
+        return written > 0
     }
 
     /** Ends the video and closes the file. */
@@ -51,21 +102,22 @@ class Mp4Writer(file: File, val width: Int, val height: Int, private val fps: In
         if (finished) return
         finished = true
         try {
-            codec.signalEndOfInputStream()
+            if (surface != null) codec.signalEndOfInputStream() else queueYuv(null, true)
             drain(true)
             check(written > 0) { "The video encoder produced no frames" }
             runCatching { codec.stop() }; runCatching { codec.release() }
             // Writes the index of the file: without it no player can open the video, so a failure here is reported.
             muxer.stop()
         } finally {
-            runCatching { muxer.release() }; runCatching { surface.release() }; runCatching { codec.release() }
+            runCatching { muxer.release() }; runCatching { surface?.release() }; runCatching { codec.release() }; bitmap?.recycle()
         }
     }
 
     override fun close() {
         runCatching { codec.stop() }; runCatching { codec.release() }
         runCatching { if (started) muxer.stop() }; runCatching { muxer.release() }
-        runCatching { surface.release() }
+        runCatching { surface?.release() }
+        bitmap?.recycle()
     }
 
     private fun drain(end: Boolean) {
@@ -93,10 +145,10 @@ class Mp4Writer(file: File, val width: Int, val height: Int, private val fps: In
 
     companion object {
         /** A writer for the largest of [sizes] the phone's encoder takes (some refuse 1080 lines). */
-        fun open(file: File, sizes: List<Pair<Int, Int>>, fps: Int): Mp4Writer {
+        fun open(file: File, sizes: List<Pair<Int, Int>>, fps: Int, surfaceInput: Boolean = true): Mp4Writer {
             var last: Exception? = null
             for ((w, h) in sizes) {
-                try { return Mp4Writer(file, w, h, fps, (w * h * fps * 0.2).toInt().coerceIn(2_000_000, 16_000_000)) } catch (e: Exception) { last = e }
+                try { return Mp4Writer(file, w, h, fps, (w * h * fps * 0.2).toInt().coerceIn(2_000_000, 16_000_000), surfaceInput) } catch (e: Exception) { last = e }
             }
             throw last ?: IllegalStateException("No video encoder")
         }
