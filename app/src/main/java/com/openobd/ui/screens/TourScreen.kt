@@ -80,9 +80,9 @@ class TourPage(val icon: ImageVector, val tint: Color?, val section: String?, va
 object Tours {
     val basic = listOf(
         TourPage(Icons.Default.DirectionsCar, null, null, "What OpenOBD does",
-            "OpenOBD and a small ELM327 adapter turn your phone into a diagnostic tool for your car. This short tour shows the essentials; the full tour explains every feature."),
+            "OpenOBD and an ordinary OBD2 adapter turn your phone into a diagnostic tool for your car. This short tour shows the essentials; the full tour explains every feature."),
         TourPage(Icons.Default.Bluetooth, null, null, "Plug in and connect",
-            "Plug the adapter into the car's OBD port, under the dashboard near the steering column, and switch the ignition on. Then press Connect on Home.\n\nBluetooth adapters are paired first in Android's Bluetooth settings. No adapter yet? Choose Demo in Settings to try everything with a simulated car.",
+            "Plug the adapter into the car's OBD port, under the dashboard near the steering column, and switch the ignition on. Then press Connect on Home.\n\nAlmost any OBD2 adapter works; one with a good ELM327 chip, or an OBDLink, works best. Bluetooth adapters are paired first in Android's Bluetooth settings. No adapter yet? Choose Demo in Settings to try everything with a simulated car.",
             Routes.SETTINGS),
         TourPage(Icons.Default.Home, null, null, "Home and the tabs",
             "Home shows your car at a glance: connection, warnings, the car's health and reminders. The tabs at the bottom take you everywhere: Home, Live, Diagnose, Garage and More."),
@@ -104,7 +104,7 @@ object Tours {
 
     val advanced = listOf(
         TourPage(Icons.Default.Bluetooth, null, "Connection", "Adapters and connection",
-            "OpenOBD works with ELM327-compatible adapters over Bluetooth, Bluetooth LE, Wi-Fi and USB cable (handy on car head units). Choose the type and the adapter in Settings → Connection.\n\nOBDLink and other STN adapters are detected and run faster. Settings also has a speed test, the protocol and timing options for cars that answer slowly, and the HS/MS-CAN switch that some Ford, Mazda and Opel adapters use to reach comfort modules.\n\nDemo mode simulates a car, faults included, to practise without one.",
+            "OpenOBD works with the usual OBD2 adapters over Bluetooth, Bluetooth LE, Wi-Fi and USB cable (handy on car head units). Almost all of them speak the ELM327 language; a good ELM327 or an OBDLink works best. Adapters tied to their own app, such as Carista or BlueDriver, do not work. Choose the type and the adapter in Settings → Connection.\n\nOBDLink and other STN adapters are detected and run faster. Settings also has a speed test, the protocol and timing options for cars that answer slowly, and the HS/MS-CAN switch that some Ford, Mazda and Opel adapters use to reach comfort modules.\n\nDemo mode simulates a car, faults included, to practise without one.",
             Routes.SETTINGS),
         TourPage(Icons.Default.Speed, Good, "Live data", "Gauges your way",
             "In Live → Gauges, touch any gauge to choose its sensor, style (arc, needle, bar or number), colours, range, decimals and the value at which it turns red; the arrows move it. Dashboard layouts change the whole set at once.\n\nThe button at the top opens a floating window that keeps the gauges visible over other apps, such as your navigation app.",

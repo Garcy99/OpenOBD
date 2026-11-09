@@ -1,3 +1,4 @@
 • Tour de la app: lo básico al instalarla y un tour completo opcional que explica todas las funciones, con un botón para abrir cada una (en Más)
 • Mapa 3D: nueva mezcla de 5 bobinas "Paisaje" (marrón, verde, azul, negro, blanco) con verdes intensos
+• El tour aclara que sirve casi cualquier adaptador OBD2 (mejor con un buen ELM327)
 • Cuenta de Google y tours accesibles desde Más; la app ya no dice "sin cuenta": la cuenta es opcional

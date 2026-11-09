@@ -689,7 +689,7 @@ class WelcomeAndDashboardUiTest {
 
         // The basic tour follows the setup; at its end it offers the full tour.
         waitFor { rule.onAllNodesWithText("App tour").fetchSemanticsNodes().isNotEmpty() }
-        assertTrue(c.settings.settings.value.tourSeen)
+        waitFor { c.settings.settings.value.tourSeen }
         repeat(com.openobd.ui.screens.Tours.basic.size) { rule.onNodeWithTag("tourNext").performClick(); rule.waitForIdle() }
         rule.onNodeWithTag("fullTour").performClick()
         waitFor { rule.onAllNodesWithText("Full tour").fetchSemanticsNodes().isNotEmpty() }
