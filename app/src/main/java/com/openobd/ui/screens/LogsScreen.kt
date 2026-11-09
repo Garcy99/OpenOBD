@@ -93,7 +93,9 @@ fun LogsScreen(onBack: () -> Unit, onOpen: (String) -> Unit = {}) {
             sensors = available,
             title = tr("Sensors to record"),
             onDismiss = { picking = false },
-            selected = settings.dashboard.map { com.openobd.ui.components.GaugeSpec.parse(it).key }.filter { k -> available.any { it.key == k } }.toSet(),
+            selected = settings.dashboard.map { com.openobd.ui.components.GaugeSpec.parse(it).key }
+                .map { k -> com.openobd.core.obd.VirtualSensors.resolve(k, available.mapNotNull { d -> d.pid.takeIf { it >= 0 } }.toSet()) ?: k }
+                .filter { k -> available.any { it.key == k } }.toSet(),
             onConfirm = { keys -> picking = false; if (keys.isNotEmpty()) session.startRecording(keys.toList()) },
         )
     }

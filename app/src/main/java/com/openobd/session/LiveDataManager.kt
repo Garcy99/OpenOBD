@@ -61,6 +61,14 @@ fun interface CycleListener {
  * adapter allows. Fast-changing PIDs are read every cycle, slow ones (temperatures, levels) every 8th.
  */
 class LiveDataManager(private val scope: CoroutineScope) {
+    private companion object {
+        /** Unanswered requests before a maker value is only retried now and then (every [RETRY_CYCLES] cycles). */
+        const val MAX_UNANSWERED = 6
+        const val RETRY_CYCLES = 60L
+        /** ... and only after this long without an answer. */
+        const val GIVE_UP_MS = 20_000L
+    }
+
     private val subscriptions = MutableStateFlow<Map<String, Set<String>>>(emptyMap())
     private val _readings = MutableStateFlow<Map<String, Reading>>(emptyMap())
     val readings: StateFlow<Map<String, Reading>> = _readings
@@ -127,6 +135,12 @@ class LiveDataManager(private val scope: CoroutineScope) {
         var failures = 0
         var windowStart = System.currentTimeMillis()
         var windowCycles = 0
+        // Maker values this car never answers (the brand's oil pressure on an engine without the sensor ...) are
+        // asked again only now and then, so they do not slow every other gauge down.
+        val unanswered = HashMap<String, Int>()
+        val firstMiss = HashMap<String, Long>()
+        val answered = HashSet<String>()
+        var lastCustomKeys = emptySet<String>()
         while (isActive) {
             if (pauseCount.get() > 0) { delay(100); continue }
             val keys = subscriptions.value.values.flatten().toSet()
@@ -136,14 +150,21 @@ class LiveDataManager(private val scope: CoroutineScope) {
                 else sensorKeys += k
             }
             val pids = sensorKeys.mapNotNull { k -> Pids.sensors[k]?.pid }.filter { it in supported }.distinct()
-            val customs = sensorKeys.filter { it.startsWith("X_") }.mapNotNull { CustomSensors.pid(it) }
+            val customKeys = sensorKeys.filter { it.startsWith("X_") }.toSet()
+            // Values asked for anew get fresh chances.
+            if (customKeys != lastCustomKeys) { (customKeys - lastCustomKeys).forEach { unanswered.remove(it); firstMiss.remove(it) }; lastCustomKeys = customKeys }
+            val nowMs = System.currentTimeMillis()
+            val customs = customKeys.mapNotNull { CustomSensors.pid(it) }.filter { p ->
+                p.key in answered || (unanswered[p.key] ?: 0) < MAX_UNANSWERED || nowMs - (firstMiss[p.key] ?: nowMs) < GIVE_UP_MS || cycle % RETRY_CYCLES == 0L
+            }
             if (pids.isEmpty() && customs.isEmpty()) { delay(250); continue }
             val slowPids = pids.filter { p -> Pids.all[p]?.sensors?.all { it.slow } == true }
             val fastPids = pids - slowPids.toSet()
             val toRead = if (cycle % 8 == 0L || fastPids.isEmpty()) pids else fastPids
             cycle++
 
-            val customData = if (customs.isNotEmpty() && (cycle % 2 == 1L || pids.isEmpty())) {
+            val askedCustom = customs.isNotEmpty() && (cycle % 2 == 1L || pids.isEmpty())
+            val customData = if (askedCustom) {
                 try { modules.readCustom(customs) } catch (e: Exception) { emptyMap() }
             } else emptyMap()
             val data = if (toRead.isEmpty()) emptyMap() else try {
@@ -154,6 +175,12 @@ class LiveDataManager(private val scope: CoroutineScope) {
             } catch (e: Exception) {
                 if (++failures >= 4) { onAdapterLost?.invoke(); return }
                 delay(200); continue
+            }
+            // A maker value counts as unanswered only when the car answered the rest of the cycle (not while the
+            // link hiccups or the bus changes).
+            if (askedCustom && (data.isNotEmpty() || customData.isNotEmpty())) for (p in customs) {
+                if (customData[p.key] != null) { answered += p.key; unanswered.remove(p.key); firstMiss.remove(p.key) }
+                else if (p.key !in answered) { unanswered[p.key] = (unanswered[p.key] ?: 0) + 1; firstMiss.getOrPut(p.key) { System.currentTimeMillis() } }
             }
             if (data.isEmpty() && customData.isEmpty() && ++failures >= 25) { onAdapterLost?.invoke(); return }
             if (data.isNotEmpty() || customData.isNotEmpty()) failures = 0

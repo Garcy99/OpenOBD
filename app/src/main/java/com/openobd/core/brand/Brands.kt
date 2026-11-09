@@ -55,6 +55,44 @@ class BrandFamily(
     val secondaryBus: SecondaryBus? = null,
     /** Address ranges probed by "Discover modules": request IDs and the receive filter for their replies. */
     val discoveryRanges: List<Pair<IntRange, String>> = listOf(0x700..0x7F7 to "7XX"),
+    /** Manufacturer values every car of the family offers (oil pressure, ...), shown with the car's own PIDs. */
+    val builtinPids: List<CustomPid> = emptyList(),
+)
+
+private const val OBDB_SRC = "OBDb (CC BY-SA 4.0)"
+
+/** Engine oil temperature and pressure of VW group engine modules (Golf, Polo, Passat, Tiguan, Leon, A3 ...). */
+val VAG_OIL_PIDS = listOf(
+    CustomPid("vag_eot", "Engine oil temperature (VW group)", "Oil temp", "2211BE", "(A*256+B)/10-273.1", -40.0, 160.0, "°C", "7E0", source = OBDB_SRC),
+    CustomPid("vag_eop", "Engine oil pressure (VW group)", "Oil press", "22381D", "Int16(A,B)/1000", 0.0, 7.0, "bar", "7E0", source = OBDB_SRC),
+)
+
+/** Engine oil temperature and pressure of BMW / MINI engine electronics (DME, address 12 behind the gateway). */
+val BMW_OIL_PIDS = listOf(
+    CustomPid("bmw_eot", "Engine oil temperature (BMW)", "Oil temp", "224408", "(A*256+B)/10-273.15", -40.0, 160.0, "°C", "6F1", receive = "612", source = OBDB_SRC, extAddr = "12"),
+    CustomPid("bmw_eop", "Engine oil pressure (BMW)", "Oil press", "22586F", "(A*256+B)/1000", 0.0, 7.0, "bar", "6F1", receive = "612", source = OBDB_SRC, extAddr = "12"),
+)
+
+/** Engine oil temperature and pressure of Renault / Dacia engine modules (Clio, Captur, Megane, Duster ...). */
+val RENAULT_OIL_PIDS = listOf(
+    CustomPid("ren_eot", "Engine oil temperature (Renault)", "Oil temp", "222007", "(A*256+B)/10-273", -40.0, 160.0, "°C", "7E0", source = OBDB_SRC),
+    CustomPid("ren_eop", "Engine oil pressure (Renault)", "Oil press", "2225B9", "(A*256+B)/1000", 0.0, 7.0, "bar", "7E0", source = OBDB_SRC),
+)
+
+/** Engine oil temperature and pressure of Peugeot / Citroën / DS / Opel (Stellantis) engine modules (208, 308, 3008 ...). */
+val PSA_OIL_PIDS = listOf(
+    CustomPid("psa_eot", "Engine oil temperature (Peugeot / Citroën)", "Oil temp", "22D47D", "Int16(A,B)/10-273.14", -40.0, 160.0, "°C", "6A8", receive = "688", source = OBDB_SRC),
+    CustomPid("psa_eop", "Engine oil pressure (Peugeot / Citroën)", "Oil press", "22D429", "(A*256+B)/1000", 0.0, 7.0, "bar", "6A8", receive = "688", source = OBDB_SRC),
+)
+
+/**
+ * Engine oil temperature and pressure from GM engine control modules (Global A: Opel / Vauxhall Astra J, Insignia,
+ * Chevrolet Cruze ...), read by identifier ($22) as in the OBDb community data. Engines without an oil pressure
+ * sensor do not answer that one.
+ */
+val GM_OIL_PIDS = listOf(
+    CustomPid("gm_eot", "Engine oil temperature (GM)", "Oil temp", "22005C", "A-40", -40.0, 160.0, "°C", "7E0", source = "GM ECM, OBDb (CC BY-SA 4.0)"),
+    CustomPid("gm_eop", "Engine oil pressure (GM)", "Oil press", "222345", "A*0.04", 0.0, 7.0, "bar", "7E0", source = "GM ECM, OBDb (CC BY-SA 4.0)"),
 )
 
 data class Brand(val id: String, val name: String, val family: BrandFamily, val wmis: List<String>)
@@ -159,6 +197,7 @@ object Families {
         ),
         "Addresses are for UDS platforms (MQB/MLB/MEB, roughly 2012+). Older PQ-platform cars use VW TP2.0 / KWP1281, which ELM327 adapters can't speak; " +
             "on those only the engine and generic codes are available.",
+        builtinPids = VAG_OIL_PIDS,
     )
 
     val HMG = BrandFamily(
@@ -224,6 +263,7 @@ object Families {
             m("Battery controller (EV)", "LBC", 0x79B, 0x7BB, E),
         ),
         "Renault-Nissan alliance addressing. Older Renaults with KWP over K-line are not covered by module scanning.",
+        builtinPids = RENAULT_OIL_PIDS,
     )
 
     val GM = BrandFamily(
@@ -241,6 +281,7 @@ object Families {
         "GMLAN physical addressing. Modules that do not speak UDS are read with the GMLAN service (\$A9) and cleared with \$04. " +
             "Global B vehicles (2020+) may block access through the gateway.",
         discoveryRanges = listOf(0x240..0x25F to "6XX", 0x700..0x7F7 to "7XX"),
+        builtinPids = GM_OIL_PIDS,
     )
 
     /** Opel / Vauxhall on GM's Global A architecture (Astra H/J/K, Insignia A, Corsa D/E, Zafira B/C, Meriva B, Mokka). */
@@ -261,15 +302,16 @@ object Families {
             "reachable with an HS/MS-CAN switch adapter; some body modules use single-wire CAN (pin 1), which ELM327 adapters cannot reach.",
         secondaryBus = OPEL_MS,
         discoveryRanges = listOf(0x240..0x25F to "6XX", 0x700..0x7F7 to "7XX"),
+        builtinPids = GM_OIL_PIDS,
     )
 
     val STELLANTIS = BrandFamily("stellantis", "Stellantis / FCA / PSA", obdBase,
         "Stellantis brands use a secure gateway (2018+) that blocks clearing codes on most modules without an authorised unlock. " +
-            "Use Discover modules to see which modules answer on your car.")
+            "Use Discover modules to see which modules answer on your car.", builtinPids = PSA_OIL_PIDS)
     val BMW = BrandFamily("bmw", "BMW / MINI", obdBase + bmwModules(),
         "BMW / MINI modules are reached through the central gateway with extended addressing (requests to 6F1 with the module address first). " +
             "OpenOBD frames these by hand, so they work with ordinary ELM327 adapters too; not every module exists on every model. " +
-            "Use an adapter set to 500 kbps CAN (D-CAN, 2008+).")
+            "Use an adapter set to 500 kbps CAN (D-CAN, 2008+).", builtinPids = BMW_OIL_PIDS)
     val MERCEDES = BrandFamily("mercedes", "Mercedes-Benz / smart", obdBase,
         "Module addresses differ between model series. Use Discover modules to find the modules on your car.")
     val HONDA = BrandFamily("honda", "Honda / Acura", obdBase,

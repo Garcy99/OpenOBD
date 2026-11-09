@@ -116,8 +116,30 @@ object DerivedSensors {
 }
 
 /** Unified lookup over PID sensors and calculated sensors. */
+/**
+ * Gauges that read whichever source the car has: oil temperature from the standard PID or the maker's, oil pressure
+ * from the maker's (no standard PID exists).
+ */
+object VirtualSensors {
+    private val C = SensorCategory.ENGINE
+    val OIL_TEMP = SensorDef("OIL_TEMP", -3, "Engine oil temperature", "Oil temp", ObdUnit.CELSIUS, -40.0, 160.0, C, 0) { null }
+    val OIL_PRESS = SensorDef("OIL_PRESS", -3, "Engine oil pressure", "Oil pressure", ObdUnit.BAR, 0.0, 7.0, C, 1) { null }
+    val all = listOf(OIL_TEMP, OIL_PRESS)
+    val byKey = all.associateBy { it.key }
+
+    private val temp = Regex("(oil|öl|aceite|huile|olio).*(temp)|(temp).*(oil|aceite|huile|olio)|\\beot\\b", RegexOption.IGNORE_CASE)
+    private val press = Regex("(oil|öl|aceite|huile|olio).*(press|druck)|(press|druck).*(oil|aceite|huile|olio)|\\beop\\b", RegexOption.IGNORE_CASE)
+
+    /** The sensor that feeds [key] on this car ([key] itself when it is not virtual), or null when it has none. */
+    fun resolve(key: String, supported: Set<Int>, custom: Collection<SensorDef> = com.openobd.core.brand.CustomSensors.sensors): String? = when (key) {
+        OIL_TEMP.key -> "015C".takeIf { 0x5C in supported } ?: custom.firstOrNull { temp.containsMatchIn(it.name) && !it.name.contains("calc", true) }?.key
+        OIL_PRESS.key -> custom.firstOrNull { press.containsMatchIn(it.name) && !it.name.contains("control", true) && !it.name.contains("solenoid", true) }?.key
+        else -> key
+    }
+}
+
 object SensorCatalog {
-    fun get(key: String): SensorDef? = Pids.sensors[key] ?: DerivedSensors.byKey[key] ?: com.openobd.core.brand.CustomSensors.get(key)
+    fun get(key: String): SensorDef? = Pids.sensors[key] ?: DerivedSensors.byKey[key] ?: VirtualSensors.byKey[key] ?: com.openobd.core.brand.CustomSensors.get(key)
 
     /** All sensors (PID based + calculated) available for the given supported PID set. */
     fun available(supported: Set<Int>): List<SensorDef> {

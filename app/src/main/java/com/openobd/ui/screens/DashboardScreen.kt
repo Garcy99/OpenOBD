@@ -1,5 +1,13 @@
 package com.openobd.ui.screens
 
+import androidx.compose.foundation.layout.size
+
+import androidx.compose.foundation.layout.fillMaxHeight
+
+import androidx.compose.foundation.layout.fillMaxWidth
+
+import androidx.compose.ui.platform.testTag
+
 import com.openobd.ui.tr
 
 import androidx.compose.foundation.ExperimentalFoundationApi
@@ -93,13 +101,62 @@ fun DashboardScreen(onConnect: () -> Unit, onHud: () -> Unit, topBar: TopBarSlot
         // Each entry is a sensor key plus how it is drawn (GaugeSpec); "@d" from older versions means a big number.
         val specs = settings.dashboard.map { GaugeSpec.parse(it) }
         val theme = GaugeTheme.of(settings.dashboardTheme)
-        SubscribeSensors("dashboard", specs.map { it.key })
+        // Oil temperature / pressure gauges read whichever source this car has (standard PID or the maker's).
+        val sources = specs.map { com.openobd.core.obd.VirtualSensors.resolve(it.key, supported) }
+        SubscribeSensors("dashboard", sources.filterNotNull().distinct())
         fun updateEntries(t: (MutableList<String>) -> Unit) {
             scope.launch { app.settings.update { s -> s.copy(dashboard = s.dashboard.toMutableList().also(t)) } }
         }
         val readings by app.session.live.readings.collectAsStateWithLifecycle()
 
-        LazyVerticalGrid(
+        @Composable
+        fun gaugeCell(index: Int, spec: GaugeSpec, modifier: Modifier, fontScale: Float = 1f) {
+                val key = spec.key
+                val source = sources.getOrNull(index)
+                val def = source?.let { SensorCatalog.get(it) } ?: SensorCatalog.get(key)
+                Card(
+                    shape = RoundedCornerShape(20.dp),
+                    colors = CardDefaults.cardColors(containerColor = theme.face?.let { Color(it) } ?: MaterialTheme.colorScheme.surfaceContainer),
+                    modifier = modifier.combinedClickable(onClick = { if (editing) customise = index }, onLongClick = { customise = index }),
+                ) {
+                    Box {
+                        if (def == null) {
+                            Text(tr("Unknown sensor %1\$s", key), Modifier.padding(16.dp))
+                        } else {
+                            val supportedHere = vehicle == null || (source != null && (def.pid == -2 || (def.pid < 0 && available.any { it.key == source }) || def.pid in supported))
+                            val reading = source?.let { readings[it] }
+                            // Square gauge, as big as the card allows, centred in it.
+                            androidx.compose.foundation.layout.BoxWithConstraints(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                                val side = if (maxHeight == androidx.compose.ui.unit.Dp.Infinity) maxWidth else minOf(maxWidth, maxHeight)
+                                Box(Modifier.size(side)) {
+                                    ScaledText(fontScale) {
+                                        GaugeView(spec, theme, def, reading, settings.units, supportedHere,
+                                            shift = key == "010C" && settings.shiftLightRpm > 0 && (reading?.value ?: 0.0) >= settings.shiftLightRpm)
+                                    }
+                                }
+                            }
+                        }
+                        if (editing) {
+                            IconButton(
+                                onClick = { scope.launch { app.settings.update { it.copy(dashboard = it.dashboard.filterIndexed { i, _ -> i != index }) } } },
+                                modifier = Modifier.align(Alignment.TopEnd),
+                            ) { Icon(Icons.Default.Close, tr("Remove")) }
+                            Row(Modifier.align(Alignment.BottomCenter)) {
+                                IconButton(onClick = { updateEntries { l -> if (index > 0) java.util.Collections.swap(l, index, index - 1) } }, enabled = index > 0) {
+                                    Icon(Icons.AutoMirrored.Filled.KeyboardArrowLeft, tr("Move earlier"))
+                                }
+                                IconButton(onClick = { customise = index }) { Icon(Icons.Default.Tune, tr("Customise gauge")) }
+                                IconButton(onClick = { updateEntries { l -> if (index < l.size - 1) java.util.Collections.swap(l, index, index + 1) } }, enabled = index < specs.size - 1) {
+                                    Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, tr("Move later"))
+                                }
+                            }
+                        }
+                    }
+                }
+        }
+
+        if (!editing) FittedGauges(specs.size) { i, m, scale -> gaugeCell(i, specs[i], m, scale) }
+        else LazyVerticalGrid(
             columns = GridCells.Adaptive(165.dp),
             contentPadding = androidx.compose.foundation.layout.PaddingValues(12.dp),
             horizontalArrangement = androidx.compose.foundation.layout.Arrangement.spacedBy(10.dp),
@@ -131,38 +188,7 @@ fun DashboardScreen(onConnect: () -> Unit, onHud: () -> Unit, topBar: TopBarSlot
                 }
             }
             itemsIndexed(specs, key = { i, sp -> "$i${sp.key}" }) { index, spec ->
-                val key = spec.key
-                val def = SensorCatalog.get(key)
-                Card(
-                    shape = RoundedCornerShape(20.dp),
-                    colors = CardDefaults.cardColors(containerColor = theme.face?.let { Color(it) } ?: MaterialTheme.colorScheme.surfaceContainer),
-                    modifier = Modifier.combinedClickable(onClick = { if (editing) customise = index }, onLongClick = { customise = index }),
-                ) {
-                    Box {
-                        if (def == null) {
-                            Text(tr("Unknown sensor %1\$s", key), Modifier.padding(16.dp))
-                        } else {
-                            val supportedHere = vehicle == null || (def.pid < 0 && available.any { it.key == key }) || def.pid in supported
-                            GaugeView(spec, theme, def, readings[key], settings.units, supportedHere,
-                                shift = key == "010C" && settings.shiftLightRpm > 0 && (readings[key]?.value ?: 0.0) >= settings.shiftLightRpm)
-                        }
-                        if (editing) {
-                            IconButton(
-                                onClick = { scope.launch { app.settings.update { it.copy(dashboard = it.dashboard.filterIndexed { i, _ -> i != index }) } } },
-                                modifier = Modifier.align(Alignment.TopEnd),
-                            ) { Icon(Icons.Default.Close, tr("Remove")) }
-                            Row(Modifier.align(Alignment.BottomCenter)) {
-                                IconButton(onClick = { updateEntries { l -> if (index > 0) java.util.Collections.swap(l, index, index - 1) } }, enabled = index > 0) {
-                                    Icon(Icons.AutoMirrored.Filled.KeyboardArrowLeft, tr("Move earlier"))
-                                }
-                                IconButton(onClick = { customise = index }) { Icon(Icons.Default.Tune, tr("Customise gauge")) }
-                                IconButton(onClick = { updateEntries { l -> if (index < l.size - 1) java.util.Collections.swap(l, index, index + 1) } }, enabled = index < specs.size - 1) {
-                                    Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, tr("Move later"))
-                                }
-                            }
-                        }
-                    }
-                }
+                gaugeCell(index, spec, Modifier)
             }
             if (editing) item {
                 Card(
@@ -199,7 +225,8 @@ fun DashboardScreen(onConnect: () -> Unit, onHud: () -> Unit, topBar: TopBarSlot
 
         pickFor?.let { slot ->
             SensorPickerDialog(
-                sensors = if (vehicle == null) SensorCatalog.available((0..0xFF).toSet()) else available,
+                // Oil temperature and pressure first: they read whichever source the car has.
+                sensors = com.openobd.core.obd.VirtualSensors.all + (if (vehicle == null) SensorCatalog.available((0..0xFF).toSet()) else available),
                 title = if (slot < 0) tr("Add gauge") else tr("Change gauge"),
                 onDismiss = { pickFor = null },
                 onPick = { def ->
@@ -222,11 +249,11 @@ fun DashboardScreen(onConnect: () -> Unit, onHud: () -> Unit, topBar: TopBarSlot
 /** Ready-made dashboard layouts. */
 object DashboardPresets {
     val all = listOf(
-        "Everyday" to listOf("010C", "010D", "0105", "0104", "CALC_PEDAL", "CALC_FUEL", "0142", "CALC_BOOST"),
-        "Diesel" to listOf("010C", "CALC_BOOST@d", "0105", "0123", "012C", "017A_D", "0178_1", "CALC_FUEL"),
+        "Everyday" to AppSettings.DEFAULT_DASHBOARD,
+        "Diesel" to listOf("010C", "CALC_BOOST@d", "0105", "OIL_TEMP", "OIL_PRESS", "0123", "012C", "017A_D", "0178_1", "CALC_FUEL"),
         "Economy" to listOf("CALC_FUEL@d", "CALC_CONS@d", "010D", "010C", "0104", "CALC_PEDAL"),
         "Performance" to listOf("010C", "010D", "CALC_POWER", "CALC_TORQUE", "CALC_BOOST", "CALC_PEDAL", "010F", "0105"),
-        "Temperatures" to listOf("0105@d", "010F", "015C", "0146", "013C", "0105"),
+        "Temperatures" to listOf("0105@d", "OIL_TEMP@d", "010F", "0146", "013C", "OIL_PRESS"),
     )
 }
 
@@ -266,4 +293,73 @@ private fun FloatingGaugesButton() {
         },
         dismissButton = { androidx.compose.material3.TextButton(onClick = { explain = false }) { Text(tr("Cancel")) } },
     )
+}
+
+/** How many gauges go on each row so they fill the screen: balanced rows, as big as they can be. */
+object GaugeGrid {
+    data class Plan(val rows: List<Int>, val cell: Float)
+
+    /** [n] items over [rows] rows as evenly as possible, the fuller rows first (7 over 2: 4 and 3). */
+    fun balanced(n: Int, rows: Int): List<Int> = List(rows) { i -> n / rows + if (i < n % rows) 1 else 0 }
+
+    /** The arrangement giving the biggest square gauges in [w] x [h] (with [gap] between), or null below [minCell]. */
+    fun plan(n: Int, w: Float, h: Float, gap: Float, minCell: Float = 96f): Plan? {
+        if (n <= 0) return null
+        val all = (1..n).map { r ->
+            val rows = balanced(n, r)
+            val k = rows.max()
+            Plan(rows, minOf((w - gap * (k - 1)) / k, (h - gap * (r - 1)) / r))
+        }
+        val biggest = all.maxOf { it.cell }
+        // Rows of equal length look tidier: take them when the gauges stay almost as big.
+        val even = all.filter { it.rows.distinct().size == 1 && it.cell >= biggest * 0.9f }.maxByOrNull { it.cell }
+        return (even ?: all.maxBy { it.cell }).takeIf { it.cell >= minCell }
+    }
+}
+
+/** Text sized for the gauge: gauges that fill a big car screen get bigger numbers too. */
+@Composable
+private fun ScaledText(scale: Float, content: @Composable () -> Unit) {
+    if (scale == 1f) { content(); return }
+    val d = androidx.compose.ui.platform.LocalDensity.current
+    androidx.compose.runtime.CompositionLocalProvider(
+        androidx.compose.ui.platform.LocalDensity provides androidx.compose.ui.unit.Density(d.density, d.fontScale * scale),
+    ) { content() }
+}
+
+/**
+ * The gauges filling the screen in balanced rows (6 gauges: 3 + 3, not 4 + 2), each card stretching to its share of
+ * the row; on screens too small for that, a scrolling grid.
+ */
+@OptIn(ExperimentalFoundationApi::class)
+@Composable
+private fun FittedGauges(n: Int, cell: @Composable (Int, Modifier, Float) -> Unit) {
+    androidx.compose.foundation.layout.BoxWithConstraints(Modifier.fillMaxSize().padding(12.dp)) {
+        val gap = 10.dp
+        val plan = GaugeGrid.plan(n, maxWidth.value, maxHeight.value, gap.value)
+        if (plan == null) {
+            LazyVerticalGrid(
+                columns = GridCells.Adaptive(165.dp), modifier = Modifier.fillMaxSize(),
+                horizontalArrangement = androidx.compose.foundation.layout.Arrangement.spacedBy(gap),
+                verticalArrangement = androidx.compose.foundation.layout.Arrangement.spacedBy(gap),
+            ) { items(n) { i -> cell(i, Modifier, 1f) } }
+            return@BoxWithConstraints
+        }
+        // Numbers grow with the gauges (the tiles were designed at about 165 dp).
+        val scale = (plan.cell / 165f).coerceIn(0.85f, 2.6f)
+        Column(Modifier.fillMaxSize().testTag("fittedGauges"), verticalArrangement = androidx.compose.foundation.layout.Arrangement.spacedBy(gap)) {
+            var first = 0
+            for (count in plan.rows) {
+                val start = first
+                Row(Modifier.fillMaxWidth().weight(1f), horizontalArrangement = androidx.compose.foundation.layout.Arrangement.spacedBy(gap)) {
+                    for (i in start until start + count) {
+                        Box(Modifier.weight(1f).fillMaxHeight(), contentAlignment = Alignment.Center) {
+                            cell(i, Modifier.fillMaxSize(), scale)
+                        }
+                    }
+                }
+                first += count
+            }
+        }
+    }
 }

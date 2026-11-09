@@ -179,7 +179,6 @@ class ObdSession(
         }
         scope.launch {
             garage.data.collect { g ->
-                CustomSensors.update(g.active?.customPids.orEmpty())
                 updateBrand()
                 live.params = fuelParams(settingsRepo.settings.value, vehicle)
             }
@@ -579,6 +578,9 @@ class ObdSession(
         val detected = Brands.detect(vehicle?.vin ?: active?.vin)
         _brand.value = chosen ?: detected
         _brandDetected.value = chosen == null && detected != null
+        // The car's own PIDs, plus the brand's built-in ones (oil temperature and pressure on GM) it does not override.
+        val own = active?.customPids.orEmpty()
+        CustomSensors.update(own + _brand.value?.family?.builtinPids.orEmpty().filter { b -> own.none { it.id == b.id } })
     }
 
     /** Describes a code using the brand's manufacturer table first, then the generic database. */

@@ -114,6 +114,13 @@ class OpenObdApp : Application() {
             container.history.load()
             container.logs.refresh()
             container.dtcDatabase.size // warm up off the main thread
+            // Once: the oil temperature and pressure gauges join dashboards made before they existed.
+            container.settings.readOnce().takeIf { !it.oilGaugesAdded }?.let {
+                container.settings.update { s ->
+                    val missing = listOf("OIL_TEMP", "OIL_PRESS").filter { k -> s.dashboard.none { com.openobd.ui.components.GaugeSpec.parse(it).key == k } }
+                    s.copy(dashboard = s.dashboard + missing, oilGaugesAdded = true)
+                }
+            }
             container.sync.syncIfConnected(force = true)
             // Not in tests: they must not depend on what is published on GitHub.
             if (android.os.Build.FINGERPRINT != "robolectric") container.updater.check()

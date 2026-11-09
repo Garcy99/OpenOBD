@@ -112,11 +112,13 @@ data class AppSettings(
     /** Bluetooth address of the car's own radio / hands-free that marks the start and end of a drive. */
     val autoTripDevice: String? = null,
     val autoTripDeviceName: String? = null,
+    /** The oil temperature and pressure gauges were added to the dashboard once (they came in 1.19). */
+    val oilGaugesAdded: Boolean = false,
     /** The offer of automatic trips on Home was answered (set up or "not now"). */
     val autoTripsOffered: Boolean = false,
 ) {
     companion object {
-        val DEFAULT_DASHBOARD = listOf("010C", "010D", "0105", "0104", "CALC_PEDAL", "CALC_FUEL", "0142", "CALC_BOOST")
+        val DEFAULT_DASHBOARD = listOf("010C", "010D", "0105", "OIL_TEMP", "OIL_PRESS", "0104", "CALC_PEDAL", "CALC_FUEL", "0142", "CALC_BOOST")
 
         /** Protocols the demo simulator can speak. */
         val DEMO_PROTOCOLS = listOf(
@@ -173,6 +175,7 @@ class SettingsRepository(private val context: Context, scope: CoroutineScope) {
         val autoTripDevice = stringPreferencesKey("auto_trip_device")
         val autoTripDeviceName = stringPreferencesKey("auto_trip_device_name")
         val autoTripsOffered = booleanPreferencesKey("auto_trips_offered")
+        val oilGaugesAdded = booleanPreferencesKey("oil_gauges_added")
     }
 
     private val json = Json { ignoreUnknownKeys = true }
@@ -225,6 +228,7 @@ class SettingsRepository(private val context: Context, scope: CoroutineScope) {
             autoTripDevice = p[K.autoTripDevice] ?: d.autoTripDevice,
             autoTripDeviceName = p[K.autoTripDeviceName] ?: d.autoTripDeviceName,
             autoTripsOffered = p[K.autoTripsOffered] ?: d.autoTripsOffered,
+            oilGaugesAdded = p[K.oilGaugesAdded] ?: d.oilGaugesAdded,
         )
     }
 
@@ -280,6 +284,7 @@ class SettingsRepository(private val context: Context, scope: CoroutineScope) {
             if (s.autoTripDevice != null) p[K.autoTripDevice] = s.autoTripDevice else p.remove(K.autoTripDevice)
             if (s.autoTripDeviceName != null) p[K.autoTripDeviceName] = s.autoTripDeviceName else p.remove(K.autoTripDeviceName)
             p[K.autoTripsOffered] = s.autoTripsOffered
+            p[K.oilGaugesAdded] = s.oilGaugesAdded
         }
     }
 }

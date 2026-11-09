@@ -124,7 +124,9 @@ class ObdService : LifecycleService() {
     private fun showGauges() {
         if (gauges?.isShown == true || !FloatingGauges.canShow(this)) return
         val settings = (application as OpenObdApp).container.settings
-        val keys = settings.settings.value.dashboard.map { com.openobd.ui.components.GaugeSpec.parse(it).key }.distinct().take(3)
+        val supported = (session.state.value as? ConnectionState.Connected)?.vehicle?.supportedPids.orEmpty()
+        val keys = settings.settings.value.dashboard.mapNotNull { com.openobd.core.obd.VirtualSensors.resolve(com.openobd.ui.components.GaugeSpec.parse(it).key, supported) }
+            .distinct().take(3)
         val g = gauges ?: FloatingGauges(this).also { gauges = it }
         g.show(keys) { com.openobd.ui.tr(it) }
         if (!g.isShown) return

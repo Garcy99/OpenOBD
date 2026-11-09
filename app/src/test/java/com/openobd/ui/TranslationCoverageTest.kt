@@ -88,6 +88,8 @@ class TranslationCoverageTest {
         keys += com.openobd.core.brand.PidPacks.texts
         keys += com.openobd.core.brand.Obdb.texts
         keys += com.openobd.core.trip.routeExportTexts + com.openobd.ui.screens.RouteFormat.texts + com.openobd.ui.screens.PosterGround.texts + com.openobd.ui.screens.route3dTexts +
+            com.openobd.core.obd.VirtualSensors.all.flatMap { listOf(it.name, it.shortName) } +
+            com.openobd.core.brand.Families.all.flatMap { f -> f.builtinPids.flatMap { listOf(it.name, it.shortName) } } +
             com.openobd.ui.screens.fuelPriceTexts + com.openobd.session.autoTripTexts + com.openobd.ui.screens.autoTripScreenTexts + com.openobd.ui.screens.TripPeriod.texts + com.openobd.core.trip.TripVideo.texts
         keys += com.openobd.core.brand.Coding.texts + com.openobd.core.brand.CodingEngine.texts + com.openobd.core.brand.WriteSafety.texts
         keys += listOf("Applied", "Undone", "Not changed", "Restored", "Needs restore", "Interrupted", "Started", "Failed", "Identifier explorer", "Typed in")

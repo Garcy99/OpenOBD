@@ -78,7 +78,9 @@ the five spools that blends into every shade from a normal distance:*
 - **Used car & pre-inspection check** with a PDF report: hidden faults, codes cleared recently, readiness, VIN
   consistency across modules
 - **Live data on your terms**: 200+ sensors, 7 gauge themes, needle / arc / bar / number styles, colours, ranges
-  and warnings per gauge, charts, HUD, floating gauges over other apps
+  and warnings per gauge, gauges that fill any screen (phone or car display) in even rows, oil temperature and oil
+  pressure (standard PID or the maker's own on Opel/GM, VW group, BMW/MINI, Renault/Dacia and Peugeot/Citroën),
+  charts, HUD, floating gauges over other apps
 - **Manufacturer data for almost every brand** from the open [OBDb](https://obdb.community) community database:
   battery health, DPF soot and regenerations, tyre pressures, gearbox temperature …
 - **Codings & adaptations** with a backup before every write, a check afterwards, automatic restore if it fails
