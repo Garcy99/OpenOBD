@@ -163,6 +163,7 @@ class ObdSession(
     internal val appScope: CoroutineScope get() = scope
 
     init {
+        newestSession = this
         live.addListener(trip)
         live.addListener(engineOff)
         live.addListener(perf)
@@ -580,7 +581,8 @@ class ObdSession(
         _brandDetected.value = chosen == null && detected != null
         // The car's own PIDs, plus the brand's built-in ones (oil temperature and pressure on GM) it does not override.
         val own = active?.customPids.orEmpty()
-        CustomSensors.update(own + _brand.value?.family?.builtinPids.orEmpty().filter { b -> own.none { it.id == b.id } })
+        // The table is shared: only the newest session fills it (in tests, earlier ones may still be running).
+        if (newestSession === this) CustomSensors.update(own + _brand.value?.family?.builtinPids.orEmpty().filter { b -> own.none { it.id == b.id } })
     }
 
     /** Describes a code using the brand's manufacturer table first, then the generic database. */
@@ -649,6 +651,9 @@ class ObdSession(
         }
     }
 }
+
+/** The session made last (the app's; tests make one per app and earlier ones may still be running). */
+@Volatile private var newestSession: ObdSession? = null
 
 /** Messages about the phone bridge (English keys, translated by the app). */
 const val PHONE_NOT_FOUND = "No phone with the OpenOBD bridge found. On the phone, open More → Car screen and start the bridge; connect this screen to the phone's Wi-Fi hotspot (or the same Wi-Fi)."

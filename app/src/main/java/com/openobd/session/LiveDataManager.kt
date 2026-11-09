@@ -134,6 +134,7 @@ class LiveDataManager(private val scope: CoroutineScope) {
     private suspend fun CoroutineScope.loop(client: ObdClient, supported: Set<Int>) {
         val modules = ModuleClient(client.elm)
         var cycle = 0L
+        var customTurn = 0L
         var failures = 0
         var windowStart = System.currentTimeMillis()
         var windowCycles = 0
@@ -167,8 +168,18 @@ class LiveDataManager(private val scope: CoroutineScope) {
             cycle++
 
             val askedCustom = customs.isNotEmpty() && (cycle % 2 == 1L || pids.isEmpty())
+            // The brand's built-in values (often for modules a car may not have) get their own turns, so a module that
+            // makes the adapter wait never holds up the values the user added.
+            val (builtin, own) = customs.partition { it.id in BUILTIN_IDS }
+            customTurn++
+            val asked = when {
+                own.isEmpty() -> builtin
+                builtin.isEmpty() -> own
+                customTurn % 3 == 0L -> builtin
+                else -> own
+            }
             val customData = if (askedCustom) {
-                try { modules.readCustom(customs) } catch (e: Exception) { emptyMap() }
+                try { modules.readCustom(asked) } catch (e: Exception) { emptyMap() }
             } else emptyMap()
             val data = if (toRead.isEmpty()) emptyMap() else try {
                 client.readPids(toRead)
@@ -181,7 +192,7 @@ class LiveDataManager(private val scope: CoroutineScope) {
             }
             // A maker value counts as unanswered only when the car answered the rest of the cycle (not while the
             // link hiccups or the bus changes).
-            if (askedCustom && (data.isNotEmpty() || customData.isNotEmpty())) for (p in customs) {
+            if (askedCustom && (data.isNotEmpty() || customData.isNotEmpty())) for (p in asked) {
                 if (customData[p.key] != null) { answered += p.key; unanswered.remove(p.key); firstMiss.remove(p.key) }
                 else if (p.key !in answered) { unanswered[p.key] = (unanswered[p.key] ?: 0) + 1; firstMiss.getOrPut(p.key) { System.currentTimeMillis() } }
             }
