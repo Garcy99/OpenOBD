@@ -40,6 +40,8 @@ Only in these cases, and only when you trigger them:
   that area from Terrain Tiles (AWS Open Data, s3.amazonaws.com). Amazon sees your IP address and which map tiles are
   requested (so roughly where the trip was); nothing else is sent. Tiles are kept in the app's cache. AWS privacy
   notice: https://aws.amazon.com/privacy/
+- **Donations** (optional): the Donate button only opens PayPal's page in your browser. The app sends nothing to
+  PayPal and does not know whether you donated; PayPal's privacy statement applies to what you do on its page.
 - **Google account sync** (optional, off until you connect your Google account in Settings): your cars, maintenance,
   fuel log, trips with their GPS routes, health samples, battery tests, coding history, scan history and some
   preferences are stored in a private app folder of **your own Google Drive** (appDataFolder) and read back on your

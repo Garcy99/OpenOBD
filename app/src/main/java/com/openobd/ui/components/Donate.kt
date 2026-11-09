@@ -40,6 +40,8 @@ fun DonateCard(modifier: Modifier = Modifier) {
         Spacer(Modifier.height(10.dp))
         Text(tr("OpenOBD is free and open source, with no ads and nothing locked. If it saved you a trip to the garage, you can support its development. Completely optional: everything keeps working either way."),
             style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        Spacer(Modifier.height(6.dp))
+        Text(tr("Any amount you like, whenever you like."), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         Spacer(Modifier.height(14.dp))
         SoftButton(tr("Donate"), { openUrl(context, Donate.url) }, Modifier.fillMaxWidth(), icon = Icons.Default.Favorite, color = Bad)
     }

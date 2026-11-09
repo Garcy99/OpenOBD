@@ -260,6 +260,7 @@
  "Android could not start the Bluetooth LE search (too many searches in a row, or Bluetooth is stuck). Wait 30 seconds or turn Bluetooth off and on, then search again.": "Android Bluetooth LE aramasını başlatamadı (arka arkaya çok fazla arama veya Bluetooth takıldı). 30 saniye bekleyin ya da Bluetooth'u kapatıp açın, sonra yeniden arayın.",
  "Answering": "Yanıt veriyor",
  "Anti-lock brake system": "Kilitlenmeyi önleyici fren sistemi",
+ "Any amount you like, whenever you like.": "İstediğiniz miktar, istediğiniz zaman.",
  "Anyone can open it in a browser, tap the route to see what the car was doing and save the GPX for their GPS.": "Herkes tarayıcıda açabilir, aracın ne yaptığını görmek için rotaya dokunabilir ve GPX'i kendi GPS'ine kaydedebilir.",
  "Anyone can open it in a browser, tap the route to see what the car was doing and save the GPX for their GPS. With terrain, the relief is inside the file and shows even offline.": "Herkes bir tarayıcıda açabilir, aracın ne yaptığını görmek için rotaya dokunabilir ve GPS'i için GPX'i kaydedebilir. Arazi ile kabartma dosyanın içindedir ve çevrimdışı da görünür.",
  "Anything to add? (optional, e.g. it flashes)": "Eklemek istediğiniz bir şey var mı? (isteğe bağlı, örn. yanıp sönüyor)",

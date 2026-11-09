@@ -285,6 +285,12 @@ app/src/main/java/com/openobd/
 └── ui/            Jetpack Compose (Material 3) screens and components
 ```
 
+## Support
+
+OpenOBD is free, with no ads and nothing locked. If it helped you, you can support its development with a donation
+of any amount through [PayPal](https://paypal.me/garcy99) (also the "Donate" button in the app, More tab).
+Completely optional.
+
 ## Privacy, license and credits
 
 - **Privacy**: no account needed (Google sync is optional), no ads, analytics or tracking, and no OpenOBD server.

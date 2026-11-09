@@ -260,6 +260,7 @@
  "Android could not start the Bluetooth LE search (too many searches in a row, or Bluetooth is stuck). Wait 30 seconds or turn Bluetooth off and on, then search again.": "Android 无法启动蓝牙 LE 搜索（连续搜索次数过多或蓝牙卡住）。请等待 30 秒或关闭再打开蓝牙，然后重新搜索。",
  "Answering": "有应答",
  "Anti-lock brake system": "防抱死制动系统",
+ "Any amount you like, whenever you like.": "金额随意，时间随意。",
  "Anyone can open it in a browser, tap the route to see what the car was doing and save the GPX for their GPS.": "任何人都可以在浏览器中打开，点按路线查看车辆状态，并把 GPX 保存到自己的导航设备。",
  "Anyone can open it in a browser, tap the route to see what the car was doing and save the GPX for their GPS. With terrain, the relief is inside the file and shows even offline.": "任何人都能在浏览器中打开，点按路线查看车辆当时的状态，并为自己的 GPS 保存 GPX。启用地形后，地形图内嵌在文件中，离线也能显示。",
  "Anything to add? (optional, e.g. it flashes)": "还有补充吗？（可选，例如它在闪烁）",
