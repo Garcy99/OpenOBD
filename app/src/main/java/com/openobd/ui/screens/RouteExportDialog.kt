@@ -22,7 +22,8 @@ import androidx.compose.material.icons.filled.Print
 import androidx.compose.material.icons.filled.Public
 import androidx.compose.material.icons.filled.ViewInAr
 import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.Switch
+import androidx.compose.foundation.layout.FlowRow
+import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
@@ -66,9 +67,9 @@ enum class RouteFormat(val ext: String, val mime: String, val title: String, val
     GPX("gpx", "application/gpx+xml", "GPS file (GPX)",
         "For Garmin, OsmAnd, Komoot, Google Earth and other GPS apps. The car's values travel with every point."),
     HTML("html", "text/html", "Interactive map (HTML)",
-        "Anyone can open it in a browser, tap the route to see what the car was doing and save the GPX for their GPS. With terrain, the relief is inside the file and shows even offline."),
+        "Anyone can open it in a browser, tap the route to see what the car was doing and save the GPX for their GPS. Map, aerial photos and relief to choose from; the relief is inside the file and shows even offline."),
     PDF("pdf", "application/pdf", "Poster to print (PDF, A3)",
-        "The route in vectors over the shaded relief: prints sharp on A3 and scales down to A4."),
+        "The route over a detailed relief with contour lines and lakes, or over aerial photos: prints sharp on A3 and scales down to A4."),
     SVG("svg", "image/svg+xml", "Vector image (SVG)",
         "The same poster to edit or send to a print shop."),
     THREE_MF("3mf", "model/3mf", "3D map to print (3MF, multicolour)",
@@ -78,6 +79,40 @@ enum class RouteFormat(val ext: String, val mime: String, val title: String, val
     companion object {
         val texts = entries.flatMap { listOf(it.title, it.description) }
     }
+}
+
+/** What goes under the route on the poster (and which layer the web map opens with). */
+enum class PosterGround(val label: String) {
+    NONE("None"), RELIEF("Relief"), SATELLITE("Satellite");
+
+    companion object {
+        val texts = entries.map { it.label } + listOf(
+            "Background", "Detailed relief from national elevation models (2 m in Spain), or aerial photos where you can see single trees. Downloads map tiles of the area.",
+            "Downloading aerial photos… %1\$s of %2\$s", "The aerial photos could not be downloaded: exported without them.",
+        )
+    }
+}
+
+/** A JPEG data: URI of a raster (much smaller than PNG for relief and photos; transparent pixels become white). */
+fun jpegDataUri(width: Int, height: Int, argb: IntArray): String {
+    val opaque = IntArray(argb.size) { i -> val p = argb[i]; if (p ushr 24 == 0xFF) p else 0xFFFFFFFF.toInt() }
+    val bmp = android.graphics.Bitmap.createBitmap(opaque, width, height, android.graphics.Bitmap.Config.ARGB_8888)
+    val out = java.io.ByteArrayOutputStream()
+    bmp.compress(android.graphics.Bitmap.CompressFormat.JPEG, 90, out)
+    bmp.recycle()
+    return "data:image/jpeg;base64," + android.util.Base64.encodeToString(out.toByteArray(), android.util.Base64.NO_WRAP)
+}
+
+/** The area whose lakes go on the relief (as the elevation download), or null if too big to ask for. */
+private fun waterArea(points: List<TrackPoint>): DoubleArray? {
+    if (points.size < 2) return null
+    val minLat = points.minOf { it.lat }; val maxLat = points.maxOf { it.lat }
+    val minLon = points.minOf { it.lon }; val maxLon = points.maxOf { it.lon }
+    val k = kotlin.math.cos(Math.toRadians(minLat))
+    val spanM = maxOf((maxLat - minLat) * 111_000, (maxLon - minLon) * 111_000 * k, 300.0)
+    if (spanM > 60_000) return null
+    val padLat = spanM * 0.7 / 111_000; val padLon = padLat / k
+    return doubleArrayOf(minLat - padLat, minLon - padLon, maxLat + padLat, maxLon + padLon)
 }
 
 @OptIn(androidx.compose.foundation.layout.ExperimentalLayoutApi::class)
@@ -93,7 +128,7 @@ fun RouteExportDialog(trip: TripRecord, points: List<TrackPoint>, car: String, o
     val units = Units(imperial = settings.units == UnitSystem.IMPERIAL)
     val defaultTitle = tr("Drive on %1\$s", DateFormat.getDateInstance(DateFormat.LONG).format(Date(trip.start)))
     val title = trip.name.ifBlank { defaultTitle }
-    var withTerrain by remember { mutableStateOf(true) }
+    var ground by remember { mutableStateOf(PosterGround.RELIEF) }
     val label: (String) -> String = { tr(it) }
 
     fun info() = RouteInfo(
@@ -107,11 +142,20 @@ fun RouteExportDialog(trip: TripRecord, points: List<TrackPoint>, car: String, o
         val info = info()
         scope.launch {
             runCatching {
-                val usesTerrain = format == RouteFormat.PDF || format == RouteFormat.SVG || format == RouteFormat.HTML
-                val terrain = if (usesTerrain && withTerrain) {
+                val usesGround = (format == RouteFormat.PDF || format == RouteFormat.SVG || format == RouteFormat.HTML) && ground != PosterGround.NONE
+                // The web map always carries the relief (it works offline); its aerial photos are online.
+                val wantsRelief = usesGround && (ground == PosterGround.RELIEF || format == RouteFormat.HTML)
+                val terrain = if (wantsRelief) {
                     status = tr("Downloading terrain…")
-                    app.terrain(points, if (format == RouteFormat.HTML) 1000 else 1500) { i, n -> status = tr("Downloading terrain… %1\$s of %2\$s", i, n) }
+                    app.terrain(points, 4000) { i, n -> status = tr("Downloading terrain… %1\$s of %2\$s", i, n) }
                         .also { if (it == null) error = tr("The terrain could not be downloaded: exported without relief.") }
+                } else null
+                val water = if (terrain != null) waterArea(points)?.let { area -> runCatching { app.water(area) }.getOrNull() }.orEmpty() else emptyList()
+                val imagery = if (usesGround && ground == PosterGround.SATELLITE && format != RouteFormat.HTML) {
+                    RoutePoster.frame(points)?.let { fr ->
+                        status = tr("Downloading aerial photos… %1\$s of %2\$s", 0, "…")
+                        app.imagery(fr.area(), fr.metresPerMm / RoutePoster.PHOTO_PX_PER_MM) { i, n -> status = tr("Downloading aerial photos… %1\$s of %2\$s", i, n) }
+                    }.also { if (it == null) error = tr("The aerial photos could not be downloaded: exported without them.") }
                 } else null
                 status = null
                 withContext(Dispatchers.Default) {
@@ -119,9 +163,9 @@ fun RouteExportDialog(trip: TripRecord, points: List<TrackPoint>, car: String, o
                     val file = File(dir, fileName(info) + "." + format.ext)
                     when (format) {
                         RouteFormat.GPX -> file.writeText(Gpx.write(info, points))
-                        RouteFormat.HTML -> file.writeText(RouteHtml.write(info, points, label, units, terrain))
-                        RouteFormat.SVG -> file.writeText(RoutePoster.svg(RoutePoster.layout(info, points, label, units, terrain = terrain)))
-                        RouteFormat.PDF -> writePdf(file, RoutePoster.layout(info, points, label, units, terrain = terrain))
+                        RouteFormat.HTML -> file.writeText(RouteHtml.write(info, points, label, units, terrain, water, ::jpegDataUri, satelliteFirst = ground == PosterGround.SATELLITE))
+                        RouteFormat.SVG -> file.writeText(RoutePoster.svg(RoutePoster.layout(info, points, label, units, terrain = terrain, imagery = imagery, water = water), ::jpegDataUri))
+                        RouteFormat.PDF -> writePdf(file, RoutePoster.layout(info, points, label, units, terrain = terrain, imagery = imagery, water = water))
                         RouteFormat.THREE_MF -> error("3D models are made in their own screen")
                     }
                     file
@@ -139,16 +183,20 @@ fun RouteExportDialog(trip: TripRecord, points: List<TrackPoint>, car: String, o
             Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                 Text(title, fontWeight = FontWeight.SemiBold, modifier = Modifier.testTag("routeTitle"))
                 Text(tr("Title of every export. Change it with the trip's name."), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Column(Modifier.weight(1f)) {
-                        Text(tr("Terrain around the route"))
-                        Text(tr("Real relief under the poster and the web map, from open elevation data (downloads a few map tiles)."),
-                            style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Text(tr("Background"), fontWeight = FontWeight.SemiBold, modifier = Modifier.padding(top = 6.dp))
+                Text(tr("Detailed relief from national elevation models (2 m in Spain), or aerial photos where you can see single trees. Downloads map tiles of the area."),
+                    style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    PosterGround.entries.forEach { g ->
+                        FilterChip(ground == g, { ground = g }, label = { Text(tr(g.label)) }, enabled = busy == null, modifier = Modifier.testTag("ground_${g.name}"))
                     }
-                    Switch(withTerrain, { withTerrain = it }, modifier = Modifier.testTag("terrainSwitch"))
                 }
-                if (withTerrain) Text(tr(com.openobd.core.trip.Terrarium.ATTRIBUTION), style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant)
+                val credits = when (ground) {
+                    PosterGround.NONE -> emptyList()
+                    PosterGround.RELIEF -> listOf(com.openobd.core.trip.Mapterhorn.ATTRIBUTION)
+                    PosterGround.SATELLITE -> com.openobd.core.trip.Imagery.Source.entries.map { it.attribution }
+                }
+                credits.forEach { Text(tr(it), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant) }
                 RouteFormat.entries.forEach { f ->
                     val icon: ImageVector = when (f) {
                         RouteFormat.GPX -> Icons.Default.Navigation

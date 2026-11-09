@@ -84,15 +84,27 @@ class RouteExportUiTest {
             assertEquals(mime, sent.type)
             return reports.listFiles()!!.first { it.name.endsWith(".$ext") }.also { assertTrue("$ext is empty", it.length() > 500) }
         }
-        // A fake slope instead of downloading elevation tiles.
+        // A fake slope instead of downloading elevation tiles, no lakes, and a green aerial photo.
         c.terrain = { _, _, _ -> com.openobd.core.trip.Terrain { lat, lon -> 600 + 3000 * (lat - 40.4) + 2000 * (lon + 3.7) } }
+        c.water = { emptyList() }
+        c.imagery = { area, _, _ ->
+            val z = 12
+            com.openobd.core.trip.TileImagery(z, com.openobd.core.trip.Terrarium.tiles(area[0], area[1], area[2], area[3], z)
+                .associateWith { IntArray(65536) { 0xFF3C8D2F.toInt() } }, listOf(com.openobd.core.trip.Imagery.Source.PNOA.attribution))
+        }
         // The PDF needs Android's native PDF engine, which Robolectric lacks: the device tests cover it (DemoSessionTest).
         for ((ext, mime) in listOf("gpx" to "application/gpx+xml", "html" to "text/html", "svg" to "image/svg+xml")) {
             openDialog()
             rule.onNodeWithTag("export_$ext").performClick()
             val file = shared(ext, mime)
-            if (ext == "svg") assertTrue("poster has relief", file.readText().contains("data:image/png;base64,"))
+            if (ext == "svg") assertTrue("poster has relief", file.readText().contains("data:image/jpeg;base64,"))
         }
+        // The satellite poster carries the photo and its credit.
+        openDialog()
+        rule.onNodeWithTag("ground_SATELLITE").performClick()
+        rule.onNodeWithTag("export_svg").performClick()
+        val sat = shared("svg", "image/svg+xml").readText()
+        assertTrue("satellite poster", sat.contains("data:image/jpeg;base64,") && sat.contains("PNOA"))
 
         // 3D: a title, a circle, terrain (the fake slope) and the title on a plaque.
         // The trip's name is the title of every export.

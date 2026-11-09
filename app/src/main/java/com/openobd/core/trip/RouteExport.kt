@@ -11,8 +11,11 @@ import java.util.zip.ZipOutputStream
 import kotlin.math.abs
 import kotlin.math.ceil
 import kotlin.math.cos
+import kotlin.math.floor
+import kotlin.math.log10
 import kotlin.math.max
 import kotlin.math.min
+import kotlin.math.roundToInt
 import kotlin.math.sin
 import kotlin.math.sqrt
 
@@ -199,9 +202,17 @@ object Gpx {
  * for their own GPS. Map tiles and the Leaflet library load from the internet; without it the data still shows.
  */
 object RouteHtml {
-    /** [terrain]: also embeds a coloured relief of the area as a map layer that works without internet. */
-    fun write(info: RouteInfo, points: List<TrackPoint>, label: (String) -> String, units: Units = Units(), terrain: Terrain? = null): String {
-        val relief = terrain?.let { reliefLayer(points, it) } ?: "null"
+    /**
+     * [terrain]: also embeds a coloured relief of the area as a map layer that works without internet ([water]: lakes
+     * on it). The map also offers aerial photos (online; shown first with [satelliteFirst]). [image]: how the relief
+     * is embedded (a data: URI).
+     */
+    fun write(
+        info: RouteInfo, points: List<TrackPoint>, label: (String) -> String, units: Units = Units(), terrain: Terrain? = null,
+        water: List<List<LatLon>> = emptyList(), image: (Int, Int, IntArray) -> String = Png::dataUri, satelliteFirst: Boolean = false,
+    ): String {
+        val relief = terrain?.let { reliefLayer(points, it, water, image) } ?: "null"
+        val photos = points.firstOrNull()?.let { Imagery.sourceFor(it.lat, it.lon) } ?: Imagery.Source.ESRI
         val gpx = java.util.Base64.getEncoder().encodeToString(Gpx.write(info, points).toByteArray(Charsets.UTF_8))
         fun n(v: Float?, d: Int) = v?.let { f(it.toDouble(), d) } ?: "null"
         val data = points.joinToString(",", "[", "]") { p ->
@@ -212,7 +223,7 @@ object RouteHtml {
             "speed" to "Speed", "rpm" to "Engine speed", "cons" to "Consumption", "coolant" to "Coolant", "pedal" to "Accelerator",
             "boost" to "Boost", "alt" to "Altitude", "time" to "Time into the trip", "tap" to "Tap the route or move the slider to see what the car was doing there.",
             "offline" to "The map needs an internet connection; the data below still works.",
-            "map" to "Map", "relief" to "Relief", "elev" to Terrarium.ATTRIBUTION,
+            "map" to "Map", "relief" to "Relief", "elev" to (terrain?.attribution ?: Terrarium.ATTRIBUTION), "sat" to "Satellite", "photos" to photos.attribution,
         ).joinToString(",", "{", "}") { (k, v) -> "$k:${js(label(v))}" }
         val stats = listOfNotNull(
             label("Distance") to units.distance(info.distanceKm),
@@ -272,10 +283,12 @@ map=L.map('map');
 const P=[['https://{s}.tile.opentopomap.org/{z}/{x}/{y}.png',{subdomains:'abc',maxZoom:17,attribution:'Map data &copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors, SRTM | Map style &copy; <a href="https://opentopomap.org">OpenTopoMap</a> (CC-BY-SA)'}],
 ['https://server.arcgisonline.com/ArcGIS/rest/services/World_Topo_Map/MapServer/tile/{z}/{y}/{x}',{maxZoom:19,attribution:'Tiles &copy; Esri'}]];
 const relief=R?L.imageOverlay(R.url,R.b,{attribution:L$.elev}):null;let tiles=null,ctl=null;
-function setCtl(){if(ctl)map.removeControl(ctl);ctl=null;if(!relief)return;const base={};if(tiles)base[L$.map]=tiles;base[L$.relief]=relief;ctl=L.control.layers(base,null,{collapsed:false}).addTo(map)}
-function useTiles(k){if(tiles)map.removeLayer(tiles);tiles=null;if(k>=P.length){if(relief)relief.addTo(map);setCtl();return}
+// Aerial photos, down to single trees: the national orthophoto where there is one, Esri elsewhere.
+const sat=L.tileLayer('${photos.leafletUrl}',{maxZoom:20,maxNativeZoom:${photos.maxZoom},attribution:L$.photos});
+function setCtl(){if(ctl)map.removeControl(ctl);const base={};if(tiles)base[L$.map]=tiles;base[L$.sat]=sat;if(relief)base[L$.relief]=relief;ctl=L.control.layers(base,null,{collapsed:false}).addTo(map)}
+function useTiles(k){if(tiles)map.removeLayer(tiles);tiles=null;if(k>=P.length){(relief||sat).addTo(map);setCtl();return}
 let errors=0;tiles=L.tileLayer(P[k][0],P[k][1]);tiles.on('tileerror',()=>{if(++errors===3)useTiles(k+1)});tiles.addTo(map);setCtl()}
-useTiles(0);
+if(${satelliteFirst}){tiles=L.tileLayer(P[0][0],P[0][1]);sat.addTo(map);setCtl()}else useTiles(0);
 L.polyline(D.map(p=>[p[0],p[1]]),{color:'#fff',weight:10,opacity:.9}).addTo(map);
 let seg=[],b=band(D[0]&&D[0][3]);for(let i=0;i<D.length;i++){const p=D[i],pb=band(p[3]);seg.push([p[0],p[1]]);
 if(pb!==b||i===D.length-1){const l=L.polyline(seg,{color:C[b],weight:6,opacity:.95}).addTo(map);l.on('click',e=>show(nearest(e.latlng.lat,e.latlng.lng)));seg=[[p[0],p[1]]];b=pb}}
@@ -290,27 +303,32 @@ map.fitBounds(D.map(p=>[p[0],p[1]]),{padding:[20,20]});map.on('click',e=>show(ne
     }
 
     /** The coloured relief around the route as a Leaflet image layer: {url, b: [[south, west], [north, east]]}. */
-    private fun reliefLayer(points: List<TrackPoint>, terrain: Terrain, longest: Int = 1200): String? {
+    private fun reliefLayer(points: List<TrackPoint>, terrain: Terrain, water: List<List<LatLon>>, image: (Int, Int, IntArray) -> String, longest: Int = 2400): String? {
         if (points.size < 2) return null
         val minLat = points.minOf { it.lat }; val maxLat = points.maxOf { it.lat }
         val minLon = points.minOf { it.lon }; val maxLon = points.maxOf { it.lon }
         val k = cos(Math.toRadians((minLat + maxLat) / 2))
         val pad = max(max(maxLat - minLat, (maxLon - minLon) * k) * 0.3, 0.005)
-        val s = minLat - pad; val n = maxLat + pad; val w = minLon - pad / k; val e = maxLon + pad / k
+        val s = minLat - pad; val n = maxLat + pad
+        // At least as wide as a 16:10 map view, so its sides are not left bare.
+        val halfW = max((maxLon - minLon) / 2 + pad / k, (n - s) * 0.8 / k)
+        val w = (minLon + maxLon) / 2 - halfW; val e = (minLon + maxLon) / 2 + halfW
         // Web Mercator rows, as the map draws the image.
         val yTop = Terrarium.tileY(n, 0); val yBottom = Terrarium.tileY(s, 0)
         val aspect = (yBottom - yTop) / (Terrarium.tileX(e, 0) - Terrarium.tileX(w, 0))
         val pw = if (aspect <= 1) longest else (longest / aspect).toInt(); val ph = if (aspect <= 1) (longest * aspect).toInt() else longest
-        val (iw, ih, px) = RoutePoster.relief(terrain, pw.toDouble(), ph.toDouble(), 1.0) { x, y ->
+        val (iw, ih, px) = RoutePoster.relief(terrain, pw.toDouble(), ph.toDouble(), 1.0, water) { x, y ->
             Terrarium.lat(yTop + (yBottom - yTop) * y / ph, 0) to (w + (e - w) * x / pw)
         } ?: return null
-        val png = java.util.Base64.getEncoder().encodeToString(Png.encode(iw, ih, px))
-        return "{url:\"data:image/png;base64,$png\",b:[[${f(s, 6)},${f(w, 6)}],[${f(n, 6)},${f(e, 6)}]]}"
+        return "{url:\"${image(iw, ih, px)}\",b:[[${f(s, 6)},${f(w, 6)}],[${f(n, 6)},${f(e, 6)}]]}"
     }
 }
 
 /** Minimal PNG encoder (RGBA, 8 bits), so the core needs no imaging library. */
 object Png {
+    fun dataUri(width: Int, height: Int, argb: IntArray): String =
+        "data:image/png;base64," + java.util.Base64.getEncoder().encodeToString(encode(width, height, argb))
+
     fun encode(width: Int, height: Int, argb: IntArray): ByteArray {
         val raw = java.io.ByteArrayOutputStream(height * (1 + width * 4))
         for (y in 0 until height) {
@@ -323,7 +341,7 @@ object Png {
                 pr = r; pg = g; pb = b; pa = a
             }
         }
-        val deflater = java.util.zip.Deflater(9)
+        val deflater = java.util.zip.Deflater(6)
         val idat = java.io.ByteArrayOutputStream()
         java.util.zip.DeflaterOutputStream(idat, deflater).use { it.write(raw.toByteArray()) }
         val out = java.io.ByteArrayOutputStream()
@@ -383,13 +401,49 @@ object RoutePoster {
 
     data class Poster(val widthMm: Double, val heightMm: Double, val shapes: List<Shape>)
 
+    /** Where the route's map goes on the page: the box (millimetres) and how the route's metres map into it. */
+    class Frame(
+        val margin: Double, val top: Double, val boxW: Double, val boxH: Double, val bottom: Double,
+        val scale: Double, val offX: Double, val offY: Double, val minX: Double, val maxY: Double, val origin: TrackPoint,
+    ) {
+        private val kx = 111_320.0 * cos(Math.toRadians(origin.lat)); private val ky = 110_540.0
+        /** Box millimetres to latitude / longitude. */
+        fun latLon(mmX: Double, mmY: Double): Pair<Double, Double> {
+            val xm = (margin + mmX - offX) / scale + minX; val ym = maxY - (top + mmY - offY) / scale
+            return (origin.lat + ym / ky) to (origin.lon + xm / kx)
+        }
+        /** The box as minLat, minLon, maxLat, maxLon. */
+        fun area(): DoubleArray { val (n, w) = latLon(0.0, 0.0); val (s, e) = latLon(boxW, boxH); return doubleArrayOf(s, w, n, e) }
+        /** Ground metres per millimetre of paper. */
+        val metresPerMm: Double get() = 1 / scale
+    }
+
+    /** The map box for [points] on a page of [widthMm] x [heightMm] ([ground]: leave ground around the route). */
+    fun frame(points: List<TrackPoint>, widthMm: Double = 297.0, heightMm: Double = 420.0, ground: Boolean = true): Frame? {
+        val margin = widthMm * 0.08
+        val top = margin + 34; val statsH = heightMm * 0.2; val bottom = heightMm - margin - statsH
+        val boxW = widthMm - 2 * margin; val boxH = bottom - top
+        val simple = RouteGeometry.simplify(points, 2.0)
+        val m = RouteGeometry.metres(simple)
+        if (m.size < 2) return null
+        val minX = m.minOf { it.first }; val maxX = m.maxOf { it.first }; val minY = m.minOf { it.second }; val maxY = m.maxOf { it.second }
+        val spanX = max(maxX - minX, 1.0); val spanY = max(maxY - minY, 1.0)
+        val scale = min(boxW / spanX, boxH / spanY) * (if (ground) 0.86 else 1.0) // mm per metre
+        val offX = margin + (boxW - spanX * scale) / 2; val offY = top + (boxH - spanY * scale) / 2
+        return Frame(margin, top, boxW, boxH, bottom, scale, offX, offY, minX, maxY, simple.first())
+    }
+
+    /** Resolution of the relief (8 px/mm = 203 dpi) and of the aerial photo (10 px/mm = 254 dpi). */
+    const val RELIEF_PX_PER_MM = 8.0
+    const val PHOTO_PX_PER_MM = 10.0
+
     /**
-     * [terrain]: shaded relief under the route (null = route only). [pxPerMm]: relief resolution (5 = 127 dpi, more
-     * than the elevation data holds).
+     * [terrain]: shaded relief under the route; [imagery]: aerial photo instead (null for both = route only).
+     * [water]: lakes drawn on the relief. [pxPerMm]: resolution of the relief or photo.
      */
     fun layout(
         info: RouteInfo, points: List<TrackPoint>, label: (String) -> String, units: Units = Units(), widthMm: Double = 297.0, heightMm: Double = 420.0,
-        terrain: Terrain? = null, pxPerMm: Double = 5.0,
+        terrain: Terrain? = null, pxPerMm: Double? = null, imagery: TileImagery? = null, water: List<List<LatLon>> = emptyList(),
     ): Poster {
         val ink = "#16181D"; val muted = "#6B7280"
         val shapes = mutableListOf<Shape>(Rect(0.0, 0.0, widthMm, heightMm, "#FFFFFF"))
@@ -398,30 +452,23 @@ object RoutePoster {
         val date = SimpleDateFormat("d MMMM yyyy · HH:mm", Locale.getDefault()).format(Date(info.start))
         shapes += Text(margin, margin + 22, listOf(info.car, date).filter { it.isNotBlank() }.joinToString("  ·  "), widthMm * 0.024, muted)
 
-        // Route box
-        val top = margin + 34; val statsH = heightMm * 0.2; val bottom = heightMm - margin - statsH
-        val boxW = widthMm - 2 * margin; val boxH = bottom - top
-        val simple = RouteGeometry.simplify(points, 2.0)
-        val m = RouteGeometry.metres(simple)
-        if (m.size >= 2) {
-            val minX = m.minOf { it.first }; val maxX = m.maxOf { it.first }; val minY = m.minOf { it.second }; val maxY = m.maxOf { it.second }
-            val spanX = max(maxX - minX, 1.0); val spanY = max(maxY - minY, 1.0)
-            // With relief, leave ground around the route.
-            val fit = if (terrain != null) 0.86 else 1.0
-            val scale = min(boxW / spanX, boxH / spanY) * fit // mm per metre
-            val offX = margin + (boxW - spanX * scale) / 2; val offY = top + (boxH - spanY * scale) / 2
-            fun xy(p: Pair<Double, Double>) = (offX + (p.first - minX) * scale) to (offY + (maxY - p.second) * scale)
-            if (terrain != null) {
-                val origin = simple.first()
-                val kx = 111_320.0 * cos(Math.toRadians(origin.lat)); val ky = 110_540.0
-                relief(terrain, boxW, boxH, pxPerMm) { mmX, mmY ->
-                    // Box millimetres to the route's metres, then to latitude / longitude.
-                    val xm = (margin + mmX - offX) / scale + minX; val ym = maxY - (top + mmY - offY) / scale
-                    (origin.lat + ym / ky) to (origin.lon + xm / kx)
-                }?.let { (w, h, px) ->
-                    shapes += Image(margin, top, boxW, boxH, w, h, px)
-                    shapes += Line(listOf(margin to top, margin + boxW to top, margin + boxW to top + boxH, margin to top + boxH, margin to top), "#D6D3CC", 0.3)
+        val ground = terrain != null || imagery != null
+        val fr = frame(points, widthMm, heightMm, ground)
+        val credits = mutableListOf<String>()
+        val bottom = fr?.bottom ?: (heightMm - margin - heightMm * 0.2)
+        if (fr != null) {
+            val m = RouteGeometry.metres(RouteGeometry.simplify(points, 2.0))
+            val top = fr.top; val boxW = fr.boxW; val boxH = fr.boxH; val scale = fr.scale
+            fun xy(p: Pair<Double, Double>) = (fr.offX + (p.first - fr.minX) * scale) to (fr.offY + (fr.maxY - p.second) * scale)
+            val image = imagery?.let { im -> photo(im, boxW, boxH, pxPerMm ?: PHOTO_PX_PER_MM, fr::latLon)?.also { credits += im.attributions } }
+                ?: terrain?.let { t ->
+                    relief(t, boxW, boxH, pxPerMm ?: RELIEF_PX_PER_MM, water, at = fr::latLon)?.also {
+                        credits += t.attribution; if (water.isNotEmpty()) credits += Overpass.ATTRIBUTION
+                    }
                 }
+            image?.let { (w, h, px) ->
+                shapes += Image(margin, top, boxW, boxH, w, h, px)
+                shapes += Line(listOf(margin to top, margin + boxW to top, margin + boxW to top + boxH, margin to top + boxH, margin to top), "#D6D3CC", 0.3)
             }
             val stroke = widthMm * 0.0065
             // A smooth curve through every GPS point (not straight lines between them), coloured by speed.
@@ -487,88 +534,197 @@ object RoutePoster {
             lx += 14 + t.length * widthMm * 0.0085
         }
         shapes += Text(widthMm - margin, legendY, "OpenOBD", widthMm * 0.017, muted, anchor = 2)
-        if (shapes.any { it is Image }) shapes += Text(widthMm - margin, legendY + 5, label(Terrarium.ATTRIBUTION), widthMm * 0.011, muted, anchor = 2)
+        credits.forEachIndexed { i, c -> shapes += Text(widthMm - margin, legendY + 5 + i * 4, label(c), widthMm * 0.011, muted, anchor = 2) }
         return Poster(widthMm, heightMm, shapes)
     }
 
     /**
-     * Shaded relief of the box: light from the north-west over colours by altitude, like a relief map (greens in
-     * the lowlands, sand and browns on the slopes, pale peaks; the sea in blue). The colours follow the share of
-     * the area at each height, so flat and mountainous areas both show the whole range. Pixels without elevation
-     * are transparent.
+     * Shaded relief of the box, like a printed relief map: light from the north-west (with softer light from the
+     * west and north so no slope goes flat), ridges and valleys sharpened, colours by altitude (greens in the
+     * lowlands, sand and browns on the slopes, pale peaks), contour lines, and lakes and the sea in blue. The
+     * colours follow the share of the area at each height, so flat and mountainous areas both show the whole range.
+     * Pixels without elevation are transparent. [at]: box millimetres to latitude / longitude, where latitude depends
+     * only on the row and longitude only on the column.
      */
-    internal fun relief(terrain: Terrain, wMm: Double, hMm: Double, pxPerMm: Double, at: (Double, Double) -> Pair<Double, Double>): Triple<Int, Int, IntArray>? {
-        val w = (wMm * pxPerMm).toInt().coerceIn(2, 2400); val h = (hMm * pxPerMm).toInt().coerceIn(2, 2400)
-        // Elevation with a border for smoothing and slopes. Poster pixels are smaller than the elevation data's, so
-        // the grid is smoothed and slopes are taken over a few pixels; otherwise the data's steps show as stripes.
-        val bd = 4; val gw = w + 2 * bd; val gh = h + 2 * bd
-        var e = DoubleArray(gw * gh)
+    internal fun relief(
+        terrain: Terrain, wMm: Double, hMm: Double, pxPerMm: Double, water: List<List<LatLon>> = emptyList(), contours: Boolean = true,
+        at: (Double, Double) -> Pair<Double, Double>,
+    ): Triple<Int, Int, IntArray>? {
+        val w = (wMm * pxPerMm).toInt().coerceIn(2, MAX_PX); val h = (hMm * pxPerMm).toInt().coerceIn(2, MAX_PX)
+        // Metres per pixel, from two neighbouring pixels.
+        val (la, loA) = at(0.0, 0.0); val (lb, loB) = at(1 / pxPerMm, 0.0)
+        val cell = max(0.05, sqrt(((la - lb) * 110_540).let { it * it } + ((loA - loB) * 111_320 * cos(Math.toRadians(la))).let { it * it }))
+        // The elevation data's samples are usually bigger than the poster's pixels: smooth over about one sample so
+        // the steps between them do not show as facets, and no more, to keep every ridge the data has.
+        val dataPx = (terrain.cellMetres(la) ?: cell) / cell
+        val r = max(1, (dataPx * 0.5).roundToInt())
+        val bd = 2 * r + 2; val gw = w + 2 * bd; val gh = h + 2 * bd
+        val e = FloatArray(gw * gh)
         var missing = 0
         for (j in 0 until gh) for (i in 0 until gw) {
             val (lat, lon) = at((i - bd + 0.5) / pxPerMm, (j - bd + 0.5) / pxPerMm)
             val v = terrain.elevation(lat, lon)
             if (v == null) missing++
-            e[j * gw + i] = v ?: Double.NaN
+            e[j * gw + i] = v?.toFloat() ?: Float.NaN
         }
         if (missing > e.size * 3 / 4) return null
-        val known = e.filter { !it.isNaN() }
-        val lo = known.min(); val hi = known.max(); val range = max(hi - lo, 1.0)
-        val raw = e.copyOf()
+        var lo = Double.MAX_VALUE; var hi = -Double.MAX_VALUE; var sum = 0.0; var n = 0
+        for (v in e) if (!v.isNaN()) { lo = min(lo, v.toDouble()); hi = max(hi, v.toDouble()); sum += v; n++ }
+        val range = max(hi - lo, 1.0); val fill = (sum / n).toFloat()
+        val valid = BooleanArray(e.size) { !e[it].isNaN() }
+        val sea = if (lo <= 0.0) BooleanArray(e.size) { valid[it] && e[it] <= 0f } else null
         // Height -> 0..1, half by rank in the area and half by plain height, from a sample of the grid.
-        val sample = known.filterIndexed { i, _ -> i % 7 == 0 }.sorted()
+        val sample = DoubleArray((n + 6) / 7).let { a -> var k = 0; var c = 0; for (v in e) if (!v.isNaN()) { if (c++ % 7 == 0 && k < a.size) a[k++] = v.toDouble() }; a.copyOf(k) }.also { it.sort() }
         fun level(v: Double): Double {
             var a = 0; var b = sample.size
             while (a < b) { val m = (a + b) / 2; if (sample[m] < v) a = m + 1 else b = m }
             return 0.5 * a / max(1, sample.size) + 0.5 * (v - lo) / range
         }
-        val fill = known.average()
-        val valid = BooleanArray(e.size) { !e[it].isNaN() }
         for (k in e.indices) if (!valid[k]) e[k] = fill
-        val r = 2
-        repeat(2) {
-            val tmp = DoubleArray(e.size)
-            for (j in 0 until gh) for (i in 0 until gw) { var sum = 0.0; var n = 0; for (d in -r..r) { val x = i + d; if (x in 0 until gw) { sum += e[j * gw + x]; n++ } }; tmp[j * gw + i] = sum / n }
-            val out = DoubleArray(e.size)
-            for (j in 0 until gh) for (i in 0 until gw) { var sum = 0.0; var n = 0; for (d in -r..r) { val y = j + d; if (y in 0 until gh) { sum += tmp[y * gw + i]; n++ } }; out[j * gw + i] = sum / n }
-            e = out
-        }
-        // Metres per pixel, from two neighbouring pixels.
-        val (la, loA) = at(0.0, 0.0); val (lb, loB) = at(1 / pxPerMm, 0.0)
-        val cell = max(0.5, sqrt(((la - lb) * 110_540).let { it * it } + ((loA - loB) * 111_320 * cos(Math.toRadians(la))).let { it * it }))
-        val zf = 1.6
-        val light = doubleArrayOf(-0.5, 0.5, 0.7071)
+        repeat(2) { boxBlur(e, gw, gh, r) }
+        // The land's shape at a larger scale: what is above it is a ridge, below it a valley.
+        val big = e.copyOf(); val rBig = max(4 * r, 8)
+        repeat(3) { boxBlur(big, gw, gh, rBig) }
+        var dev = 0.0; var dn = 0
+        for (k in e.indices step 11) { val d = e[k] - big[k]; dev += d * d; dn++ }
+        val sdLocal = max(sqrt(dev / max(1, dn)), 0.5)
+        val sharpen = 0.8f
+        fun surf(k: Int) = e[k] + sharpen * (e[k] - big[k])
+
+        val zf = 1.3 + 0.35 * log10(max(cell, 1.0))
+        val lz = 0.7071
+        // Light from the north-west, west and north (altitude 45°): x east, y north.
+        val lights = arrayOf(doubleArrayOf(-0.5, 0.5, 0.55), doubleArrayOf(-0.7071, 0.0, 0.25), doubleArrayOf(0.0, 0.7071, 0.2))
         val ramp = listOf(0.0 to 0x7FAE72, 0.22 to 0xA6C98B, 0.42 to 0xD5DCA4, 0.6 to 0xE6D2A0, 0.76 to 0xC9A37C, 0.9 to 0xAE9481, 1.0 to 0xF3F0EA)
-        fun tint(t: Double): IntArray {
+        val tintR = IntArray(3)
+        fun tint(t: Double) {
             val k = ramp.indexOfLast { it.first <= t }.coerceIn(0, ramp.size - 2)
             val (t0, c0) = ramp[k]; val (t1, c1) = ramp[k + 1]
             val u = ((t - t0) / (t1 - t0)).coerceIn(0.0, 1.0)
-            return IntArray(3) { ch -> val sh = 16 - 8 * ch; ((c0 shr sh and 0xFF) * (1 - u) + (c1 shr sh and 0xFF) * u).toInt() }
+            for (ch in 0 until 3) { val sh = 16 - 8 * ch; tintR[ch] = ((c0 shr sh and 0xFF) * (1 - u) + (c1 shr sh and 0xFF) * u).toInt() }
         }
-        val sea = intArrayOf(0xA7, 0xC8, 0xE8)
+        // Contours: a round interval giving about 15-30 lines over the area, every fifth one stronger.
+        val interval = listOf(1.0, 2.0, 5.0, 10.0, 20.0, 25.0, 50.0, 100.0, 200.0, 250.0, 500.0, 1000.0).firstOrNull { range / it <= 30 } ?: 2000.0
+        val lake = waterCover(water, w, h, pxPerMm, at)
         val px = IntArray(w * h)
-        val st = 2
+        val rgb = DoubleArray(3)
         for (j in 0 until h) for (i in 0 until w) {
-            val gi = i + bd; val gj = j + bd
-            if (!valid[gj * gw + gi]) continue
-            val c = e[gj * gw + gi]
-            val dx = (e[gj * gw + gi + st] - e[gj * gw + gi - st]) / (2 * st * cell) * zf
-            val dy = (e[(gj - st) * gw + gi] - e[(gj + st) * gw + gi]) / (2 * st * cell) * zf
+            val k = (j + bd) * gw + i + bd
+            if (!valid[k]) continue
+            val c = e[k].toDouble()
+            if (sea != null && sea[k]) { px[j * w + i] = WATER; continue }
+            val dx = (surf(k + 1) - surf(k - 1)) / (2 * cell) * zf
+            val dy = (surf(k - gw) - surf(k + gw)) / (2 * cell) * zf
             val nl = sqrt(dx * dx + dy * dy + 1)
-            val shade = ((-dx * light[0] - dy * light[1] + light[2]) / nl / light[2]).coerceIn(0.0, 1.35)
-            val isSea = lo <= 0.0 && raw[gj * gw + gi] <= 0.0
-            val base = if (isSea) sea else tint(level(c))
-            val k = if (isSea) 1.0 else 0.6 + 0.4 * min(shade, 1.0); val glow = if (isSea) 0.0 else (shade - 1).coerceAtLeast(0.0) * 0.5
-            val rgb = IntArray(3) { ch -> (base[ch] * k + (255 - base[ch] * k) * glow).toInt().coerceIn(0, 255) }
-            px[j * w + i] = (0xFF shl 24) or (rgb[0] shl 16) or (rgb[1] shl 8) or rgb[2]
+            var shade = 0.0
+            for (l in lights) shade += l[2] * (-dx * l[0] - dy * l[1] + lz) / nl / lz
+            shade = shade.coerceIn(0.0, 1.35)
+            tint(level(c))
+            // Valleys a little darker, ridges a little lighter, for depth.
+            val depth = ((e[k] - big[k]) / (2 * sdLocal)).coerceIn(-1.0, 1.0)
+            val kk = (0.52 + 0.48 * min(shade, 1.0)) * (1 + 0.08 * depth); val glow = (shade - 1).coerceAtLeast(0.0) * 0.5
+            for (ch in 0 until 3) rgb[ch] = tintR[ch] * kk + (255 - tintR[ch] * kk) * glow
+            if (contours) {
+                val g = max(sqrt(((e[k + 1] - e[k - 1]) / 2.0).let { it * it } + ((e[k + gw] - e[k - gw]) / 2.0).let { it * it }), 1e-6)
+                val f = c / interval; val nearest = Math.round(f)
+                val dpx = abs(f - nearest) * interval / g
+                val index = nearest % 5 == 0L
+                val spacing = interval / g * (if (index) 5 else 1)
+                val half = (if (index) 0.09 else 0.05) * pxPerMm
+                val cover = (half + 0.5 - dpx).coerceIn(0.0, 1.0) * ((spacing - 2.5) / 3).coerceIn(0.0, 1.0)
+                val alpha = cover * (if (index) 0.5 else 0.28)
+                if (alpha > 0) for (ch in 0 until 3) rgb[ch] = rgb[ch] * (1 - alpha) + CONTOUR[ch] * alpha
+            }
+            val wa = lake?.get(j * w + i)?.toDouble() ?: 0.0
+            if (wa > 0) for (ch in 0 until 3) { val wc = (WATER shr (16 - 8 * ch)) and 0xFF; rgb[ch] = rgb[ch] * (1 - wa) + wc * wa }
+            px[j * w + i] = (0xFF shl 24) or (rgb[0].toInt().coerceIn(0, 255) shl 16) or (rgb[1].toInt().coerceIn(0, 255) shl 8) or rgb[2].toInt().coerceIn(0, 255)
         }
         return Triple(w, h, px)
     }
 
-    fun svg(p: Poster): String = buildString {
+    /** Aerial photo of the box (null when most of it has no photo). */
+    internal fun photo(imagery: TileImagery, wMm: Double, hMm: Double, pxPerMm: Double, at: (Double, Double) -> Pair<Double, Double>): Triple<Int, Int, IntArray>? {
+        val w = (wMm * pxPerMm).toInt().coerceIn(2, MAX_PX); val h = (hMm * pxPerMm).toInt().coerceIn(2, MAX_PX)
+        // Latitude depends only on the row and longitude only on the column.
+        val lats = DoubleArray(h) { at(0.5 / pxPerMm, (it + 0.5) / pxPerMm).first }
+        val lons = DoubleArray(w) { at((it + 0.5) / pxPerMm, 0.5 / pxPerMm).second }
+        val px = IntArray(w * h)
+        var missing = 0
+        for (j in 0 until h) for (i in 0 until w) {
+            val c = imagery.color(lats[j], lons[i])
+            if (c == null) missing++ else px[j * w + i] = c
+        }
+        return if (missing > px.size * 3 / 4) null else Triple(w, h, px)
+    }
+
+    /** Share of each pixel covered by water (lakes, reservoirs, riverbanks), or null when there is none. */
+    private fun waterCover(water: List<List<LatLon>>, w: Int, h: Int, pxPerMm: Double, at: (Double, Double) -> Pair<Double, Double>): FloatArray? {
+        val polys = water.filter { it.size >= 3 }
+        if (polys.isEmpty()) return null
+        val lon0 = at(0.5 / pxPerMm, 0.5 / pxPerMm).second; val dLon = at(1.5 / pxPerMm, 0.5 / pxPerMm).second - lon0
+        val boxes = polys.map { p -> doubleArrayOf(p.minOf { it.lat }, p.maxOf { it.lat }) }
+        val cover = FloatArray(w * h)
+        var any = false
+        val xs = ArrayList<Double>()
+        for (j in 0 until h) for (sub in 0..1) {
+            val lat = at(0.5 / pxPerMm, (j + 0.25 + 0.5 * sub) / pxPerMm).first
+            for ((pi, p) in polys.withIndex()) {
+                if (lat < boxes[pi][0] || lat > boxes[pi][1]) continue
+                xs.clear()
+                for (q in p.indices) {
+                    val a = p[q]; val b = p[(q + 1) % p.size]
+                    if ((a.lat > lat) != (b.lat > lat)) xs += (a.lon + (lat - a.lat) * (b.lon - a.lon) / (b.lat - a.lat) - lon0) / dLon + 0.5
+                }
+                xs.sort()
+                for (q in 0 until xs.size - 1 step 2) {
+                    val x0 = min(xs[q], xs[q + 1]).coerceIn(0.0, w.toDouble()); val x1 = max(xs[q], xs[q + 1]).coerceIn(0.0, w.toDouble())
+                    var i = floor(x0).toInt()
+                    while (i < x1 && i < w) {
+                        val part = min(i + 1.0, x1) - max(i.toDouble(), x0)
+                        if (part > 0) { val c = j * w + i; cover[c] = min(1f, cover[c] + 0.5f * part.toFloat()); any = true }
+                        i++
+                    }
+                }
+            }
+        }
+        return if (any) cover else null
+    }
+
+    /** Box blur of radius [r] in place (rows then columns), in time independent of [r]. */
+    private fun boxBlur(a: FloatArray, w: Int, h: Int, r: Int) {
+        val line = DoubleArray(max(w, h))
+        for (j in 0 until h) {
+            var s = 0.0; var cnt = 0
+            for (i in 0..min(r, w - 1)) { s += a[j * w + i]; cnt++ }
+            for (i in 0 until w) {
+                line[i] = s / cnt
+                val add = i + r + 1; if (add < w) { s += a[j * w + add]; cnt++ }
+                val drop = i - r; if (drop >= 0) { s -= a[j * w + drop]; cnt-- }
+            }
+            for (i in 0 until w) a[j * w + i] = line[i].toFloat()
+        }
+        for (i in 0 until w) {
+            var s = 0.0; var cnt = 0
+            for (j in 0..min(r, h - 1)) { s += a[j * w + i]; cnt++ }
+            for (j in 0 until h) {
+                line[j] = s / cnt
+                val add = j + r + 1; if (add < h) { s += a[add * w + i]; cnt++ }
+                val drop = j - r; if (drop >= 0) { s -= a[drop * w + i]; cnt-- }
+            }
+            for (j in 0 until h) a[j * w + i] = line[j].toFloat()
+        }
+    }
+
+    private const val MAX_PX = 4000
+    private const val WATER = 0x9CC3E4
+    private val CONTOUR = intArrayOf(0x5A, 0x48, 0x36)
+
+    /** [image]: how the relief / photo is embedded (a data: URI; PNG by default, JPEG from the app for smaller files). */
+    fun svg(p: Poster, image: (Int, Int, IntArray) -> String = Png::dataUri): String = buildString {
         append("""<?xml version="1.0" encoding="UTF-8"?>""").append('\n')
         append("""<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="${f(p.widthMm, 0)}mm" height="${f(p.heightMm, 0)}mm" viewBox="0 0 ${f(p.widthMm, 2)} ${f(p.heightMm, 2)}" font-family="Helvetica, Arial, sans-serif">""").append('\n')
         for (s in p.shapes) when (s) {
-            is Image -> append("""<image x="${f(s.x, 2)}" y="${f(s.y, 2)}" width="${f(s.w, 2)}" height="${f(s.h, 2)}" preserveAspectRatio="none" xlink:href="data:image/png;base64,${java.util.Base64.getEncoder().encodeToString(Png.encode(s.width, s.height, s.argb))}"/>""")
+            is Image -> append("""<image x="${f(s.x, 2)}" y="${f(s.y, 2)}" width="${f(s.w, 2)}" height="${f(s.h, 2)}" preserveAspectRatio="none" xlink:href="${image(s.width, s.height, s.argb)}"/>""")
             is Rect -> append("""<rect x="${f(s.x, 2)}" y="${f(s.y, 2)}" width="${f(s.w, 2)}" height="${f(s.h, 2)}" fill="${s.fill}"/>""")
             is Line -> append("""<polyline fill="none" stroke="${s.color}" stroke-width="${f(s.width, 2)}" stroke-linecap="round" stroke-linejoin="round" points="${s.points.joinToString(" ") { "${f(it.first, 2)},${f(it.second, 2)}" }}"/>""")
             is Circle -> append("""<circle cx="${f(s.x, 2)}" cy="${f(s.y, 2)}" r="${f(s.r, 2)}" fill="${s.fill}"${s.stroke?.let { " stroke=\"$it\" stroke-width=\"${f(s.strokeWidth, 2)}\"" } ?: ""}/>""")
@@ -579,9 +735,9 @@ object RoutePoster {
 }
 
 /** Every user-visible phrase used in exports, for translation coverage. */
-val routeExportTexts = Route3mf.texts + listOf(Terrarium.ATTRIBUTION) + listOf(
+val routeExportTexts = Route3mf.texts + listOf(Terrarium.ATTRIBUTION, Mapterhorn.ATTRIBUTION, Overpass.ATTRIBUTION) + Imagery.Source.entries.map { it.attribution } + listOf(
     "Speed", "Engine speed", "Consumption", "Coolant", "Accelerator", "Boost", "Altitude", "Time into the trip",
     "Tap the route or move the slider to see what the car was doing there.", "The map needs an internet connection; the data below still works.",
     "Distance", "Duration", "Average speed (moving)", "Max speed", "Fuel used", "Average consumption", "Climb",
-    "Save GPX for your GPS", "Made with OpenOBD", "Map data © OpenStreetMap contributors", "Map", "Relief",
+    "Save GPX for your GPS", "Made with OpenOBD", "Map data © OpenStreetMap contributors", "Map", "Relief", "Satellite",
 ) + Units.texts

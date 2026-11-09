@@ -6,11 +6,42 @@ import kotlin.math.cos
 import kotlin.math.floor
 import kotlin.math.ln
 import kotlin.math.max
+import kotlin.math.sqrt
 import kotlin.math.tan
 
 /** Ground elevation in metres at a latitude / longitude, or null when unknown. */
 fun interface Terrain {
     fun elevation(lat: Double, lon: Double): Double?
+
+    /** Metres between the data's samples at [lat], when known (to smooth away the steps between them). */
+    fun cellMetres(lat: Double): Double? = null
+
+    /** Credit for the elevation data, to show where it is used. */
+    val attribution: String get() = Terrarium.ATTRIBUTION
+}
+
+/**
+ * Mapterhorn: open terrain tiles in the same Terrarium encoding (512 x 512 lossless WebP), built from national
+ * elevation models (in Spain the IGN's 2 m LiDAR model, MDT02) and Copernicus GLO-30 elsewhere. Zoom 13 and above
+ * only exist where there is high-resolution data; zoom 12 and below cover the world.
+ */
+object Mapterhorn {
+    const val ATTRIBUTION = "Elevation: © Mapterhorn, from open data (IGN España CC BY 4.0, Copernicus GLO-30 © DLR, Airbus, EU/ESA and others)"
+    const val SIZE = 512
+    const val MAX_ZOOM = 16
+    const val GLOBAL_ZOOM = 12
+
+    fun url(z: Int, x: Int, y: Int) = "https://tiles.mapterhorn.com/$z/$x/$y.webp"
+
+    /** The most detailed zoom whose tiles covering the box stay within [maxTiles] (and no finer than needed). */
+    fun zoomFor(minLat: Double, minLon: Double, maxLat: Double, maxLon: Double, targetPx: Int, maxTiles: Int): Int {
+        for (z in MAX_ZOOM downTo 3) {
+            val count = Terrarium.tiles(minLat, minLon, maxLat, maxLon, z).size
+            val px = max(Terrarium.tileX(maxLon, z) - Terrarium.tileX(minLon, z), Terrarium.tileY(minLat, z) - Terrarium.tileY(maxLat, z)) * SIZE
+            if (count <= maxTiles && px <= targetPx * 2) return z
+        }
+        return 3
+    }
 }
 
 /**
@@ -33,26 +64,56 @@ object Terrarium {
 
     /**
      * Fixes glitches in a decoded 256 x 256 tile (the service has the odd corrupt pixel or column, thousands of
-     * metres off): a pixel far from the median of its neighbours takes that median. Returns how many were fixed.
+     * metres off): a pixel far from the median of its neighbours takes that median. A whole corrupt column or row
+     * is then redone from the ones beside it, as the median leaves a faint line there. Returns how many were fixed.
      */
     fun despike(t: FloatArray, threshold: Float = 400f): Int {
+        val size = sqrt(t.size.toDouble()).toInt(); val last = size - 1
         val src = t.copyOf()
         val nb = FloatArray(8)
         var fixed = 0
-        for (y in 0 until 256) for (x in 0 until 256) {
+        val perCol = IntArray(size); val perRow = IntArray(size)
+        for (y in 0 until size) for (x in 0 until size) {
             var n = 0
             for (dy in -1..1) for (dx in -1..1) {
                 if (dx == 0 && dy == 0) continue
                 val xx = x + dx; val yy = y + dy
-                if (xx in 0..255 && yy in 0..255 && src[yy * 256 + xx] > NO_DATA) nb[n++] = src[yy * 256 + xx]
+                if (xx in 0..last && yy in 0..last && src[yy * size + xx] > NO_DATA) nb[n++] = src[yy * size + xx]
             }
             if (n < 3) continue
             java.util.Arrays.sort(nb, 0, n)
             val median = if (n % 2 == 1) nb[n / 2] else (nb[n / 2 - 1] + nb[n / 2]) / 2
-            val v = src[y * 256 + x]
-            if (v <= NO_DATA || kotlin.math.abs(v - median) > threshold) { t[y * 256 + x] = median; fixed++ }
+            val v = src[y * size + x]
+            if (v <= NO_DATA || kotlin.math.abs(v - median) > threshold) { t[y * size + x] = median; fixed++; perCol[x]++; perRow[y]++ }
         }
+        for (x in 1 until last) if (perCol[x] > size / 4) for (y in 0 until size) t[y * size + x] = (t[y * size + x - 1] + t[y * size + x + 1]) / 2
+        for (y in 1 until last) if (perRow[y] > size / 4) for (x in 0 until size) t[y * size + x] = (t[(y - 1) * size + x] + t[(y + 1) * size + x]) / 2
+        destripe(t, size, byColumn = true); destripe(t, size, byColumn = false)
         return fixed
+    }
+
+    /**
+     * Smaller glitches the service has along whole columns (or rows) of a tile, a few metres off, show as straight
+     * lines on a shaded relief. A column much more bent than the rest of the tile, all the way down, is redone
+     * from the columns on either side.
+     */
+    private fun destripe(t: FloatArray, size: Int, byColumn: Boolean) {
+        val last = size - 1
+        fun at(line: Int, along: Int) = if (byColumn) t[along * size + line] else t[line * size + along]
+        val bend = DoubleArray(size)
+        for (c in 1 until last) { var sum = 0.0; for (r in 0 until size) sum += kotlin.math.abs(2 * at(c, r) - at(c - 1, r) - at(c + 1, r)); bend[c] = sum / size }
+        val median = bend.copyOfRange(1, last).sorted()[(size - 2) / 2]
+        val bad = BooleanArray(size) { it in 1 until last && bend[it] > 3 * median && bend[it] > 1.2 }
+        var c = 1
+        while (c < last) {
+            if (!bad[c]) { c++; continue }
+            var end = c; while (end + 1 < last && bad[end + 1]) end++
+            if (end - c < 8) for (r in 0 until size) {
+                val a = at(c - 1, r); val b = at(end + 1, r)
+                for (k in c..end) { val v = a + (b - a) * (k - c + 1) / (end - c + 2); if (byColumn) t[r * size + k] = v else t[k * size + r] = v }
+            }
+            c = end + 1
+        }
     }
 
     /** Fractional tile coordinates. */
@@ -85,18 +146,26 @@ object Terrarium {
 /** [fine] where it has data, else [coarse] (e.g. the next zoom out, to fill the service's empty tiles). */
 class FallbackTerrain(private val fine: Terrain, private val coarse: Terrain) : Terrain {
     override fun elevation(lat: Double, lon: Double): Double? = fine.elevation(lat, lon) ?: coarse.elevation(lat, lon)
+    override fun cellMetres(lat: Double): Double? = fine.cellMetres(lat)
+    override val attribution: String get() = fine.attribution
 }
 
-/** Bilinear elevation from decoded Terrarium tiles ([tiles]: (x, y) -> 256 * 256 metres, row by row). */
-class TileTerrain(private val z: Int, private val tiles: Map<Pair<Int, Int>, FloatArray>) : Terrain {
+/**
+ * Bilinear elevation from decoded Terrarium-encoded tiles ([tiles]: (x, y) -> [size] * [size] metres, row by row).
+ */
+class TileTerrain(
+    private val z: Int, private val tiles: Map<Pair<Int, Int>, FloatArray>, private val size: Int = 256,
+    override val attribution: String = Terrarium.ATTRIBUTION,
+) : Terrain {
+    override fun cellMetres(lat: Double): Double = Imagery.metresPerPixel(lat, z) * 256 / size
     private fun at(px: Int, py: Int): Double? {
-        val tx = Math.floorDiv(px, 256); val ty = Math.floorDiv(py, 256)
+        val tx = Math.floorDiv(px, size); val ty = Math.floorDiv(py, size)
         val t = tiles[tx to ty] ?: return null
-        return t[(py - ty * 256) * 256 + (px - tx * 256)].toDouble().takeIf { it > Terrarium.NO_DATA }
+        return t[(py - ty * size) * size + (px - tx * size)].toDouble().takeIf { it > Terrarium.NO_DATA }
     }
 
     override fun elevation(lat: Double, lon: Double): Double? {
-        val fx = Terrarium.tileX(lon, z) * 256 - 0.5; val fy = Terrarium.tileY(lat, z) * 256 - 0.5
+        val fx = Terrarium.tileX(lon, z) * size - 0.5; val fy = Terrarium.tileY(lat, z) * size - 0.5
         val x0 = floor(fx).toInt(); val y0 = floor(fy).toInt()
         val ax = fx - x0; val ay = fy - y0
         val e00 = at(x0, y0); val e10 = at(x0 + 1, y0); val e01 = at(x0, y0 + 1); val e11 = at(x0 + 1, y0 + 1)

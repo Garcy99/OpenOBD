@@ -28,10 +28,17 @@ class AppContainer(private val app: Application) {
     var assistantBackend: (String) -> com.openobd.data.ChatBackend = { key -> com.openobd.data.ClaudeBackend(key) }
     /** Network client for vehicle lookups; replaceable in tests. */
     var http: com.openobd.core.specs.Http = com.openobd.core.specs.UrlHttp("OpenOBD/${com.openobd.BuildConfig.VERSION_NAME} (Android; open source)")
-    /** Elevation around a route for 3D models; replaceable in tests. */
-    /** [Int] = detail in pixels across the area (more for posters). */
+    /** Elevation around a route for 3D models and posters ([Int]: detail in pixels across the area); replaceable in tests. */
     var terrain: suspend (List<com.openobd.core.garage.TrackPoint>, Int, (Int, Int) -> Unit) -> com.openobd.core.trip.Terrain? = { pts, detail, progress ->
         com.openobd.data.TerrainDownloader(app, "OpenOBD/${com.openobd.BuildConfig.VERSION_NAME} (Android; open source)").around(pts, detail, progress)
+    }
+    /** Aerial photos of an area (minLat, minLon, maxLat, maxLon) at about the given metres per pixel; replaceable in tests. */
+    var imagery: suspend (DoubleArray, Double, (Int, Int) -> Unit) -> com.openobd.core.trip.TileImagery? = { area, mpp, progress ->
+        com.openobd.data.ImageryDownloader(app, "OpenOBD/${com.openobd.BuildConfig.VERSION_NAME} (Android; open source)").around(area, mpp, progress)
+    }
+    /** Lakes from OpenStreetMap for an area (minLat, minLon, maxLat, maxLon); replaceable in tests. */
+    var water: suspend (DoubleArray) -> List<List<com.openobd.core.trip.LatLon>>? = { area ->
+        com.openobd.data.MapDataDownloader(app, "OpenOBD/${com.openobd.BuildConfig.VERSION_NAME} (Android; open source)").water(area)
     }
     /** Water, roads and buildings from OpenStreetMap for an area (minLat, minLon, maxLat, maxLon); replaceable in tests. */
     var mapFeatures: suspend (DoubleArray, Boolean) -> com.openobd.core.trip.MapFeatures? = { area, buildings ->
@@ -67,7 +74,18 @@ class AppContainer(private val app: Application) {
     /** Sync with the user's own Google Drive (off until they connect). */
     val sync = com.openobd.data.GoogleSync(app, garage, history, settings)
 
-    val session by lazy { ObdSession(app, scope, settings, history, logs, dtcDatabase, garage, diagnostics.log) }
+    val session: ObdSession by lazy {
+        ObdSession(app, scope, settings, history, logs, dtcDatabase, garage, diagnostics.log).also { s ->
+            // While the phone lends its adapter to the car screen, it cannot use it itself.
+            s.blocker = { st -> if (bridge.running && st.connectionType != com.openobd.data.ConnectionType.PHONE) com.openobd.session.PHONE_BRIDGE_BUSY else null }
+        }
+    }
+
+    /** New versions from GitHub, installed from inside the app. */
+    val updater = com.openobd.data.Updater(app)
+
+    /** Lends this phone's adapter to the car's head unit over Wi-Fi. */
+    val bridge: com.openobd.data.PhoneBridge by lazy { com.openobd.data.PhoneBridge(app, scope, session, settings) }
 }
 
 class OpenObdApp : Application() {
@@ -85,6 +103,8 @@ class OpenObdApp : Application() {
             container.logs.refresh()
             container.dtcDatabase.size // warm up off the main thread
             container.sync.syncIfConnected(force = true)
+            // Not in tests: they must not depend on what is published on GitHub.
+            if (android.os.Build.FINGERPRINT != "robolectric") container.updater.check()
         }
         keepWidgetUpdated()
         speakAlerts()

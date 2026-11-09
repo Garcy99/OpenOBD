@@ -46,7 +46,7 @@ import com.openobd.core.trip.Overpass
 import com.openobd.core.trip.Route3mf
 import com.openobd.core.trip.RouteGeometry
 import com.openobd.core.trip.Terrain
-import com.openobd.core.trip.Terrarium
+import com.openobd.core.trip.Mapterhorn
 import com.openobd.core.trip.fileName
 import com.openobd.core.trip.RouteInfo
 import com.openobd.ui.LocalApp
@@ -266,7 +266,7 @@ fun Route3dScreen(tripId: String, onBack: () -> Unit) {
                 Text(tr("Create 3MF file"))
             }
             error?.let { ErrorText(it) }
-            Hint(tr(Terrarium.ATTRIBUTION) + " · " + tr(Overpass.ATTRIBUTION))
+            Hint(tr(Mapterhorn.ATTRIBUTION) + " · " + tr(Overpass.ATTRIBUTION))
         }
     }
 }

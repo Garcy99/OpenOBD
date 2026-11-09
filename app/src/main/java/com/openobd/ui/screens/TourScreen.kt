@@ -19,6 +19,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Bluetooth
 import androidx.compose.material.icons.filled.Build
+import androidx.compose.material.icons.filled.Cast
 import androidx.compose.material.icons.filled.Checklist
 import androidx.compose.material.icons.filled.CloudSync
 import androidx.compose.material.icons.filled.DirectionsCar
@@ -104,8 +105,11 @@ object Tours {
 
     val advanced = listOf(
         TourPage(Icons.Default.Bluetooth, null, "Connection", "Adapters and connection",
-            "OpenOBD works with the usual OBD2 adapters over Bluetooth, Bluetooth LE, Wi-Fi and USB cable (handy on car head units). Almost all of them speak the ELM327 language; a good ELM327 or an OBDLink works best. Adapters tied to their own app, such as Carista or BlueDriver, do not work. Choose the type and the adapter in Settings → Connection.\n\nOBDLink and other STN adapters are detected and run faster. Settings also has a speed test, the protocol and timing options for cars that answer slowly, and the HS/MS-CAN switch that some Ford, Mazda and Opel adapters use to reach comfort modules.\n\nDemo mode simulates a car, faults included, to practise without one.",
+            "OpenOBD works with the usual OBD2 adapters over Bluetooth, Bluetooth LE, Wi-Fi and USB cable (handy on car head units). Almost all of them speak the ELM327 language; a good ELM327 or an OBDLink works best. Adapters tied to their own app, such as BlueDriver or FIXD, do not work. Choose the type and the adapter in Settings → Connection.\n\nOBDLink and other STN adapters are detected and run faster. Settings also has a speed test, the protocol and timing options for cars that answer slowly, and the HS/MS-CAN switch that some Ford, Mazda and Opel adapters use to reach comfort modules.\n\nDemo mode simulates a car, faults included, to practise without one.",
             Routes.SETTINGS),
+        TourPage(Icons.Default.Cast, null, "Connection", "Car screen bridge",
+            "If your car's screen cannot hold the adapter over Bluetooth, let the phone do it: on the phone, More → Car screen → Start the bridge; connect the car screen to the phone's Wi-Fi hotspot and, in OpenOBD there, choose Adapter → Phone. The car screen then uses all of OpenOBD through the phone.",
+            Routes.BRIDGE),
         TourPage(Icons.Default.Speed, Good, "Live data", "Gauges your way",
             "In Live → Gauges, touch any gauge to choose its sensor, style (arc, needle, bar or number), colours, range, decimals and the value at which it turns red; the arrows move it. Dashboard layouts change the whole set at once.\n\nThe button at the top opens a floating window that keeps the gauges visible over other apps, such as your navigation app.",
             Routes.LIVE),

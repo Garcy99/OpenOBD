@@ -1,0 +1,4 @@
+• Puente para la pantalla del coche: el móvil mantiene el adaptador y se lo presta por Wi-Fi (Más → Pantalla del coche)
+• Actualizaciones desde la app: una pantalla te avisa de cada versión nueva y la instala desde ahí
+• Pósteres con mucho más detalle: relieve LiDAR de 2 m en España con curvas de nivel y lagos, o fotos aéreas en las que se ven los árboles
+• Mapa web con fotos aéreas

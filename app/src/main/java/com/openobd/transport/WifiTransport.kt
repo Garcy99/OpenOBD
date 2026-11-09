@@ -10,8 +10,8 @@ import java.net.InetSocketAddress
 import java.net.Socket
 
 /** Wi-Fi ELM327 adapters expose a raw TCP socket, typically 192.168.0.10:35000. */
-class WifiTransport(private val host: String, private val port: Int) : ObdTransport() {
-    override val description: String = "Wi-Fi adapter ($host:$port)"
+class WifiTransport(private val host: String, private val port: Int, label: String? = null) : ObdTransport() {
+    override val description: String = label ?: "Wi-Fi adapter ($host:$port)"
     private var socket: Socket? = null
     private var output: OutputStream? = null
     private var reader: Thread? = null

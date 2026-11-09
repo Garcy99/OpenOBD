@@ -83,6 +83,9 @@ fun WelcomeScreen(onDone: () -> Unit, onGarage: () -> Unit) {
                     Choice(tr("USB cable (car head units)"), tr("Plug the ELM327 USB cable in; Android offers to open OpenOBD."), s.connectionType == ConnectionType.USB) {
                         scope.launch { app.settings.update { it.copy(connectionType = ConnectionType.USB) } }
                     }
+                    Choice(tr("My phone (bridge)"), tr("For car screens whose Bluetooth struggles with the adapter: OpenOBD on your phone lends its adapter over Wi-Fi."), s.connectionType == ConnectionType.PHONE) {
+                        scope.launch { app.settings.update { it.copy(connectionType = ConnectionType.PHONE) } }
+                    }
                     Choice(tr("Demo (no adapter)"), tr("A simulated car to try every feature."), s.connectionType == ConnectionType.DEMO) {
                         scope.launch { app.settings.update { it.copy(connectionType = ConnectionType.DEMO) } }
                     }

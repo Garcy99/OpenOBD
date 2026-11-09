@@ -87,10 +87,13 @@ class TranslationCoverageTest {
         keys += com.openobd.core.service.Procedures.texts
         keys += com.openobd.core.brand.PidPacks.texts
         keys += com.openobd.core.brand.Obdb.texts
-        keys += com.openobd.core.trip.routeExportTexts + com.openobd.ui.screens.RouteFormat.texts + com.openobd.ui.screens.route3dTexts
+        keys += com.openobd.core.trip.routeExportTexts + com.openobd.ui.screens.RouteFormat.texts + com.openobd.ui.screens.PosterGround.texts + com.openobd.ui.screens.route3dTexts
         keys += com.openobd.core.brand.Coding.texts + com.openobd.core.brand.CodingEngine.texts + com.openobd.core.brand.WriteSafety.texts
         keys += listOf("Applied", "Undone", "Not changed", "Restored", "Needs restore", "Interrupted", "Started", "Failed", "Identifier explorer", "Typed in")
-        keys += com.openobd.data.GoogleSync.texts + com.openobd.ui.screens.Tours.texts
+        keys += com.openobd.data.GoogleSync.texts + com.openobd.ui.screens.Tours.texts + com.openobd.ui.screens.bridgeTexts +
+            com.openobd.service.BridgeService.texts + com.openobd.data.PhoneBridge.texts + com.openobd.core.transport.ObdBridge.texts +
+            listOf(com.openobd.session.PHONE_NOT_FOUND, com.openobd.session.PHONE_BRIDGE_BUSY, "Looking for your phone") +
+            com.openobd.data.Updater.texts + com.openobd.ui.updateTexts
         keys += com.openobd.core.specs.CrossCheck.texts
         keys += com.openobd.core.voice.VoiceWatch.texts
         keys += com.openobd.core.trip.EcoScorer.texts

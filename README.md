@@ -17,6 +17,32 @@ Drive if you connect your account (optional).
 | ![](docs/screenshots/home.jpg) | ![](docs/screenshots/gauges.jpg) | ![](docs/screenshots/live.jpg) | ![](docs/screenshots/diagnose.jpg) |
 | **Explained codes** | **Used car check** | **Codings** | **Garage** |
 | ![](docs/screenshots/code.jpg) | ![](docs/screenshots/check.jpg) | ![](docs/screenshots/codings.jpg) | ![](docs/screenshots/garage.jpg) |
+| **Share a trip** | **Car screen bridge** | **Google account sync** | **App tour** |
+| ![](docs/screenshots/export.jpg) | ![](docs/screenshots/bridge.jpg) | ![](docs/screenshots/sync.jpg) | ![](docs/screenshots/tour.jpg) |
+
+### Your trips as maps, posters and 3D prints
+
+| A3 poster over the relief (2 m LiDAR, contours, lakes) | A3 poster over aerial photos |
+|---|---|
+| ![](docs/screenshots/route-poster.jpg) | ![](docs/screenshots/route-poster-satellite.jpg) |
+
+*Both at print size, up close: every ridge from the national elevation model, and single trees in the photos:*
+
+![](docs/screenshots/route-poster-detail.jpg)
+
+| Interactive web map (GPX inside): map, aerial photos or relief | The relief built into the file, works offline |
+|---|---|
+| ![](docs/screenshots/route-web-map.jpg) | ![](docs/screenshots/route-web-relief.jpg) |
+
+| 3D map, Alpine style | 3D map, Forest style, round | 3D map, five spools mixed (Landscape) |
+|---|---|---|
+| ![](docs/screenshots/3d-alpine.jpg) | ![](docs/screenshots/3d-forest.jpg) | ![](docs/screenshots/3d-landscape.jpg) |
+
+*3D renders of real models made by the app (Lagos de Covadonga, Spain): terrain coloured by altitude, lakes and roads
+from OpenStreetMap, the route on top and a title plaque. Up close, the colour-mixing modes are a fine pattern of
+the five spools that blends into every shade from a normal distance:*
+
+![](docs/screenshots/3d-cmykw-detail.jpg)
 
 ## Contents
 
@@ -29,6 +55,7 @@ Drive if you connect your account (optional).
 - [Safety](#safety)
 - [Contributing](#contributing)
 - [Building from source](#building-from-source)
+- [Support](#support)
 - [Privacy, license and credits](#privacy-license-and-credits)
 
 ## Highlights
@@ -47,14 +74,22 @@ Drive if you connect your account (optional).
   and undo from the history
 - **Garage**: several cars, maintenance and inspection reminders, fuel log with real consumption, trips on a
   map with the values at every point, exported to GPX, an interactive web map, a printable poster or a 3D model
-- Works with **Bluetooth, Bluetooth LE, Wi-Fi and USB** adapters, on phones, tablets and Android car head units
+- **Trips you can print**: GPX for any GPS, an interactive web map, an A3 poster over a detailed relief (2 m LiDAR in
+  Spain) or over aerial photos where you can see single trees, and a
+  **multicolour 3D map** of the terrain for your 3D printer (Bambu Studio, PrusaSlicer, Orca), with all colours,
+  6 or 4 filaments, or five spools mixed for a continuous range of shades
+- Works with **Bluetooth, Bluetooth LE, Wi-Fi and USB** adapters, on phones, tablets and Android car head units;
+  a **car screen bridge** lets the car's screen use the phone's adapter over Wi-Fi
+- Optional **Google account sync** through your own Google Drive, **updates from inside the app**, and a guided
+  **tour** of the basics and of every feature
 - **11 languages** and a **demo car** to try everything without an adapter
 
 ## What you need
 
 - An **Android 6.0+** phone, tablet or car head unit
-- An **ELM327-compatible OBD-II adapter**: Bluetooth Classic, Bluetooth LE, Wi-Fi or a USB cable (FTDI, CH340,
-  PL2303, CP210x). Cheap clones work; OBDLink / STN adapters are faster. An adapter with an **HS/MS-CAN switch**
+- An **OBD-II adapter**: almost any ordinary one works, because almost all use the ELM327 command set (Bluetooth
+  Classic, Bluetooth LE, Wi-Fi or a USB cable: FTDI, CH340, PL2303, CP210x). Cheap clones work; a good ELM327 or an
+  OBDLink / STN adapter works best. Adapters tied to their own app (BlueDriver, FIXD) do not. An adapter with an **HS/MS-CAN switch**
   reaches the second bus of Ford, Mazda and Opel / Vauxhall
 - A car with **OBD-II / EOBD**: petrol cars sold in the EU since 2001, diesels since 2004, US cars since 1996.
   All OBD-II protocols are supported (CAN 11/29-bit, KWP2000, ISO 9141-2, J1850 PWM/VPW). Module features,
@@ -62,9 +97,9 @@ Drive if you connect your account (optional).
 
 ## Download and install
 
-- **APK**: from the [Releases](https://github.com/Garcy99/OpenOBD/releases) page, or the artifacts of the latest
-  [build](https://github.com/Garcy99/OpenOBD/actions/workflows/android.yml) (every push builds one).
-  Allow installs from unknown sources, open the APK and install
+- **APK**: from the [Releases](https://github.com/Garcy99/OpenOBD/releases) page. Allow installs from unknown
+  sources, open the APK and install. From then on the app tells you when there is a new version and installs it
+  from inside (*More > About > Check for updates* any time); your data stays
 - **From source**: see [Building from source](#building-from-source)
 
 No adapter yet? Choose **Demo** as the connection: a simulated car with codes, modules and live data.
@@ -133,8 +168,10 @@ No adapter yet? Choose **Demo** as the connection: a simulated car with codes, m
   consumption and time there
 - **Export a trip**: **GPX** for any GPS (Garmin, OsmAnd, Komoot, Google Earth) with the car's values in every point;
   an **interactive HTML map** anyone can open in a browser to tap the route, see the same data and save the GPX
-  (OpenTopoMap base map, plus the coloured relief built into the file so it also works offline);
-  a **poster** (PDF A3 / SVG) with the route in vectors over the relief of the area, coloured by altitude; and a **printable 3D map**
+  (OpenTopoMap base map or aerial photos, plus the coloured relief built into the file so it also works offline);
+  a **poster** (PDF A3 / SVG) with the route in vectors over either a shaded relief coloured by altitude, with contour
+  lines and lakes, from national elevation models (the IGN's 2 m LiDAR model in Spain, Copernicus 30 m elsewhere), or
+  aerial photos (Spain's PNOA orthophoto, Esri elsewhere) printed at 254 dpi; and a **printable 3D map**
   (3MF, multicolour): the real terrain around the route coloured by altitude (Alpine, Forest, Desert or Stone styles),
   with lakes, main roads and, for small areas, buildings from OpenStreetMap, cut as a hexagon, circle or square, with
   the trip's name (and optionally its GPS coordinates) on a plaque. A live 3D preview turns and zooms while you choose
@@ -149,6 +186,9 @@ No adapter yet? Choose **Demo** as the connection: a simulated car with codes, m
   the same on every phone, kept in a private folder of the user's own Google Drive, with no OpenOBD server
   ([how it works and how to set it up](docs/GOOGLE_SYNC.md))
 - **Home-screen widget**, backup and restore
+- **Updates from inside the app**: a new version on GitHub pops up with what's new, downloads and opens Android's
+  installer (not in Google Play builds, where the store updates the app)
+- **Optional donations** through PayPal, any amount, from *More* or *About*; nothing is locked
 
 ### Connection
 
@@ -199,6 +239,10 @@ manufacturer data (OBDb) exists for every brand above; Tesla is the only brand i
    - **Wi-Fi**: join the adapter's network, then choose *Wi-Fi*.
    - **USB** (car head units, whose Bluetooth usually only talks to phones): plug in the cable; Android offers
      to open OpenOBD and the speed is detected automatically.
+   - **Phone (car screen bridge)**: when the car's screen cannot hold the adapter over Bluetooth, let your phone
+     do it. On the phone: *More > Car screen > Start the bridge*; connect the car screen to the phone's Wi-Fi
+     hotspot and, in OpenOBD there, choose *Phone* as the adapter. The car screen finds the phone by itself and
+     uses all of OpenOBD through it, while the phone can stay in your pocket with its screen off.
 3. Open OpenOBD and press **Connect**. The app detects the protocol, reads the VIN and picks (or creates) the car
    in your garage.
 
@@ -210,7 +254,7 @@ Where things are:
 | **Live** | Gauges, sensors, trip, performance |
 | **Diagnose** | Trouble codes, all modules, readiness, freeze frame, Mode 06, used-car check, battery test, warning lights |
 | **Garage** | Cars, model & specs, maintenance, fuel log, trips, health |
-| **More** | Brand features, **codings & adaptations**, **community data (OBDb)**, particulate filter, guides, HUD, logs, history, custom PIDs, packs, identifier explorer, terminal, settings |
+| **More** | Brand features, **codings & adaptations**, **community data (OBDb)**, particulate filter, guides, HUD, **car screen bridge**, logs, history, custom PIDs, packs, identifier explorer, terminal, **Google account and sync**, **app tours**, settings, about and updates |
 
 If a cheap clone gives odd data, turn off *Multi-PID requests* and *Fast responses* in Settings, and use
 *Settings > Troubleshooting > Share debug report* to send us the adapter traffic.
@@ -303,7 +347,12 @@ Completely optional.
     `app/src/main/assets/obdb/index.json` (the list of makes and models) is derived from it.
   - Maps: © [OpenStreetMap](https://www.openstreetmap.org/copyright) contributors. Water, roads and buildings in 3D
     maps come from OpenStreetMap through the [Overpass API](https://overpass-api.de/) (ODbL). The shared HTML map
-    shows [OpenTopoMap](https://opentopomap.org/) tiles (CC-BY-SA), or Esri's World Topo Map if those fail.
-  - Elevation for 3D models: [Terrain Tiles](https://registry.opendata.aws/terrain-tiles/) on AWS Open Data (SRTM,
-    GMTED, ETOPO and national elevation models).
+    shows [OpenTopoMap](https://opentopomap.org/) tiles (CC-BY-SA), or Esri's World Topo Map if those fail. Lakes on
+    the poster's relief also come from OpenStreetMap.
+  - Elevation for posters and 3D models: [Mapterhorn](https://mapterhorn.com/) (national elevation models, such as
+    the IGN's 2 m MDT02 in Spain, CC BY 4.0, and Copernicus GLO-30 elsewhere), or
+    [Terrain Tiles](https://registry.opendata.aws/terrain-tiles/) on AWS Open Data (SRTM, GMTED, ETOPO and others)
+    when it cannot be reached.
+  - Aerial photos for satellite posters and the HTML map: PNOA © [Instituto Geográfico Nacional](https://www.ign.es/)
+    de España (CC BY 4.0, scne.es) in Spain, and Esri World Imagery (Esri, Maxar, Earthstar Geographics) elsewhere.
   - Vehicle data: European Environment Agency, RDW, DVLA, NHTSA vPIC and US EPA fueleconomy.gov open data.

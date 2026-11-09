@@ -199,8 +199,15 @@ class ObdSession(
 
     // ------------------------------------------------------------------ connection
 
+    /** Reason this phone cannot connect right now (its adapter is lent to the car screen); set by the app. */
+    var blocker: (AppSettings) -> String? = { null }
+
+    /** Finds a phone running the bridge (address and port); replaceable in tests. */
+    var findPhone: suspend () -> Pair<String, Int>? = { com.openobd.data.BridgeDiscovery.find(context) }
+
     fun connect() {
         if (connectJob?.isActive == true) return
+        blocker(settingsRepo.settings.value)?.let { _state.value = ConnectionState.Failed(it); return }
         userDisconnect = false
         connectJob = scope.launch {
             val s = settingsRepo.settings.value
@@ -216,19 +223,30 @@ class ObdSession(
         }
     }
 
+    /**
+     * The link to the adapter for [s]: also used by the phone bridge, which opens this phone's adapter and lends it
+     * to the car screen.
+     */
+    suspend fun createTransport(s: AppSettings): ObdTransport = when (s.connectionType) {
+        ConnectionType.DEMO -> DemoTransport(latencyMs = if (s.demoProtocol.isCan) 35 else 90, protocol = s.demoProtocol).let {
+            if (s.demoFaults) FaultyTransport(it, FaultPlan.NASTY.copy(jitterMs = 3), kotlin.random.Random(System.nanoTime())) else it
+        }
+        ConnectionType.WIFI -> WifiTransport(s.wifiHost, s.wifiPort)
+        ConnectionType.USB -> com.openobd.transport.UsbSerialTransport(context, s.usbDevice, s.usbBaud) { baud ->
+            if (baud != s.usbBaud) scope.launch { settingsRepo.update { it.copy(usbBaud = baud) } }
+        }
+        ConnectionType.BLUETOOTH -> BluetoothClassicTransport(context, s.deviceAddress ?: throw IllegalStateException("Choose a Bluetooth adapter first"), s.deviceName)
+        ConnectionType.BLE -> BleTransport(context, s.deviceAddress ?: throw IllegalStateException("Choose a Bluetooth LE adapter first"), s.deviceName)
+        ConnectionType.PHONE -> {
+            val (host, port) = findPhone() ?: throw IllegalStateException(PHONE_NOT_FOUND)
+            WifiTransport(host, port, "Phone bridge ($host)")
+        }
+    }
+
     private suspend fun doConnect(s: AppSettings) {
         cleanup()
-        val t: ObdTransport = when (s.connectionType) {
-            ConnectionType.DEMO -> DemoTransport(latencyMs = if (s.demoProtocol.isCan) 35 else 90, protocol = s.demoProtocol).let {
-                if (s.demoFaults) FaultyTransport(it, FaultPlan.NASTY.copy(jitterMs = 3), kotlin.random.Random(System.nanoTime())) else it
-            }
-            ConnectionType.WIFI -> WifiTransport(s.wifiHost, s.wifiPort)
-            ConnectionType.USB -> com.openobd.transport.UsbSerialTransport(context, s.usbDevice, s.usbBaud) { baud ->
-                if (baud != s.usbBaud) scope.launch { settingsRepo.update { it.copy(usbBaud = baud) } }
-            }
-            ConnectionType.BLUETOOTH -> BluetoothClassicTransport(context, s.deviceAddress ?: throw IllegalStateException("Choose a Bluetooth adapter first"), s.deviceName)
-            ConnectionType.BLE -> BleTransport(context, s.deviceAddress ?: throw IllegalStateException("Choose a Bluetooth LE adapter first"), s.deviceName)
-        }
+        if (s.connectionType == ConnectionType.PHONE) _state.value = ConnectionState.Connecting("Looking for your phone")
+        val t = createTransport(s)
         transport = t
         _state.value = ConnectionState.Connecting("Connecting to ${t.description}")
         withTimeout(30_000) { t.open() }
@@ -597,3 +615,8 @@ class ObdSession(
         }
     }
 }
+
+/** Messages about the phone bridge (English keys, translated by the app). */
+const val PHONE_NOT_FOUND = "No phone with the OpenOBD bridge found. On the phone, open More → Car screen and start the bridge; connect this screen to the phone's Wi-Fi hotspot (or the same Wi-Fi)."
+const val PHONE_BRIDGE_BUSY = "This phone is lending its adapter to the car screen. Stop the bridge (More → Car screen) to connect here."
+

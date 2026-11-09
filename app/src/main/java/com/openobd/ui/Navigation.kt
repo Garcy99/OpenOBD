@@ -111,6 +111,7 @@ object Routes {
     const val TOUR = "tour/{level}"
     fun tour(advanced: Boolean) = "tour/" + if (advanced) "full" else "basic"
     const val ACCOUNT = "account"
+    const val BRIDGE = "bridge"
     const val LOG = "log/{name}"
     fun log(name: String) = "log/" + android.net.Uri.encode(name)
     const val DIESEL = "diesel"
@@ -164,6 +165,9 @@ fun OpenObdNavHost() {
                 (if (e.rule.above) "above " else "below ") + formatNumber(e.rule.threshold, 1))
         }
     }
+
+    // A new version on GitHub pops up over any screen (except the first setup and the head-up display).
+    if (current != Routes.WELCOME && current != Routes.HUD) UpdateDialog()
 
     // Tablets and landscape phones get a side rail instead of the bottom bar.
     val wide = androidx.compose.ui.platform.LocalConfiguration.current.screenWidthDp >= 600
@@ -257,6 +261,7 @@ fun OpenObdNavHost() {
                     )
                 }
                 composable(Routes.ACCOUNT) { com.openobd.ui.screens.AccountScreen(onBack = back) }
+                composable(Routes.BRIDGE) { com.openobd.ui.screens.BridgeScreen(onBack = back) }
             composable(Routes.PACKS) { com.openobd.ui.screens.PacksScreen(onBack = back) }
             composable(Routes.LIGHTS) { com.openobd.ui.screens.WarningLightScreen(onBack = back, onSettings = { nav.navigate(Routes.SETTINGS) }) }
             composable(Routes.HEALTH) { com.openobd.ui.screens.HealthScreen(onBack = back) }

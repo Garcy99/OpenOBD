@@ -36,10 +36,22 @@ Only in these cases, and only when you trigger them:
   downloads that file from GitHub (raw.githubusercontent.com). GitHub sees your IP address and which file is
   requested; nothing about you or your car is sent. Its privacy statement:
   https://docs.github.com/site-policy/privacy-policies/github-general-privacy-statement
-- **Terrain for 3D models**: when you create a 3D model of a trip with terrain, the app downloads elevation tiles of
-  that area from Terrain Tiles (AWS Open Data, s3.amazonaws.com). Amazon sees your IP address and which map tiles are
-  requested (so roughly where the trip was); nothing else is sent. Tiles are kept in the app's cache. AWS privacy
-  notice: https://aws.amazon.com/privacy/
+- **Terrain, lakes and aerial photos for posters and 3D models**: when you export a poster or web map with a
+  background, or create a 3D model with terrain, the app downloads map tiles of that area: elevation from Mapterhorn
+  (tiles.mapterhorn.com, served by Cloudflare) or, if it cannot, Terrain Tiles (AWS Open Data, s3.amazonaws.com);
+  lakes from OpenStreetMap's Overpass API; and, for satellite posters, aerial photos from Spain's IGN
+  (tms-pnoa-ma.idee.es) or Esri (server.arcgisonline.com). Each service sees your IP address and which tiles or area
+  are requested (so roughly where the trip was); nothing else is sent. Tiles are kept in the app's cache. The web
+  map, when opened, loads its map and photo tiles from OpenTopoMap, Esri or the IGN in the same way. Privacy notices:
+  https://mapterhorn.com/privacy-policy/, https://aws.amazon.com/privacy/,
+  https://wiki.osmfoundation.org/wiki/Privacy_Policy, https://www.ign.es/web/ign/portal/politica-de-privacidad,
+  https://www.esri.com/en-us/privacy/overview
+- **Update check** (GitHub builds only): at most once a day, and when you press *Check for updates*, the app asks
+  GitHub's public API (api.github.com) for the latest release and, if you choose to update, downloads its APK from
+  GitHub. GitHub sees your IP address; nothing about you or your car is sent. GitHub's privacy statement:
+  https://docs.github.com/site-policy/privacy-policies/github-general-privacy-statement
+- **Car screen bridge** (optional): while you run it, the phone passes the adapter's data to the car screen over your
+  local Wi-Fi or hotspot and announces itself there so the screen can find it. Nothing leaves that local network.
 - **Donations** (optional): the Donate button only opens PayPal's page in your browser. The app sends nothing to
   PayPal and does not know whether you donated; PayPal's privacy statement applies to what you do on its page.
 - **Google account sync** (optional, off until you connect your Google account in Settings): your cars, maintenance,

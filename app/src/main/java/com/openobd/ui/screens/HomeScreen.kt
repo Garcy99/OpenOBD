@@ -46,6 +46,7 @@ import androidx.compose.material.icons.filled.PhotoCamera
 import androidx.compose.material.icons.filled.PowerSettingsNew
 import androidx.compose.material.icons.filled.Route
 import androidx.compose.material.icons.filled.Explore
+import androidx.compose.material.icons.filled.PhoneAndroid
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.SettingsInputAntenna
 import androidx.compose.material.icons.filled.Speed
@@ -255,7 +256,7 @@ private fun CarHero(state: ConnectionState, onConnect: () -> Unit, onAdapter: ()
             ) {
                 Icon(when (settings.connectionType) {
                     ConnectionType.WIFI -> Icons.Default.Wifi; ConnectionType.DEMO -> Icons.Default.SettingsInputAntenna
-                    ConnectionType.USB -> Icons.Default.Usb; else -> Icons.Default.Bluetooth
+                    ConnectionType.USB -> Icons.Default.Usb; ConnectionType.PHONE -> Icons.Default.PhoneAndroid; else -> Icons.Default.Bluetooth
                 }, null, Modifier.size(16.dp), tint = MaterialTheme.colorScheme.primary)
                 Spacer(Modifier.width(6.dp))
                 Text(
@@ -263,6 +264,7 @@ private fun CarHero(state: ConnectionState, onConnect: () -> Unit, onAdapter: ()
                         ConnectionType.DEMO -> tr("Demo car")
                         ConnectionType.WIFI -> settings.wifiHost
                         ConnectionType.USB -> tr("USB cable")
+                        ConnectionType.PHONE -> tr("My phone (bridge)")
                         else -> settings.deviceName ?: tr("Choose adapter")
                     },
                     style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.primary, maxLines = 1, overflow = TextOverflow.Ellipsis,
@@ -313,7 +315,7 @@ private fun CarHero(state: ConnectionState, onConnect: () -> Unit, onAdapter: ()
             }
             else -> {
                 if (state is ConnectionState.Failed) ErrorText(state.message)
-                val ready = settings.connectionType in setOf(ConnectionType.DEMO, ConnectionType.WIFI, ConnectionType.USB) || settings.deviceAddress != null
+                val ready = settings.connectionType in setOf(ConnectionType.DEMO, ConnectionType.WIFI, ConnectionType.USB, ConnectionType.PHONE) || settings.deviceAddress != null
                 if (ready) GradientButton(if (state is ConnectionState.Failed) tr("Retry") else tr("Connect"), onConnect, Modifier.fillMaxWidth(),
                     icon = Icons.Default.PowerSettingsNew)
                 else GradientButton(tr("Choose adapter"), onAdapter, Modifier.fillMaxWidth(), icon = Icons.Default.Bluetooth)
@@ -536,7 +538,7 @@ private fun AdapterSheet(state: ConnectionState, onDismiss: () -> Unit, onPick: 
                         onClick = { scope.launch { app.settings.update { it.copy(connectionType = t) } } },
                         enabled = !busy,
                         shape = SegmentedButtonDefaults.itemShape(i, ConnectionType.entries.size),
-                        label = { Text(if (t == ConnectionType.BLE) "BLE" else if (t == ConnectionType.BLUETOOTH) "BT" else tr(t.label), maxLines = 1) },
+                        label = { Text(if (t == ConnectionType.BLE) "BLE" else if (t == ConnectionType.BLUETOOTH) "BT" else tr(t.label), maxLines = 1, softWrap = false) },
                     )
                 }
             }
@@ -570,6 +572,12 @@ private fun AdapterSheet(state: ConnectionState, onDismiss: () -> Unit, onPick: 
                         style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
                 ConnectionType.USB -> UsbCablePanel(busy)
+                ConnectionType.PHONE -> Row(verticalAlignment = Alignment.CenterVertically) {
+                    IconBadge(Icons.Default.PhoneAndroid)
+                    Spacer(Modifier.width(12.dp))
+                    Text(tr("For car screens: this screen uses the adapter of your phone over Wi-Fi. On the phone, open More → Car screen and start the bridge, and connect this screen to the phone's Wi-Fi hotspot. It is found automatically."),
+                        style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.weight(1f))
+                }
                 ConnectionType.DEMO -> Text(tr("Explore every feature with a simulated car: live data, trouble codes, freeze frames and more."),
                     style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }

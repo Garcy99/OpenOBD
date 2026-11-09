@@ -356,6 +356,14 @@ class RouteExportTest {
         tile[40 * 256 + 40] = 9000f
         assertEquals(257, com.openobd.core.trip.Terrarium.despike(tile))
         assertTrue((0 until 256 * 256).all { abs(tile[it] - (500f + (it / 256) * 2f)) < 5f })
+        // The corrupt column is redone from its neighbours, so no faint line is left on the relief.
+        assertTrue((0 until 256).all { y -> abs(tile[y * 256 + 112] - (500f + y * 2f)) < 0.01f })
+        // A band of columns a few metres off (a glitch smoothed out at a coarser zoom) is redone too.
+        val band = FloatArray(512 * 512) { 300f + (it % 512) * 0.7f + (it / 512) * 0.3f + 5f * sin(it / 512 / 40.0).toFloat() }
+        for (y in 0 until 512) { band[y * 512 + 55] -= 3f; band[y * 512 + 56] += 4f; band[y * 512 + 57] -= 3f }
+        com.openobd.core.trip.Terrarium.despike(band)
+        val clean = { x: Int, y: Int -> 300f + x * 0.7f + y * 0.3f + 5f * sin(y / 40.0).toFloat() }
+        assertTrue((0 until 512).all { y -> (54..58).all { x -> abs(band[y * 512 + x] - clean(x, y)) < 0.5f } })
         val empty = FloatArray(256 * 256) { -32768f }
         assertTrue(com.openobd.core.trip.Terrarium.isEmpty(empty) && !com.openobd.core.trip.Terrarium.isEmpty(tile))
         // Empty pixels are unknown, and a coarser terrain fills them.
@@ -429,5 +437,79 @@ class RouteExportTest {
         fun channel(k: Int, sh: Int) = (ground.c[k].removePrefix("#").toInt(16) shr sh) and 255
         val g = low.map { channel(it, 8) }.average(); val r = low.map { channel(it, 16) }.average(); val b = low.map { channel(it, 0) }.average()
         assertTrue("lowlands r=$r g=$g b=$b", g > r && g > b)
+    }
+
+    @Test fun `512-pixel Mapterhorn tiles give their elevation and finer cells`() {
+        val z = 14
+        val tx = com.openobd.core.trip.Terrarium.tileX(-3.7038, z); val ty = com.openobd.core.trip.Terrarium.tileY(40.4168, z)
+        val tile = FloatArray(512 * 512) { 700f + (it % 512) }
+        val t = com.openobd.core.trip.TileTerrain(z, mapOf((tx.toInt() to ty.toInt()) to tile), 512, com.openobd.core.trip.Mapterhorn.ATTRIBUTION)
+        val col = (tx - tx.toInt()) * 512 - 0.5
+        assertEquals(700 + col, t.elevation(40.4168, -3.7038)!!, 0.01)
+        assertEquals(com.openobd.core.trip.Imagery.metresPerPixel(40.4168, z) / 2, t.cellMetres(40.4168), 1e-9)
+        assertTrue(t.attribution.contains("Mapterhorn"))
+        // Zoom: the most detailed within the tile budget, never above what the service has.
+        val z1 = com.openobd.core.trip.Mapterhorn.zoomFor(40.40, -3.72, 40.43, -3.68, 4000, 36)
+        assertTrue(z1 in 13..com.openobd.core.trip.Mapterhorn.MAX_ZOOM)
+        assertTrue(com.openobd.core.trip.Terrarium.tiles(40.40, -3.72, 40.43, -3.68, z1).size <= 36)
+    }
+
+    @Test fun `relief has contour lines, lakes in blue and sharper shading`() {
+        val lake = listOf(LatLon(40.414, -3.705), LatLon(40.414, -3.700), LatLon(40.418, -3.700), LatLon(40.418, -3.705))
+        val poster = RoutePoster.layout(info, points, { it }, terrain = hill, pxPerMm = 2.0, water = listOf(lake))
+        val img = poster.shapes.filterIsInstance<RoutePoster.Image>().single()
+        val fr = RoutePoster.frame(points)!!
+        // The middle of the lake is lake blue.
+        fun pixelAt(lat: Double, lon: Double): Int {
+            var best = 0; var bd = Double.MAX_VALUE
+            for (j in 0 until img.height step 1) for (i in 0 until img.width step 1) {
+                val (la, lo) = fr.latLon((i + 0.5) / 2.0, (j + 0.5) / 2.0)
+                val d = (la - lat) * (la - lat) + (lo - lon) * (lo - lon)
+                if (d < bd) { bd = d; best = img.argb[j * img.width + i] }
+            }
+            return best
+        }
+        assertEquals(0x9CC3E4, pixelAt(40.416, -3.7025) and 0xFFFFFF)
+        // Contour lines darken some pixels on the hill's flanks: more distinct shades than shading alone gives.
+        val noContours = com.openobd.core.trip.RoutePoster.relief(hill, fr.boxW, fr.boxH, 2.0, contours = false, at = fr::latLon)!!
+        assertTrue(img.argb.toSet().size > 50 && img.argb.indices.count { img.argb[it] != noContours.third[it] } > img.argb.size / 200)
+        // Credits for the elevation and for the lakes.
+        assertTrue(poster.shapes.any { it is RoutePoster.Text && it.text.contains("OpenStreetMap") })
+    }
+
+    @Test fun `satellite poster uses the aerial photo and credits it`() {
+        val fr = RoutePoster.frame(points)!!
+        val a = fr.area()
+        val z = com.openobd.core.trip.Imagery.zoomFor(a[0], a[1], a[2], a[3], fr.metresPerMm / RoutePoster.PHOTO_PX_PER_MM)
+        // Photo pixels about as fine as the poster's, not much finer.
+        val mpp = com.openobd.core.trip.Imagery.metresPerPixel((a[0] + a[2]) / 2, z)
+        assertTrue("z=$z mpp=$mpp", mpp >= fr.metresPerMm / RoutePoster.PHOTO_PX_PER_MM / 1.6 || z == 19)
+        // A green photo where x is even, brown where odd, so the poster must show both.
+        val tiles = com.openobd.core.trip.Terrarium.tiles(a[0], a[1], a[2], a[3], z).associateWith { (x, _) ->
+            IntArray(65536) { if (x % 2 == 0) 0xFF3C8D2F.toInt() else 0xFF8D6E3C.toInt() } }
+        val im = com.openobd.core.trip.TileImagery(z, tiles, listOf(com.openobd.core.trip.Imagery.Source.PNOA.attribution))
+        val poster = RoutePoster.layout(info, points, { it }, imagery = im, pxPerMm = 1.0)
+        val img = poster.shapes.filterIsInstance<RoutePoster.Image>().single()
+        assertTrue(img.argb.contains(0xFF3C8D2F.toInt()))
+        assertTrue(poster.shapes.any { it is RoutePoster.Text && it.text.contains("PNOA") })
+        assertTrue(RoutePoster.svg(poster).contains("data:image/png;base64,"))
+        // Blank tiles (outside Spain's photos) are recognised, and gaps filled from another source.
+        val blank = IntArray(65536) { 0x00FFFFFF }
+        assertTrue(com.openobd.core.trip.TileImagery.isBlank(blank) && !com.openobd.core.trip.TileImagery.isBlank(tiles.values.first()))
+        val half = IntArray(65536) { if (it < 32768) 0xFF112233.toInt() else 0 }
+        val filled = com.openobd.core.trip.TileImagery.under(half, IntArray(65536) { 0xFF445566.toInt() })
+        assertTrue(com.openobd.core.trip.TileImagery.hasGaps(half) && filled[0] == 0xFF112233.toInt() && filled[65535] == 0xFF445566.toInt())
+        // PNOA counts rows from the south.
+        assertTrue(com.openobd.core.trip.Imagery.url(com.openobd.core.trip.Imagery.Source.PNOA, 16, 32000, 24000).endsWith("/16/32000/${65535 - 24000}.jpeg"))
+        assertEquals(com.openobd.core.trip.Imagery.Source.PNOA, com.openobd.core.trip.Imagery.sourceFor(40.4, -3.7))
+        assertEquals(com.openobd.core.trip.Imagery.Source.ESRI, com.openobd.core.trip.Imagery.sourceFor(48.85, 2.35))
+    }
+
+    @Test fun `web map offers aerial photos from the right source`() {
+        val html = RouteHtml.write(info, points, { it })
+        assertTrue(html.contains("tms-pnoa-ma.idee.es") && html.contains("useTiles(0)"))
+        val paris = points.map { it.copy(lat = it.lat + 8.45, lon = it.lon + 6.05) }
+        val h2 = RouteHtml.write(info, paris, { it }, satelliteFirst = true)
+        assertTrue(h2.contains("World_Imagery") && h2.contains("if(true){"))
     }
 }

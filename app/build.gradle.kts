@@ -16,14 +16,16 @@ android {
         // Android 6.0+: many car head units (MTK, Rockchip PX3/PX5, Allwinner T3) still run Android 6-8.
         minSdk = 23
         targetSdk = 35
-        versionCode = 25
-        versionName = "1.16.1"
+        versionCode = 26
+        versionName = "1.17.0"
         vectorDrawables { useSupportLibrary = true }
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         // Optional donation page (gradle.properties: openobd.donateUrl). Builds for Google Play pass -Pplay,
         // which leaves it out: Play's payments policy does not allow links to outside donation pages.
         val donateUrl = if (project.hasProperty("play")) "" else (project.findProperty("openobd.donateUrl") as String?).orEmpty().trim()
         buildConfigField("String", "DONATE_URL", "\"$donateUrl\"")
+        // Updates from GitHub inside the app; Google Play builds leave it out (the store updates them).
+        buildConfigField("boolean", "SELF_UPDATE", if (project.hasProperty("play")) "false" else "true")
     }
 
     // Release signing: keystore.properties (local, git-ignored) or OPENOBD_* environment variables (CI).
@@ -33,6 +35,8 @@ android {
     }
     fun secret(prop: String, env: String): String? = (keystoreProps.getProperty(prop) ?: System.getenv(env))?.takeIf { it.isNotBlank() }
     val releaseStoreFile = secret("storeFile", "OPENOBD_KEYSTORE_FILE")
+    // Play builds drop the permission to install updates (src/play-release/AndroidManifest.xml removes it).
+    if (project.hasProperty("play")) sourceSets.getByName("release").manifest.srcFile("src/play-release/AndroidManifest.xml")
     signingConfigs {
         if (releaseStoreFile != null) create("release") {
             storeFile = rootProject.file(releaseStoreFile)

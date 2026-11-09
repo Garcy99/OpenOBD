@@ -22,7 +22,12 @@ import kotlinx.serialization.Serializable
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
 
-enum class ConnectionType(val label: String) { BLUETOOTH("Bluetooth"), BLE("Bluetooth LE"), WIFI("Wi-Fi"), USB("USB"), DEMO("Demo") }
+enum class ConnectionType(val label: String) {
+    BLUETOOTH("Bluetooth"), BLE("Bluetooth LE"), WIFI("Wi-Fi"), USB("USB"),
+    /** OpenOBD on a phone lends its adapter over Wi-Fi (for car head units whose own Bluetooth struggles). */
+    PHONE("Phone"),
+    DEMO("Demo"),
+}
 
 enum class ThemeMode { SYSTEM, LIGHT, DARK, AMOLED }
 

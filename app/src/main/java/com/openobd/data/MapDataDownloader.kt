@@ -19,8 +19,14 @@ class MapDataDownloader(context: Context, private val userAgent: String) {
     private val dir = File(context.cacheDir, "osm").apply { mkdirs() }
 
     /** [area]: minLat, minLon, maxLat, maxLon. Null when offline or every server failed. */
-    suspend fun around(area: DoubleArray, buildings: Boolean): MapFeatures? = withContext(Dispatchers.IO) {
-        val query = Overpass.query(area[0], area[1], area[2], area[3], buildings)
+    suspend fun around(area: DoubleArray, buildings: Boolean): MapFeatures? =
+        get(Overpass.query(area[0], area[1], area[2], area[3], buildings))
+
+    /** Lakes, reservoirs and riverbanks only (for the poster's relief). */
+    suspend fun water(area: DoubleArray): List<List<com.openobd.core.trip.LatLon>>? =
+        get(Overpass.waterQuery(area[0], area[1], area[2], area[3]))?.water
+
+    private suspend fun get(query: String): MapFeatures? = withContext(Dispatchers.IO) {
         val file = File(dir, Integer.toHexString(query.hashCode()) + ".json")
         if (file.exists() && file.length() > 20) runCatching { return@withContext Overpass.parse(file.readText()) }
         for (endpoint in Overpass.endpoints) {

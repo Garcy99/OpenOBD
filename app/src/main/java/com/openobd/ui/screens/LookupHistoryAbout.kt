@@ -134,6 +134,8 @@ fun AboutScreen(onBack: () -> Unit) {
                 Text("OpenOBD", style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold)
                 Text(tr("Version %1\$s", BuildConfig.VERSION_NAME), color = MaterialTheme.colorScheme.onSurfaceVariant)
                 Spacer(Modifier.height(8.dp))
+                com.openobd.ui.UpdateCheckRow()
+                Spacer(Modifier.height(8.dp))
                 Text(tr("A free, open-source OBD-II scanner for ELM327 compatible adapters. %1\$s standard PIDs, ", Pids.all.size) +
                     tr("%1\$s sensors, trouble codes from every ECU, freeze frames, readiness, Mode 06, vehicle info, logging and more.", Pids.sensors.size))
             }

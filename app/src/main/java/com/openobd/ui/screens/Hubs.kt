@@ -30,6 +30,7 @@ import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.EmojiEvents
 import androidx.compose.material.icons.filled.Explore
 import androidx.compose.material.icons.filled.CloudSync
+import androidx.compose.material.icons.filled.Cast
 import androidx.compose.material.icons.filled.Storage
 import androidx.compose.material.icons.filled.Terminal
 import androidx.compose.material.icons.filled.TravelExplore
@@ -249,6 +250,8 @@ fun MoreScreen(onNavigate: (String) -> Unit) {
                     tint = Good) { onNavigate(Routes.GUIDES) }
                 GroupDivider()
                 NavRow(Icons.Default.Fullscreen, tr("Head-up display"), tr("Mirrored display for the windshield"), tint = Violet) { onNavigate(Routes.HUD) }
+                GroupDivider()
+                NavRow(Icons.Default.Cast, tr("Car screen"), tr("Lend this phone's adapter to the car's screen over Wi-Fi"), tint = Violet) { onNavigate(Routes.BRIDGE) }
             }
             SectionLabel(tr("Records"))
             GroupCard {

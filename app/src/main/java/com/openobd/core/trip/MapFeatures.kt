@@ -47,6 +47,13 @@ object Overpass {
         }
     }
 
+    /** Only lakes, reservoirs and riverbanks: for the poster's relief, where roads would hide the route. */
+    fun waterQuery(minLat: Double, minLon: Double, maxLat: Double, maxLon: Double): String {
+        val b = String.format(java.util.Locale.US, "%.6f,%.6f,%.6f,%.6f", minLat, minLon, maxLat, maxLon)
+        return "[out:json][timeout:90];(way[\"natural\"=\"water\"]($b);relation[\"natural\"=\"water\"]($b);" +
+            "way[\"landuse\"=\"reservoir\"]($b);way[\"waterway\"=\"riverbank\"]($b););out geom;"
+    }
+
     private val json = Json { ignoreUnknownKeys = true }
 
     fun parse(text: String): MapFeatures {
