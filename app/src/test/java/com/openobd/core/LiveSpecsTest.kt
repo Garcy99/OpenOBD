@@ -18,16 +18,22 @@ class LiveSpecsTest {
     fun liveServices() = runBlocking {
         assumeTrue(System.getProperty("liveSpecs") == "true")
         val eea = EeaCatalog(http)
-        val years = eea.years("ES")
-        println("EEA ES years: $years")
-        val makes = eea.makes("ES", 2019)
-        println("EEA ES 2019 top makes: ${makes.take(5)}")
-        val models = eea.models("ES", 2019, "SEAT")
-        println("SEAT models: ${models.take(5)}")
-        val versions = eea.versions("ES", 2019, "SEAT", "LEON")
-        println("Leon versions: ${versions.take(3)}")
-        assertTrue(years.contains(2019) && makes.any { it.name == "SEAT" } && models.any { it.name == "LEON" } && versions.isNotEmpty())
-        println("EEA FR 2021 Clio: ${eea.versions("FR", 2021, "RENAULT", "CLIO").take(2)}")
+        // The EEA's firewall has refused the app's questions since late 2026: reported, the app explains it to
+        // people, and the other services are still checked.
+        val eeaResult = runCatching {
+            val years = eea.years("ES")
+            println("EEA ES years: $years")
+            val makes = eea.makes("ES", 2019)
+            println("EEA ES 2019 top makes: ${makes.take(5)}")
+            val models = eea.models("ES", 2019, "SEAT")
+            println("SEAT models: ${models.take(5)}")
+            val versions = eea.versions("ES", 2019, "SEAT", "LEON")
+            println("Leon versions: ${versions.take(3)}")
+            assertTrue(years.contains(2019) && makes.any { it.name == "SEAT" } && models.any { it.name == "LEON" } && versions.isNotEmpty())
+        }
+        eeaResult.exceptionOrNull()?.let { e ->
+            if (e.message == EeaCatalog.UNAVAILABLE) println("WARNING: EEA catalogue refuses the app (firewall): ${e.message}") else throw e
+        }
 
         val rdw = RdwClient(http).lookup("HLZ-85-B", 0)
         println("RDW: $rdw")
