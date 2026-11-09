@@ -118,14 +118,43 @@ object DerivedSensors {
 /** Unified lookup over PID sensors and calculated sensors. */
 /**
  * Gauges that read whichever source the car has: oil temperature from the standard PID or the maker's, oil pressure
- * from the maker's (no standard PID exists).
+ * and tyre pressures from the maker's (no standard PID exists), built in or imported (OBDb, PID packs).
  */
 object VirtualSensors {
     private val C = SensorCategory.ENGINE
     val OIL_TEMP = SensorDef("OIL_TEMP", -3, "Engine oil temperature", "Oil temp", ObdUnit.CELSIUS, -40.0, 160.0, C, 0) { null }
     val OIL_PRESS = SensorDef("OIL_PRESS", -3, "Engine oil pressure", "Oil pressure", ObdUnit.BAR, 0.0, 7.0, C, 1) { null }
-    val all = listOf(OIL_TEMP, OIL_PRESS)
+    private val V = SensorCategory.VEHICLE
+    val TYRE_FL = SensorDef("TYRE_FL", -3, "Tyre pressure front left", "Tyre FL", ObdUnit.BAR, 0.0, 4.0, V, 2) { null }
+    val TYRE_FR = SensorDef("TYRE_FR", -3, "Tyre pressure front right", "Tyre FR", ObdUnit.BAR, 0.0, 4.0, V, 2) { null }
+    val TYRE_RL = SensorDef("TYRE_RL", -3, "Tyre pressure rear left", "Tyre RL", ObdUnit.BAR, 0.0, 4.0, V, 2) { null }
+    val TYRE_RR = SensorDef("TYRE_RR", -3, "Tyre pressure rear right", "Tyre RR", ObdUnit.BAR, 0.0, 4.0, V, 2) { null }
+    val tyres = listOf(TYRE_FL, TYRE_FR, TYRE_RL, TYRE_RR)
+    val all = listOf(OIL_TEMP, OIL_PRESS) + tyres
     val byKey = all.associateBy { it.key }
+
+    private val tyre = Regex("tire|tyre|reifen|neum|pneu|gomm", RegexOption.IGNORE_CASE)
+    private val pressure = Regex("press|druck", RegexOption.IGNORE_CASE)
+    /** Set points, warnings, temperatures, inner twin tyres, the spare ...: not the pressure of the wheel itself. */
+    private val notTheWheel = Regex("set|warn|temp|diffus|inner|interior|spare|repuesto|sensor id|battery|bater|status|thresh|limit|adapt|nominal|target",
+        RegexOption.IGNORE_CASE)
+    private val front = Regex("front|delanter|vorn|avant|anterior")
+    private val rear = Regex("rear|back|traser|hinten|arri[eè]re|posterior")
+    private val left = Regex("left|izquierd|links|gauche|sinistr")
+    private val right = Regex("right|derech|rechts|droit|destr")
+    private val short = Regex("\\b(FL|FR|RL|RR|LF|RF|LR)\\b")
+
+    /** Which wheel a sensor name speaks of ("FL", "FR", "RL", "RR"), from English or Spanish words or the usual short forms. */
+    fun wheelOf(name: String): String? {
+        val n = name.lowercase()
+        val f = front.containsMatchIn(n); val r = rear.containsMatchIn(n); val l = left.containsMatchIn(n); val ri = right.containsMatchIn(n)
+        if (f != r && l != ri) return (if (f) "F" else "R") + (if (l) "L" else "R")
+        // "LF" (left front) is "FL"; "RF" is "FR"; "LR" is "RL". ("RR" reads the same either way.)
+        return short.find(name.uppercase())?.value?.let { if (it == "LF" || it == "RF" || it == "LR") "${it[1]}${it[0]}" else it }
+    }
+
+    private fun tyreSensor(wheel: String, custom: Collection<SensorDef>) =
+        custom.firstOrNull { tyre.containsMatchIn(it.name) && pressure.containsMatchIn(it.name) && !notTheWheel.containsMatchIn(it.name) && wheelOf(it.name) == wheel }?.key
 
     private val temp = Regex("(oil|öl|aceite|huile|olio).*(temp)|(temp).*(oil|aceite|huile|olio)|\\beot\\b", RegexOption.IGNORE_CASE)
     private val press = Regex("(oil|öl|aceite|huile|olio).*(press|druck)|(press|druck).*(oil|aceite|huile|olio)|\\beop\\b", RegexOption.IGNORE_CASE)
@@ -134,6 +163,10 @@ object VirtualSensors {
     fun resolve(key: String, supported: Set<Int>, custom: Collection<SensorDef> = com.openobd.core.brand.CustomSensors.sensors): String? = when (key) {
         OIL_TEMP.key -> "015C".takeIf { 0x5C in supported } ?: custom.firstOrNull { temp.containsMatchIn(it.name) && !it.name.contains("calc", true) }?.key
         OIL_PRESS.key -> custom.firstOrNull { press.containsMatchIn(it.name) && !it.name.contains("control", true) && !it.name.contains("solenoid", true) }?.key
+        TYRE_FL.key -> tyreSensor("FL", custom)
+        TYRE_FR.key -> tyreSensor("FR", custom)
+        TYRE_RL.key -> tyreSensor("RL", custom)
+        TYRE_RR.key -> tyreSensor("RR", custom)
         else -> key
     }
 }

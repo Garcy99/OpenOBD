@@ -57,7 +57,18 @@ jobs:
           disk-size: 2048M
           emulator-boot-timeout: 600
           emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
-          script: ./gradlew connectedDebugAndroidTest
+          script: |
+            adb shell rm -rf /sdcard/Android/data/com.openobd/files/video-frames || true
+            ./gradlew connectedDebugAndroidTest -Pandroid.injected.androidTest.leaveApksInstalledAfterRun=true || (adb pull /sdcard/Android/data/com.openobd/files/video-frames video-frames; exit 1)
+            adb pull /sdcard/Android/data/com.openobd/files/video-frames video-frames || true
+      # A few frames of the 3D trip video, to look at (small JPEGs, kept briefly).
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: video-frames-api${{ matrix.api-level }}
+          retention-days: 3
+          if-no-files-found: ignore
+          path: video-frames
       - uses: actions/upload-artifact@v4
         if: failure()
         with:

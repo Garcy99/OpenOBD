@@ -225,7 +225,7 @@ fun DashboardScreen(onConnect: () -> Unit, onHud: () -> Unit, topBar: TopBarSlot
 
         pickFor?.let { slot ->
             SensorPickerDialog(
-                // Oil temperature and pressure first: they read whichever source the car has.
+                // Oil temperature, oil pressure and tyre pressures first: they read whichever source the car has.
                 sensors = com.openobd.core.obd.VirtualSensors.all + (if (vehicle == null) SensorCatalog.available((0..0xFF).toSet()) else available),
                 title = if (slot < 0) tr("Add gauge") else tr("Change gauge"),
                 onDismiss = { pickFor = null },
@@ -254,6 +254,8 @@ object DashboardPresets {
         "Economy" to listOf("CALC_FUEL@d", "CALC_CONS@d", "010D", "010C", "0104", "CALC_PEDAL"),
         "Performance" to listOf("010C", "010D", "CALC_POWER", "CALC_TORQUE", "CALC_BOOST", "CALC_PEDAL", "010F", "0105"),
         "Temperatures" to listOf("0105@d", "OIL_TEMP@d", "010F", "0146", "013C", "OIL_PRESS"),
+        // Cars with a pressure sensor in each wheel (direct TPMS).
+        "Tyres" to listOf("TYRE_FL@d", "TYRE_FR@d", "TYRE_RL@d", "TYRE_RR@d", "010D", "0146"),
     )
 }
 

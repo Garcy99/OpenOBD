@@ -1,0 +1,4 @@
+• Trip video in 3D: a drone follows the car over the real hills, with sharp aerial photos along the route
+• Tyre pressure gauges for cars with sensors in the wheels (VW, BMW/MINI, Opel/GM, Ford, Toyota and imported OBDb data)
+• Updates are now checked each time the app opens, with a popup
+• Clear message and VIN decoding when the European catalogue does not answer

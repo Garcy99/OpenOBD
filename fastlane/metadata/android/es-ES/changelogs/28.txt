@@ -1,0 +1,4 @@
+• Vídeo del viaje en 3D: un dron sigue al coche sobre el relieve real, con fotos aéreas nítidas a lo largo de la ruta
+• Relojes de presión de neumáticos para coches con sensores en las ruedas (VW, BMW/MINI, Opel/GM, Ford, Toyota y datos OBDb importados)
+• Las actualizaciones se comprueban al abrir la app, con aviso
+• Mensaje claro y decodificación del VIN cuando el catálogo europeo no responde

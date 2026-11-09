@@ -46,6 +46,7 @@ import androidx.compose.material3.rememberDatePickerState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -254,8 +255,11 @@ private fun SearchPanel(v: Vehicle, onFound: (VehicleSpecs) -> Unit) {
 
     if (SpecSource.RDW_PLATE in sources) PlateSection(country, v, onFound)
     if (SpecSource.DVLA_PLATE in sources) PlateSection(country, v, onFound)
+    var eeaDown by remember(country) { mutableStateOf(false) }
     if (SpecSource.NHTSA_VIN in sources) VinSection(v, onFound)
-    if (SpecSource.EEA_CATALOG in sources) EeaSection(if (country in SpecCountries.eea || country == "GB") country else null, v, onFound)
+    if (SpecSource.EEA_CATALOG in sources) EeaSection(if (country in SpecCountries.eea || country == "GB") country else null, v, onFound) { eeaDown = it }
+    // With the European catalogue down, the VIN decoder is the other way to fill the specifications in.
+    if (eeaDown && SpecSource.NHTSA_VIN !in sources) VinSection(v, onFound)
     if (SpecSource.EPA_CATALOG in sources) EpaSection(v, onFound)
     SectionCard(title = tr("Not listed?")) {
         Text(tr("Enter the details yourself; you can copy them from the registration certificate or the owner's manual."),
@@ -381,7 +385,7 @@ private fun StepHeader(label: String, value: String, onChange: () -> Unit) {
 }
 
 @Composable
-private fun EeaSection(country: String?, v: Vehicle, onFound: (VehicleSpecs) -> Unit) {
+private fun EeaSection(country: String?, v: Vehicle, onFound: (VehicleSpecs) -> Unit, onUnavailable: (Boolean) -> Unit) {
     val app = LocalApp.current
     val eea = remember { EeaCatalog(app.http) }
     val vinInfo = v.vin?.let { VinDecoder.decode(it) }
@@ -399,8 +403,10 @@ private fun EeaSection(country: String?, v: Vehicle, onFound: (VehicleSpecs) -> 
     var model by remember(country, year, make) { mutableStateOf<String?>(null) }
     var versions by remember(country, year, make, model) { mutableStateOf<List<EeaVersion>?>(null) }
     var error by remember { mutableStateOf<String?>(null) }
+    var attempt by remember { mutableIntStateOf(0) }
+    LaunchedEffect(error) { onUnavailable(error == EeaCatalog.UNAVAILABLE) }
 
-    LaunchedEffect(country) {
+    LaunchedEffect(country, attempt) {
         error = null
         runCatching { eea.years(country) }.onSuccess { ys ->
             years = ys
@@ -408,25 +414,28 @@ private fun EeaSection(country: String?, v: Vehicle, onFound: (VehicleSpecs) -> 
             year = (v.specs?.year ?: vinInfo?.modelYear)?.takeIf { it in all } ?: ys.firstOrNull()
         }.onFailure { error = it.message }
     }
-    LaunchedEffect(country, catalogYear) {
+    LaunchedEffect(country, catalogYear, attempt) {
         val y = catalogYear ?: return@LaunchedEffect
         runCatching { eea.makes(country, y) }.onSuccess { list ->
             makes = list
             if (make == null) make = list.firstOrNull { it.name == vinBrand || it.name == v.specs?.make?.uppercase() }?.name
         }.onFailure { error = it.message }
     }
-    LaunchedEffect(country, catalogYear, make) {
+    LaunchedEffect(country, catalogYear, make, attempt) {
         val y = catalogYear ?: return@LaunchedEffect; val mk = make ?: return@LaunchedEffect
         runCatching { eea.models(country, y, mk) }.onSuccess { models = it }.onFailure { error = it.message }
     }
-    LaunchedEffect(country, year, make, model) {
+    LaunchedEffect(country, year, make, model, attempt) {
         if (older) return@LaunchedEffect
         val y = year ?: return@LaunchedEffect; val mk = make ?: return@LaunchedEffect; val md = model ?: return@LaunchedEffect
         runCatching { eea.versions(country, y, mk, md) }.onSuccess { versions = it }.onFailure { error = it.message }
     }
 
     SectionCard(title = if (country != null) tr("Catalog of cars registered in %1\$s", countryName(country)) else tr("European catalog")) {
-        error?.let { ErrorText(it) }
+        error?.let {
+            ErrorText(it)
+            OutlinedButton(onClick = { error = null; attempt++ }) { Text(tr("Try again")) }
+        }
         val ys = years
         if (ys == null) { if (error == null) LinearProgressIndicator(Modifier.fillMaxWidth()); return@SectionCard }
         if (ys.isEmpty()) { Text(tr("No data for this country.")); return@SectionCard }

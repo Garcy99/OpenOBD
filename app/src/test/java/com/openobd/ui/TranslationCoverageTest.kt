@@ -70,6 +70,7 @@ class TranslationCoverageTest {
         com.openobd.core.specs.SpecFuel.entries.forEach { keys += it.label }
         com.openobd.core.specs.DgtLabel.entries.forEach { keys += it.label }
         keys += com.openobd.core.specs.EeaCatalog.ATTRIBUTION
+        keys += com.openobd.core.specs.EeaCatalog.UNAVAILABLE
         keys += listOf("Low", "Moderate", "High", "Unknown", "Demo car (simulated)")
         val client = com.openobd.core.obd.ObdClient(com.openobd.core.elm.Elm327(com.openobd.core.transport.DemoTransport()))
         listOf("7E8", "7E9", "7EA", "7EB", "7EC", "7ED", "7EE", "7EF", "ECU").forEach { keys += client.ecuName(it) }

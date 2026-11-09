@@ -644,11 +644,19 @@ class ModuleClient(private val elm: Elm327) : CodingBus {
         return m.data.copyOfRange(req.size, m.data.size)
     }
 
+    private var customCalls = 0L
+    /** Modules (header, receive, extended address) that gave no answer to custom values, and when. */
+    private val silentModules = HashMap<Triple<String, String, String>, Long>()
+
     /** Reads custom PIDs, switching headers as needed. Returns raw data bytes by sensor key. */
     suspend fun readCustom(pids: List<CustomPid>): Map<String, IntArray> {
         val out = HashMap<String, IntArray>()
         val readable = pids.filter { p -> runCatching { p.service in CustomPid.READ_ONLY_SERVICES }.getOrDefault(false) }
-        for ((_, group) in readable.groupBy { Triple(it.header.trim().uppercase(), it.receive.trim().uppercase(), it.extAddr.trim().uppercase()) }) {
+        customCalls++
+        for ((addr, group) in readable.groupBy { Triple(it.header.trim().uppercase(), it.receive.trim().uppercase(), it.extAddr.trim().uppercase()) }) {
+            // A module that did not answer last time is asked again only now and then (each try waits a timeout).
+            val quietSince = silentModules[addr]
+            if (quietSince != null && customCalls - quietSince < 8) continue
             val module = moduleFor(group.first())
             // One request per identifier, however many values are decoded from its reply.
             val byRequest = group.groupBy { it.request.uppercase() }
@@ -661,6 +669,10 @@ class ModuleClient(private val elm: Elm327) : CodingBus {
                 withModule(module) {
                     for ((req, ps) in byRequest) {
                         val msgs = request(req, 3000)
+                        // No answer at all: the module is not there (e.g. no tyre pressure monitor), so its other
+                        // values are not waited for this time.
+                        if (msgs.isEmpty()) { silentModules[addr] = customCalls; break }
+                        silentModules.remove(addr)
                         for (p in ps) extract(p, msgs)?.let { out[p.key] = it }
                     }
                 }

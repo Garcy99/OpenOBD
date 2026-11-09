@@ -24,7 +24,9 @@ class UrlHttp(private val userAgent: String = "OpenOBD (open-source OBD-II app)"
                 val code = c.responseCode
                 val stream = if (code in 200..299) c.inputStream else c.errorStream
                 val text = stream?.bufferedReader(Charsets.UTF_8)?.use { it.readText() }.orEmpty()
-                if (code !in 200..299) throw HttpException(code, "HTTP $code: ${text.take(200)}")
+                // Error pages (HTML from gateways and firewalls) are not shown to people; a short JSON / text reason is.
+                if (code !in 200..299) throw HttpException(code, "HTTP $code" +
+                    text.trim().takeIf { it.isNotEmpty() && !it.startsWith("<") }?.let { ": " + it.take(160) }.orEmpty())
                 text
             } catch (e: java.io.IOException) {
                 throw SpecsException("No internet connection or the service is unavailable (${e.javaClass.simpleName})")

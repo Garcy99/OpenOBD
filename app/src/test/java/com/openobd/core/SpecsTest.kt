@@ -28,7 +28,11 @@ class FixtureHttp(private val routes: List<Pair<String, String>>) : Http {
     val requests = mutableListOf<String>()
     private fun fixture(name: String) = javaClass.getResource("/fixtures/$name")!!.readText()
     private fun route(key: String) = routes.firstOrNull { key.contains(it.first) }?.second?.let(::fixture) ?: error("No fixture for $key")
-    override suspend fun get(url: String, headers: Map<String, String>) = route(url).also { requests += url }
+    override suspend fun get(url: String, headers: Map<String, String>): String {
+        val decoded = URLDecoder.decode(url, "UTF-8")
+        requests += decoded
+        return route(decoded)
+    }
     override suspend fun post(url: String, body: String, contentType: String, headers: Map<String, String>): String {
         val decoded = URLDecoder.decode(body, "UTF-8")
         requests += decoded
@@ -38,6 +42,16 @@ class FixtureHttp(private val routes: List<Pair<String, String>>) : Http {
 
 class SpecsTest {
     private fun date(y: Int, m: Int, d: Int) = Calendar.getInstance(TimeZone.getTimeZone("UTC")).apply { clear(); set(y, m - 1, d) }.timeInMillis
+
+    @Test
+    fun eeaFirewallGivesAClearMessage() = runBlocking {
+        val blocked = object : Http {
+            override suspend fun get(url: String, headers: Map<String, String>): String = throw com.openobd.core.specs.HttpException(403, "HTTP 403")
+            override suspend fun post(url: String, body: String, contentType: String, headers: Map<String, String>): String = error("POST")
+        }
+        val e = runCatching { EeaCatalog(blocked).makes("ES", 2019) }.exceptionOrNull()
+        assertTrue(e is SpecsException && e.message == EeaCatalog.UNAVAILABLE)
+    }
 
     @Test
     fun eeaVersionsForSpain() = runBlocking {

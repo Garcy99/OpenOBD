@@ -30,8 +30,9 @@ class Mp4Writer(file: File, val width: Int, val height: Int, private val fps: In
         private set
     private var queued = 0L
     private var finished = false
-    private val bitmap: Bitmap? = if (surfaceInput) null else Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
-    private val argb: IntArray? = if (surfaceInput) null else IntArray(width * height)
+    private val bitmap: Bitmap? by lazy { if (surfaceInput) null else Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888) }
+    private val argb: IntArray? by lazy { if (surfaceInput) null else IntArray(width * height) }
+    private var bitmapMade = false
 
     init {
         val format = MediaFormat.createVideoFormat(MediaFormat.MIMETYPE_VIDEO_AVC, width, height).apply {
@@ -46,7 +47,7 @@ class Mp4Writer(file: File, val width: Int, val height: Int, private val fps: In
             surface = if (surfaceInput) codec.createInputSurface() else null
             codec.start()
         } catch (e: Exception) {
-            codec.release(); muxer.release(); bitmap?.recycle(); throw e
+            codec.release(); muxer.release(); throw e
         }
     }
 
@@ -56,11 +57,24 @@ class Mp4Writer(file: File, val width: Int, val height: Int, private val fps: In
             val c = surface.lockHardwareCanvas()
             try { draw(c) } finally { surface.unlockCanvasAndPost(c) }
         } else {
-            val bmp = bitmap!!
+            val bmp = bitmap!!; bitmapMade = true
             draw(Canvas(bmp))
             bmp.getPixels(argb!!, 0, width, 0, 0, width, height)
             queueYuv(argb, false)
         }
+        drain(false)
+    }
+
+    /** The encoder's input for frames drawn with OpenGL (null when the encoder takes pictures in memory). */
+    val inputSurface: Surface? get() = surface
+
+    /** After a frame was drawn into [inputSurface] by someone else (OpenGL): collects what the encoder made. */
+    fun frameDrawn() = drain(false)
+
+    /** One frame from pixels in memory (ARGB, rows from the top), when the encoder takes pictures in memory. */
+    fun frameArgb(px: IntArray) {
+        check(surface == null) { "This writer takes frames on its surface" }
+        queueYuv(px, false)
         drain(false)
     }
 
@@ -109,7 +123,7 @@ class Mp4Writer(file: File, val width: Int, val height: Int, private val fps: In
             // Writes the index of the file: without it no player can open the video, so a failure here is reported.
             muxer.stop()
         } finally {
-            runCatching { muxer.release() }; runCatching { surface?.release() }; runCatching { codec.release() }; bitmap?.recycle()
+            runCatching { muxer.release() }; runCatching { surface?.release() }; runCatching { codec.release() }; if (bitmapMade) bitmap?.recycle()
         }
     }
 
@@ -117,7 +131,7 @@ class Mp4Writer(file: File, val width: Int, val height: Int, private val fps: In
         runCatching { codec.stop() }; runCatching { codec.release() }
         runCatching { if (started) muxer.stop() }; runCatching { muxer.release() }
         runCatching { surface?.release() }
-        bitmap?.recycle()
+        if (bitmapMade) bitmap?.recycle()
     }
 
     private fun drain(end: Boolean) {

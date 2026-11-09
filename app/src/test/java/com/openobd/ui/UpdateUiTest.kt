@@ -71,4 +71,28 @@ class UpdateUiTest {
         rule.onAllNodesWithText("Skip this version")[0].performClick()
         waitFor { c.updater.state.value is Updater.State.Idle }
     }
+
+    @Test
+    fun automaticCheckPopsUpAndRetriesWithoutSignal() {
+        val c = (rule.activity.application as OpenObdApp).container
+        runBlocking { c.settings.update { it.copy(language = "en", onboarded = true, tourSeen = true) } }
+        waitFor { I18n.language == "en" }
+        val prefs = rule.activity.getSharedPreferences("updates", android.content.Context.MODE_PRIVATE)
+        prefs.edit().clear().commit()
+        // No signal: nothing shows, and the next automatic check is not put off for hours.
+        c.updater.latest = { null }
+        runBlocking { c.updater.check() }
+        assertTrue(c.updater.state.value is Updater.State.Idle)
+        assertEquals(0L, prefs.getLong("last", 0))
+        // Signal again (the retry pause over): the new version pops up by itself.
+        prefs.edit().putLong("tried", 0).commit()
+        c.updater.latest = { newer }
+        runBlocking { c.updater.check() }
+        waitFor { rule.onAllNodesWithTag("updateDialog").fetchSemanticsNodes().isNotEmpty() }
+        rule.onNodeWithTag("updateLater").performClick()
+        waitFor { rule.onAllNodesWithTag("updateDialog").fetchSemanticsNodes().isEmpty() }
+        // "Later": not again on the next opening of the app within hours.
+        runBlocking { c.updater.check() }
+        assertTrue(c.updater.state.value is Updater.State.Idle)
+    }
 }

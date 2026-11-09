@@ -49,6 +49,14 @@ class MainActivity : ComponentActivity() {
         }
     }
 
+    /** Coming back to the app (also after days in the background): look for a new version, at most every few hours. */
+    override fun onStart() {
+        super.onStart()
+        val c = (application as OpenObdApp).container
+        // Not in tests: they must not depend on what is published on GitHub.
+        if (android.os.Build.FINGERPRINT != "robolectric") c.scope.launch { c.updater.check() }
+    }
+
     /** Leaving the app: send this phone's changes to the user's Drive (when connected; at most every few minutes). */
     override fun onStop() {
         super.onStop()

@@ -95,6 +95,42 @@ val GM_OIL_PIDS = listOf(
     CustomPid("gm_eop", "Engine oil pressure (GM)", "Oil press", "222345", "A*0.04", 0.0, 7.0, "bar", "7E0", source = "GM ECM, OBDb (CC BY-SA 4.0)"),
 )
 
+/**
+ * Tyre pressures from the car's own tyre pressure monitor (direct TPMS, with a sensor in each wheel), as in the OBDb
+ * community data. Cars that only estimate pressure from wheel speeds (indirect TPMS) have no such values and do not
+ * answer; the app then stops asking.
+ */
+private fun tyres(prefix: String, maker: String, request: (Int) -> String, formula: (Int) -> String, header: String,
+                  receive: String = "", extAddr: String = "", source: String = OBDB_SRC) =
+    listOf("front left" to "FL", "front right" to "FR", "rear left" to "RL", "rear right" to "RR").mapIndexed { i, (where, short) ->
+        CustomPid("${prefix}_tp_${short.lowercase()}", "Tyre pressure $where ($maker)", "Tyre $short", request(i), formula(i), 0.0, 5.0, "bar",
+            header, receive = receive, source = source, extAddr = extAddr)
+    }
+
+/** VW group tyre pressure module (address 70B): Polo, Passat, Tiguan, Audi A4 ... */
+val VAG_TYRE_PIDS = tyres("vag", "VW group", { listOf("2218A1", "2218A0", "2218A2", "2218A3")[it] }, { "F/40" }, "70B")
+
+/**
+ * BMW / MINI tyre pressure control (RDC, address 29 behind the gateway). Some models send the value high byte first
+ * and others low byte first; the set pressure in the same reply (or else a plausible range) tells which.
+ */
+val BMW_TYRE_PIDS = tyres("bmw", "BMW", { "22DC9" + "89AB"[it] }, {
+    val be = "(F*256+G)"; val le = "(G*256+F)"; val sBe = "(I*256+J)"; val sLe = "(J*256+I)"
+    val setBe = "(($sBe>=1000)*($sBe<=4500))"; val setLe = "(($sLe>=1000)*($sLe<=4500))"; val valBe = "(($be>=300)*($be<=6300))"
+    val known = "Max($setBe,$setLe)"
+    val useBe = "($known*$setBe+(1-$known)*$valBe)"
+    "($useBe*$be+(1-$useBe)*$le)/1000"
+}, "6F1", receive = "629", extAddr = "29")
+
+/** GM engine module's copy of the tyre pressures (Global A: Cruze, Malibu, Equinox; Opel Astra J / Insignia with TPMS). */
+val GM_TYRE_PIDS = tyres("gm", "GM", { listOf("22248E", "22248F", "222491", "222490")[it] }, { "A*0.0689476" }, "7E0", source = "GM ECM, OBDb (CC BY-SA 4.0)")
+
+/** Ford body module's tyre pressures (address 726): Focus, Kuga, F-150 ... */
+val FORD_TYRE_PIDS = tyres("ford", "Ford", { listOf("222813", "222814", "222816", "222815")[it] }, { "(A*256+B)*0.00344738" }, "726")
+
+/** Toyota / Lexus tyre pressure monitor (address 750, sub-address 2A): Corolla, RAV4 ... */
+val TOYOTA_TYRE_PIDS = tyres("toy", "Toyota", { "2130" }, { "ABCD"[it] + "/58-0.5" }, "750", receive = "758", extAddr = "2A")
+
 data class Brand(val id: String, val name: String, val family: BrandFamily, val wmis: List<String>)
 
 private fun m(name: String, short: String, tx: Int, rx: Int, cat: ModuleCategory, secondary: Boolean = false) =
@@ -160,6 +196,7 @@ object Families {
         "Ford uses UDS on its high-speed CAN bus, reachable by any CAN adapter. Modules marked \"MS-CAN\" sit on the medium-speed bus " +
             "and only answer through adapters with an HS/MS-CAN switch (OBDLink EX/MX+, vLinker FS/MC+).",
         secondaryBus = FORD_MS,
+        builtinPids = FORD_TYRE_PIDS,
     )
 
     val MAZDA = BrandFamily(
@@ -197,7 +234,7 @@ object Families {
         ),
         "Addresses are for UDS platforms (MQB/MLB/MEB, roughly 2012+). Older PQ-platform cars use VW TP2.0 / KWP1281, which ELM327 adapters can't speak; " +
             "on those only the engine and generic codes are available.",
-        builtinPids = VAG_OIL_PIDS,
+        builtinPids = VAG_OIL_PIDS + VAG_TYRE_PIDS,
     )
 
     val HMG = BrandFamily(
@@ -232,6 +269,7 @@ object Families {
             m("Air conditioning", "A/C", 0x7C4, 0x7CC, B),
         ),
         "Body ECUs on many Toyota/Lexus models sit behind the main body gateway with extended addressing and are not reachable with ELM327.",
+        builtinPids = TOYOTA_TYRE_PIDS,
     )
 
     val NISSAN = BrandFamily(
@@ -281,7 +319,7 @@ object Families {
         "GMLAN physical addressing. Modules that do not speak UDS are read with the GMLAN service (\$A9) and cleared with \$04. " +
             "Global B vehicles (2020+) may block access through the gateway.",
         discoveryRanges = listOf(0x240..0x25F to "6XX", 0x700..0x7F7 to "7XX"),
-        builtinPids = GM_OIL_PIDS,
+        builtinPids = GM_OIL_PIDS + GM_TYRE_PIDS,
     )
 
     /** Opel / Vauxhall on GM's Global A architecture (Astra H/J/K, Insignia A, Corsa D/E, Zafira B/C, Meriva B, Mokka). */
@@ -302,7 +340,7 @@ object Families {
             "reachable with an HS/MS-CAN switch adapter; some body modules use single-wire CAN (pin 1), which ELM327 adapters cannot reach.",
         secondaryBus = OPEL_MS,
         discoveryRanges = listOf(0x240..0x25F to "6XX", 0x700..0x7F7 to "7XX"),
-        builtinPids = GM_OIL_PIDS,
+        builtinPids = GM_OIL_PIDS + GM_TYRE_PIDS,
     )
 
     val STELLANTIS = BrandFamily("stellantis", "Stellantis / FCA / PSA", obdBase,
@@ -311,7 +349,7 @@ object Families {
     val BMW = BrandFamily("bmw", "BMW / MINI", obdBase + bmwModules(),
         "BMW / MINI modules are reached through the central gateway with extended addressing (requests to 6F1 with the module address first). " +
             "OpenOBD frames these by hand, so they work with ordinary ELM327 adapters too; not every module exists on every model. " +
-            "Use an adapter set to 500 kbps CAN (D-CAN, 2008+).", builtinPids = BMW_OIL_PIDS)
+            "Use an adapter set to 500 kbps CAN (D-CAN, 2008+).", builtinPids = BMW_OIL_PIDS + BMW_TYRE_PIDS)
     val MERCEDES = BrandFamily("mercedes", "Mercedes-Benz / smart", obdBase,
         "Module addresses differ between model series. Use Discover modules to find the modules on your car.")
     val HONDA = BrandFamily("honda", "Honda / Acura", obdBase,

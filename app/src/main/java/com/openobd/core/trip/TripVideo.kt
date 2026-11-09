@@ -100,16 +100,19 @@ class TripVideo(val points: List<TrackPoint>, val seconds: Double = 30.0, val fp
     companion object {
         const val DEG = PI / 180
         val texts = listOf(
-            "Video of the drive (MP4)", "The drive as a short film: a flight over the relief or the aerial photos following the car, with its speed, engine speed and height. To share or keep.",
+            "Video of the drive (MP4)", "The drive as a short film: a drone follows the car over the hills in 3D, with aerial photos or relief, and its speed, engine speed and height. To share or keep.",
             "Vertical (phone)", "Horizontal", "Length", "%1\$s s", "Making the video… %1\$s %%", "This phone cannot make videos.",
         )
 
-        /** The area the video's map covers (minLat, minLon, maxLat, maxLon): the route with room around it. */
-        fun area(points: List<TrackPoint>): DoubleArray {
+        /**
+         * The area the video's map covers (minLat, minLon, maxLat, maxLon): the route with room around it (at least
+         * [minPad] degrees of latitude; more for the drone, which sees towards the horizon).
+         */
+        fun area(points: List<TrackPoint>, minPad: Double = 0.015): DoubleArray {
             val minLat = points.minOf { it.lat }; val maxLat = points.maxOf { it.lat }
             val minLon = points.minOf { it.lon }; val maxLon = points.maxOf { it.lon }
             val k = cos(Math.toRadians((minLat + maxLat) / 2))
-            val pad = max(max(maxLat - minLat, (maxLon - minLon) * k) * 0.6, 0.015)
+            val pad = max(max(maxLat - minLat, (maxLon - minLon) * k) * 0.6, minPad)
             return doubleArrayOf(minLat - pad, minLon - pad / k, maxLat + pad, maxLon + pad / k)
         }
     }

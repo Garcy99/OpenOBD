@@ -57,6 +57,8 @@ class EeaCatalog(private val http: Http) {
         const val URL = "https://discodata.eea.europa.eu/sql"
         const val TABLE = "[CO2Emission].[latest].[co2cars]"
         const val ATTRIBUTION = "Data: European Environment Agency (EEA), CO2 emissions from new passenger cars"
+        /** The EEA's service refuses the app's questions (its firewall, since late 2026) or is down. */
+        const val UNAVAILABLE = "The European registration catalogue (EEA) is not answering the app right now. Decode the VIN or enter the data by hand below."
 
         fun sqlString(v: String) = "'" + v.replace("'", "''") + "'"
 
@@ -79,8 +81,12 @@ class EeaCatalog(private val http: Http) {
     }
 
     private suspend fun query(sql: String, rows: Int = 300): List<JsonObject> {
-        val body = "query=" + enc(sql) + "&p=1&nrOfHits=$rows"
-        val text = http.post(URL, body, "application/x-www-form-urlencoded")
+        // GET: the service's firewall now refuses every POST.
+        val text = try {
+            http.get("$URL?query=" + enc(sql) + "&p=1&nrOfHits=$rows")
+        } catch (e: HttpException) {
+            if (e.code == 403 || e.code == 429 || e.code >= 500) throw SpecsException(UNAVAILABLE) else throw e
+        }
         val root = json.parseToJsonElement(text).jsonObject
         root["errors"]?.let { e -> throw SpecsException("EEA: " + ((e as? JsonArray)?.firstOrNull()?.jsonObject?.s("error") ?: e.toString())) }
         return root["results"]?.jsonArray?.map { it.jsonObject } ?: emptyList()
@@ -93,26 +99,30 @@ class EeaCatalog(private val http: Http) {
         model?.let { add("UPPER(Cn) = " + sqlString(it.uppercase())) }
     }.joinToString(" AND ").ifEmpty { "1 = 1" }
 
+    // The service's firewall rejects queries with ORDER BY (it takes them for an attack), so rows are fetched whole
+    // and sorted here.
+
     suspend fun years(country: String?): List<Int> =
-        query("SELECT DISTINCT Year FROM $TABLE WHERE ${where(country, null)} ORDER BY Year DESC").mapNotNull { it.i("Year") }
+        query("SELECT DISTINCT Year FROM $TABLE WHERE ${where(country, null)}").mapNotNull { it.i("Year") }.sortedDescending()
 
     suspend fun makes(country: String?, year: Int): List<CatalogEntry> =
-        query("SELECT TOP 300 UPPER(Mk) AS mk, SUM(R) AS n FROM $TABLE WHERE ${where(country, year)} AND Mk IS NOT NULL GROUP BY UPPER(Mk) ORDER BY n DESC")
-            .mapNotNull { r -> r.s("mk")?.let { CatalogEntry(it, r.d("n")?.toLong() ?: 0) } }
+        query("SELECT UPPER(Mk) AS mk, SUM(R) AS n FROM $TABLE WHERE ${where(country, year)} AND Mk IS NOT NULL GROUP BY UPPER(Mk)", rows = 2000)
+            .mapNotNull { r -> r.s("mk")?.let { CatalogEntry(it, r.d("n")?.toLong() ?: 0) } }.sortedByDescending { it.count }.take(300)
 
     suspend fun models(country: String?, year: Int, make: String): List<CatalogEntry> =
-        query("SELECT TOP 300 UPPER(Cn) AS cn, SUM(R) AS n FROM $TABLE WHERE ${where(country, year, make)} AND Cn IS NOT NULL GROUP BY UPPER(Cn) ORDER BY n DESC")
-            .mapNotNull { r -> r.s("cn")?.let { CatalogEntry(it, r.d("n")?.toLong() ?: 0) } }
+        query("SELECT UPPER(Cn) AS cn, SUM(R) AS n FROM $TABLE WHERE ${where(country, year, make)} AND Cn IS NOT NULL GROUP BY UPPER(Cn)", rows = 2000)
+            .mapNotNull { r -> r.s("cn")?.let { CatalogEntry(it, r.d("n")?.toLong() ?: 0) } }.sortedByDescending { it.count }.take(300)
 
     suspend fun versions(country: String?, year: Int, make: String, model: String): List<EeaVersion> =
         query(
-            "SELECT TOP 80 UPPER(Ft) AS ft, Fm AS fm, [Ec (cm3)] AS ec, [Ep (KW)] AS kw, AVG([M (kg)]) AS mass, " +
+            "SELECT UPPER(Ft) AS ft, Fm AS fm, [Ec (cm3)] AS ec, [Ep (KW)] AS kw, AVG([M (kg)]) AS mass, " +
                 "AVG([Ewltp (g/km)]) AS wltp, AVG([Enedc (g/km)]) AS nedc, AVG(Fc) AS fc, AVG([Z (Wh/km)]) AS z, AVG(Zr) AS zr, SUM(R) AS n " +
-                "FROM $TABLE WHERE ${where(country, year, make, model)} GROUP BY UPPER(Ft), Fm, [Ec (cm3)], [Ep (KW)] ORDER BY n DESC",
+                "FROM $TABLE WHERE ${where(country, year, make, model)} GROUP BY UPPER(Ft), Fm, [Ec (cm3)], [Ep (KW)]",
+            rows = 2000,
         ).map { r ->
             EeaVersion(fuelOf(r.s("ft"), r.s("fm")), r.i("ec"), r.d("kw"), r.i("mass"), r.d("wltp")?.takeIf { it > 0 },
                 r.d("nedc")?.takeIf { it > 0 }, r.d("fc")?.takeIf { it in 0.5..40.0 }, r.d("z")?.takeIf { it > 0 }, r.i("zr")?.takeIf { it > 0 }, r.d("n")?.toLong() ?: 0)
-        }
+        }.sortedByDescending { it.registrations }.take(80)
 
     fun toSpecs(country: String?, year: Int, make: String, model: String, v: EeaVersion, now: Long): VehicleSpecs {
         val co2 = v.co2Wltp ?: v.co2Nedc

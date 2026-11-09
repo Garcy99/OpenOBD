@@ -122,8 +122,6 @@ class OpenObdApp : Application() {
                 }
             }
             container.sync.syncIfConnected(force = true)
-            // Not in tests: they must not depend on what is published on GitHub.
-            if (android.os.Build.FINGERPRINT != "robolectric") container.updater.check()
         }
         keepWidgetUpdated()
         notifySavedTrips()
