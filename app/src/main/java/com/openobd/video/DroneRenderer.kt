@@ -210,7 +210,7 @@ class DroneRenderer(
         val along = attrib(ribbonProgram, "aAlong", 2, 8, 6)
         // A dark edge first, then the line itself.
         for (pass in 0..1) {
-            val half = cam.distance * (if (pass == 0) 0.0105 else 0.0068) * (min(width, height) / 1080.0).coerceAtLeast(0.6)
+            val half = cam.distance * (if (pass == 0) 0.016 else 0.011) * (min(width, height) / 1080.0).coerceAtLeast(0.6)
             uniform(ribbonProgram, "uHalfWidth") { GLES20.glUniform1f(it, half.toFloat()) }
             uniform(ribbonProgram, "uOutline") { GLES20.glUniform1f(it, if (pass == 0) 1f else 0f) }
             GLES20.glDrawArrays(GLES20.GL_TRIANGLE_STRIP, 0, ribbonCount)

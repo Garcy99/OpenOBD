@@ -153,17 +153,20 @@ class DroneScript(val video: TripVideo, val frame: LocalFrame, val ground: Groun
             val carX = frame.x(s.lon); val carY = frame.y(s.lat); val carZ = ground.at(carX, carY)
             val e = eyes[f]
             var need = ground.at(e[0], e[1]) + 40 + 0.08 * dist[f]
-            // Nothing between the drone and the car.
-            if (s.close > 0.3) for (k in 1..9) {
-                val u = k / 10.0
-                val g = ground.at(carX + (e[0] - carX) * u, carY + (e[1] - carY) * u) + 12
+            // No hill between the drone and the car. Only from a quarter of the way out: the road just behind the car
+            // (going downhill) would otherwise send the drone straight up.
+            if (s.close > 0.8) for (k in 5..18) {
+                val u = k / 20.0
+                val g = ground.at(carX + (e[0] - carX) * u, carY + (e[1] - carY) * u) + 3 + 10 * u
                 need = max(need, carZ + (g - carZ) / u)
             }
-            lift[f] = max(0.0, need - e[2])
+            // At most a little higher than planned: a drone looking straight down no longer feels like following.
+            lift[f] = (need - e[2]).coerceIn(0.0, 0.7 * dist[f])
         }
-        val step = 4.0
-        for (f in n - 2 downTo 0) lift[f] = max(lift[f], lift[f + 1] - step)
-        for (f in 1 until n) lift[f] = max(lift[f], lift[f - 1] - step)
+        // A few metres a frame close up, more when high up (in proportion to the distance).
+        fun step(f: Int) = 4.0 + 0.02 * dist[f]
+        for (f in n - 2 downTo 0) lift[f] = max(lift[f], lift[f + 1] - step(f))
+        for (f in 1 until n) lift[f] = max(lift[f], lift[f - 1] - step(f))
         cameras = List(n) { f ->
             val s = shots[f]
             val carX = frame.x(s.lon); val carY = frame.y(s.lat)

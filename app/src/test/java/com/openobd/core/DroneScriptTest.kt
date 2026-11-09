@@ -100,4 +100,24 @@ class DroneScriptTest {
     private fun dot(a: DoubleArray, b: DoubleArray) = a[0] * b[0] + a[1] * b[1] + a[2] * b[2]
     private fun cross(a: DoubleArray, b: DoubleArray) = doubleArrayOf(a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0])
     private fun norm(a: DoubleArray) = sqrt(dot(a, a)).let { l -> doubleArrayOf(a[0] / l, a[1] / l, a[2] / l) }
+
+    @Test
+    fun `over steep hills the drone still follows from behind, not from straight above`() {
+        val pts = (0 until 160).map { i ->
+            val a = i / 160.0 * 1.6 * Math.PI
+            TrackPoint(1_700_000_000_000L + i * 2000L, 40.95 + 0.012 * sin(a), -4.12 + 0.02 * cos(a) + i * 0.0001, 40f + i % 70, rpm = 1800f, alt = 1000f + i)
+        }
+        val steep = Terrain { lat, lon -> 1000 + 180 * sin(lat * 400) * cos(lon * 300) + 90 * sin(lon * 900) }
+        val area = TripVideo.area(pts, minPad = 0.03)
+        val fr = LocalFrame(area)
+        val v = TripVideo(pts, seconds = 4.0, fps = 30)
+        val g = Ground(fr, steep)
+        val s = DroneScript(v, fr, g, 9.0 / 16)
+        val pitches = (0 until v.frames).map { s.camera(it) }.filter { it.shot.close > 0.999 }.map { c ->
+            Math.toDegrees(Math.atan2(c.eyeZ - c.carZ, Math.hypot(c.eyeX - c.carX, c.eyeY - c.carY)))
+        }
+        assertTrue(pitches.isNotEmpty())
+        // Hills of 50° slopes, steeper than any road: the drone keeps above them but still behind the car.
+        assertTrue("pitches ${pitches.max()} ${pitches.average()}", pitches.max() < 70 && pitches.average() < 55)
+    }
 }

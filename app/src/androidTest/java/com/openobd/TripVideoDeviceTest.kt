@@ -87,7 +87,7 @@ class TripVideoDeviceTest {
             TrackPoint(1_700_000_000_000L + i * 2000L, 40.95 + 0.012 * Math.sin(a), -4.12 + 0.02 * Math.cos(a) + i * 0.0001, 40f + i % 70, rpm = 1800f, alt = 1000f + i)
         }
         // Hills: two ridges and a valley, so the drone has to climb.
-        val terrain = com.openobd.core.trip.Terrain { lat, lon -> 1000 + 180 * Math.sin(lat * 400) * Math.cos(lon * 300) + 90 * Math.sin(lon * 900) }
+        val terrain = com.openobd.core.trip.Terrain { lat, lon -> 1000 + 160 * Math.sin(lat * 250) * Math.cos(lon * 200) + 25 * Math.sin(lon * 700) }
         val area = TripVideo.area(pts, minPad = 0.03)
         val frame = com.openobd.core.trip.LocalFrame(area)
         val video = TripVideo(pts, seconds = 4.0, fps = 30)
