@@ -5,6 +5,13 @@ on:
   pull_request:
   workflow_dispatch:
 
+# A newer push to the same branch makes the running checks pointless.
+concurrency:
+  group: android-ci-${{ github.ref }}
+  cancel-in-progress: true
+
+# Artifacts count against the account's Actions storage: APKs only when asked for (run the workflow by hand;
+# releases carry the APKs anyway), reports only when something failed, and all kept just a few days.
 jobs:
   build:
     runs-on: ubuntu-latest
@@ -22,15 +29,18 @@ jobs:
       - name: Build APKs
         run: ./gradlew assembleDebug assembleRelease
       - uses: actions/upload-artifact@v4
+        if: github.event_name == 'workflow_dispatch'
         with:
           name: OpenOBD-apk
+          retention-days: 7
           path: |
             app/build/outputs/apk/release/app-release.apk
             app/build/outputs/apk/debug/app-debug.apk
       - uses: actions/upload-artifact@v4
-        if: always()
+        if: failure()
         with:
           name: screenshots
+          retention-days: 5
           path: app/build/screenshots
 
   # Drives the real driver (Wi-Fi transport, ELM327, OBD and module clients) against the independent
@@ -57,9 +67,10 @@ jobs:
       - name: Session against the emulator
         run: ./gradlew testDebugUnitTest --tests '*ExternalEmulatorTest' -PelmEmulator=127.0.0.1:35000
       - uses: actions/upload-artifact@v4
-        if: always()
+        if: failure()
         with:
           name: elm-emulator-log
+          retention-days: 5
           path: |
             app/build/elm-emulator.log
             app/build/reports/tests/testDebugUnitTest

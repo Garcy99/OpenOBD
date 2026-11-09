@@ -59,9 +59,10 @@ jobs:
           emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
           script: ./gradlew connectedDebugAndroidTest
       - uses: actions/upload-artifact@v4
-        if: always()
+        if: failure()
         with:
           name: device-test-report-api${{ matrix.api-level }}
+          retention-days: 5
           path: |
             app/build/reports/androidTests/connected
             app/build/outputs/androidTest-results/connected

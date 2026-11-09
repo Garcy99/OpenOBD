@@ -28,6 +28,7 @@ jobs:
         if: failure()
         with:
           name: live-services-report
+          retention-days: 5
           path: app/build/reports/tests/testDebugUnitTest
 
   latest-emulator:
@@ -52,7 +53,8 @@ jobs:
       - name: Session against the emulator
         run: ./gradlew testDebugUnitTest --tests '*ExternalEmulatorTest' -PelmEmulator=127.0.0.1:35000
       - uses: actions/upload-artifact@v4
-        if: always()
+        if: failure()
         with:
           name: latest-emulator-log
+          retention-days: 5
           path: app/build/elm-emulator.log
