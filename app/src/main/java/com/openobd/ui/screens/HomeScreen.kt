@@ -45,6 +45,7 @@ import androidx.compose.material.icons.filled.MonitorHeart
 import androidx.compose.material.icons.filled.PhotoCamera
 import androidx.compose.material.icons.filled.PowerSettingsNew
 import androidx.compose.material.icons.filled.Route
+import androidx.compose.material.icons.filled.Explore
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.SettingsInputAntenna
 import androidx.compose.material.icons.filled.Speed
@@ -119,6 +120,7 @@ import com.openobd.ui.theme.Orange
 import com.openobd.ui.theme.Violet
 import com.openobd.ui.theme.Warn
 import kotlinx.coroutines.launch
+import androidx.compose.ui.platform.testTag
 import java.text.DateFormat
 import java.util.Calendar
 import java.util.Date
@@ -416,6 +418,16 @@ private fun AttentionFeed(state: ConnectionState, onNavigate: (String) -> Unit, 
                 Column(horizontalAlignment = Alignment.End) {
                     TextButton(onClick = onStartSetup) { Text(tr("Start setup")) }
                     TextButton(onClick = onSkipSetup) { Text(tr("Skip")) }
+                }
+            })
+    }
+    if (settings.onboarded && !settings.tourSeen) notices += {
+        NoticeCard(Icons.Default.Explore, tr("Get to know OpenOBD"), tr("A short tour of the basics, and an optional full tour of everything the app can do."),
+            MaterialTheme.colorScheme.primary,
+            trailing = {
+                Column(horizontalAlignment = Alignment.End) {
+                    TextButton(onClick = { onNavigate(Routes.tour(false)) }, modifier = Modifier.testTag("startTour")) { Text(tr("Take the tour")) }
+                    TextButton(onClick = { scope.launch { app.settings.update { it.copy(tourSeen = true) } } }) { Text(tr("No, thanks")) }
                 }
             })
     }

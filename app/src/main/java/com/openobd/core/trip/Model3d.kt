@@ -37,11 +37,22 @@ object Route3mf {
      * system), or five spools (cyan, magenta, yellow, black, white) mixed on the surface: the ground is a halftone of
      * tiny painted areas that blend, seen from a normal distance, into a continuous range of colours.
      */
-    enum class Colours(val label: String) { ALL("All colours"), SIX("6 filaments"), FOUR("4 filaments"), CMYKW("CMYKW colour mixing") }
+    enum class Colours(val label: String) {
+        ALL("All colours"), SIX("6 filaments"), FOUR("4 filaments"), CMYKW("CMYKW colour mixing"), LANDSCAPE("Landscape colour mixing");
 
-    /** The five spools of colour mixing, in loading order (black first: it is also the plinth). */
+        /** The spools mixed on the ground (empty when each colour has its own filament). */
+        val inks: List<Ink> get() = when (this) {
+            CMYKW -> listOf(Ink.BLACK, Ink.CYAN, Ink.MAGENTA, Ink.YELLOW, Ink.WHITE)
+            // Landscapes need deep greens, which cyan + yellow cannot make: green, brown and blue spools instead.
+            LANDSCAPE -> listOf(Ink.BROWN, Ink.GREEN, Ink.BLUE, Ink.BLACK, Ink.WHITE)
+            else -> emptyList()
+        }
+    }
+
+    /** Spools for colour mixing, as they usually look in PLA. */
     enum class Ink(val label: String, val hex: String) {
         BLACK("Black", "#1A1A1A"), CYAN("Cyan", "#0086D6"), MAGENTA("Magenta", "#EC008C"), YELLOW("Yellow", "#F4EE2A"), WHITE("White", "#F5F5F5"),
+        GREEN("Green", "#2F7D32"), BROWN("Brown", "#8B5E3C"), BLUE("Blue", "#1E5AA8"),
     }
 
     /** The colour of each role once the theme and the number of filaments are applied. */
@@ -61,6 +72,9 @@ object Route3mf {
             Colours.FOUR -> all.copy(mid = t.low, roads = t.side, end = t.side, buildings = t.high, text = t.high, route = t.side)
             // Ground colours become targets for the mix; solid parts take one of the five spools.
             Colours.CMYKW -> all.copy(side = Ink.BLACK.hex, route = Ink.MAGENTA.hex, roads = Ink.BLACK.hex, end = Ink.BLACK.hex,
+                buildings = Ink.WHITE.hex, text = Ink.WHITE.hex)
+            // Brown plinth like a wooden base; the route in black stands out on greens and browns, roads in white.
+            Colours.LANDSCAPE -> all.copy(side = Ink.BROWN.hex, route = Ink.BLACK.hex, roads = Ink.WHITE.hex, end = Ink.BLACK.hex,
                 buildings = Ink.WHITE.hex, text = Ink.WHITE.hex)
         }
     }
@@ -98,7 +112,8 @@ object Route3mf {
     const val SIDES = "Base and sides"; const val LOW = "Lowlands"; const val MID = "Slopes"; const val HIGH = "Peaks"
     const val WATER = "Water"; const val ROUTE = "Route"; const val ROADS = "Roads"; const val BUILDINGS = "Buildings"
     const val TEXT = "Title and start"; const val END = "End"; const val GROUND = "Ground"
-    private val rolePriority = Ink.entries.map { it.label } + listOf(SIDES, LOW, MID, HIGH, GROUND, WATER, ROUTE, "Route up to 50 km/h", "Route 50-100 km/h", "Route over 100 km/h", ROADS, BUILDINGS, TEXT, END)
+    // Spools in the order they are loaded: CMYKW as K, C, M, Y, W; landscape as brown, green, blue, black, white.
+    private val rolePriority = listOf(Ink.BROWN, Ink.GREEN, Ink.BLUE, Ink.BLACK, Ink.CYAN, Ink.MAGENTA, Ink.YELLOW, Ink.WHITE).map { it.label } + listOf(SIDES, LOW, MID, HIGH, GROUND, WATER, ROUTE, "Route up to 50 km/h", "Route 50-100 km/h", "Route over 100 km/h", ROADS, BUILDINGS, TEXT, END)
 
     /** A part; [c] is each triangle's colour. */
     class Mesh(val name: String, val color: String, private val role: String) {
@@ -136,7 +151,8 @@ object Route3mf {
     fun filaments(meshes: List<Mesh>): List<Filament> {
         val roles = LinkedHashMap<String, LinkedHashSet<String>>()
         for (m in meshes) for ((color, r) in m.roles) roles.getOrPut(color) { LinkedHashSet() } += r
-        fun rank(color: String) = roles.getValue(color).minOf { r -> rolePriority.indexOf(r).let { if (it < 0) 99 else it } }
+        // The plinth's colour is always filament 1; then by role.
+        fun rank(color: String) = if (SIDES in roles.getValue(color)) -1 else roles.getValue(color).minOf { r -> rolePriority.indexOf(r).let { if (it < 0) 99 else it } }
         return roles.keys.sortedBy { rank(it) }.mapIndexed { i, color -> Filament(i + 1, color, roles.getValue(color).sortedBy { rolePriority.indexOf(it) }) }
     }
 
@@ -179,7 +195,7 @@ object Route3mf {
     ): Pair<List<Mesh>, Relief> {
         if (points.size < 2) return emptyList<Mesh>() to Relief(0.0, 0.0, false, 0.0)
         val th = palette(o)
-        val mixing = o.colours == Colours.CMYKW
+        val mixing = o.colours.inks.isNotEmpty()
         val sizeK = o.sizeMm / 150.0
         val origin = points.first()
         val kx = 111_320.0 * cos(Math.toRadians(origin.lat)); val ky = 110_540.0
@@ -256,7 +272,7 @@ object Route3mf {
             val midTop = if (twoBands) lowTop else max(quantile(0.82), lowTop + (eMax - eMin) * 0.1)
             // Colour mixing: a halftone of the five spools over the whole top, aiming at a smooth gradient of the
             // theme's colours by altitude (and the water's colour), so every height gets its own shade.
-            val dither = if (!mixing) null else Halftone(boundary.map { it.first * s to it.second * s }, 0.5) { xmm, ymm ->
+            val dither = if (!mixing) null else Halftone(boundary.map { it.first * s to it.second * s }, 0.5, o.colours.inks) { xmm, ymm ->
                 val xm = xmm / s; val ym = ymm / s
                 val e = elevationAt(xm, ym)
                 when {
@@ -458,7 +474,7 @@ object Route3mf {
      * grid of [cell] mm over the [outline], in linear light, so the areas of each spool average to the colour
      * the eye sees from a distance.
      */
-    private class Halftone(outline: List<Pair<Double, Double>>, private val cell: Double, target: (Double, Double) -> String) {
+    private class Halftone(outline: List<Pair<Double, Double>>, private val cell: Double, private val spools: List<Ink>, target: (Double, Double) -> String) {
         private val x0 = outline.minOf { it.first }; private val y0 = outline.minOf { it.second }
         private val nx = ((outline.maxOf { it.first } - x0) / cell).toInt() + 2
         private val ny = ((outline.maxOf { it.second } - y0) / cell).toInt() + 2
@@ -467,7 +483,7 @@ object Route3mf {
         init {
             fun lin(c: Int) = (c / 255.0).let { if (it <= 0.04045) it / 12.92 else Math.pow((it + 0.055) / 1.055, 2.4) }
             fun rgb(hex: String) = hexColour(hex).let { doubleArrayOf(lin(it shr 16 and 0xFF), lin(it shr 8 and 0xFF), lin(it and 0xFF)) }
-            val inks = Ink.entries.map { rgb(it.hex) }
+            val inks = spools.map { rgb(it.hex) }
             val cache = HashMap<String, DoubleArray>()
             val err = Array(2) { DoubleArray(nx * 3 + 6) }
             for (j in 0 until ny) {
@@ -529,7 +545,7 @@ object Route3mf {
 
         fun at(x: Double, y: Double): Ink {
             val i = floor((x - x0) / cell).toInt().coerceIn(0, nx - 1); val j = floor((y - y0) / cell).toInt().coerceIn(0, ny - 1)
-            return Ink.entries[ink[j * nx + i].toInt()]
+            return spools[ink[j * nx + i].toInt()]
         }
     }
 

@@ -11,6 +11,7 @@ import androidx.compose.ui.test.performScrollToNode
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onAllNodesWithContentDescription
+import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.performClick
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.openobd.MainActivity
@@ -685,6 +686,20 @@ class WelcomeAndDashboardUiTest {
         click("Next"); click("Next"); click("Start")
         waitFor { c.settings.settings.value.onboarded }
         assertTrue(rule.onAllNodesWithText("Welcome to OpenOBD").fetchSemanticsNodes().isEmpty())
+
+        // The basic tour follows the setup; at its end it offers the full tour.
+        waitFor { rule.onAllNodesWithText("App tour").fetchSemanticsNodes().isNotEmpty() }
+        assertTrue(c.settings.settings.value.tourSeen)
+        repeat(com.openobd.ui.screens.Tours.basic.size) { rule.onNodeWithTag("tourNext").performClick(); rule.waitForIdle() }
+        rule.onNodeWithTag("fullTour").performClick()
+        waitFor { rule.onAllNodesWithText("Full tour").fetchSemanticsNodes().isNotEmpty() }
+        // "Open" shows the feature on top of the tour; Back returns to the same page.
+        rule.onNodeWithTag("tourOpen").performClick()
+        waitFor { rule.onAllNodesWithText("Connection").fetchSemanticsNodes().isNotEmpty() }
+        rule.activityRule.scenario.onActivity { it.onBackPressedDispatcher.onBackPressed() }
+        waitFor { rule.onAllNodesWithText("Full tour").fetchSemanticsNodes().isNotEmpty() }
+        rule.onNodeWithTag("tourClose").performClick()
+        rule.waitForIdle()
 
         com.openobd.ui.screens.LivePages.selected = com.openobd.ui.screens.LivePages.GAUGES
         rule.onAllNodes(hasText("Live") and isSelectable())[0].performClick()

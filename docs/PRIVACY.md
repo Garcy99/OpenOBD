@@ -1,9 +1,10 @@
 # OpenOBD privacy policy
 
-_Last updated: November 8, 2026_
+_Last updated: November 9, 2026_
 
-OpenOBD is an open-source car diagnostics app. It has no accounts, no ads, no analytics and no crash
-reporting, and its developers receive no data from it.
+OpenOBD is an open-source car diagnostics app. It needs no account (connecting a Google account to sync between
+devices is optional, see below), has no ads, no analytics and no crash reporting, and its developers receive no data
+from it: there is no OpenOBD server.
 
 ## Data stored on your device
 

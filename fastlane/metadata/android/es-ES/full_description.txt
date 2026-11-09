@@ -1,4 +1,4 @@
-OpenOBD convierte tu móvil, tablet o pantalla del coche y un adaptador OBD-II compatible ELM327 (Bluetooth, Bluetooth LE, Wi-Fi o USB) en una herramienta de diagnóstico completa. Gratis y de código abierto: sin anuncios, sin suscripciones, sin cuenta, y tus datos se quedan en tu móvil.
+OpenOBD convierte tu móvil, tablet o pantalla del coche y un adaptador OBD-II compatible ELM327 (Bluetooth, Bluetooth LE, Wi-Fi o USB) en una herramienta de diagnóstico completa. Gratis y de código abierto: sin anuncios, sin suscripciones y sin necesidad de cuenta. Tus datos se quedan en tu móvil o, si quieres, se sincronizan a través de tu propio Google Drive.
 
 DIAGNOSIS
 • Lee y borra averías del motor y de todos los módulos: ABS, airbag, carrocería, cuadro, cambio, climatización, batería de VE
@@ -25,6 +25,7 @@ GARAJE
 • Encuentra tu coche en el catálogo oficial de la UE (EEA), por matrícula (NL, UK) o por VIN (EE. UU.)
 • Recordatorios de mantenimiento e ITV, registro de repostajes con consumo real
 • Viajes en el mapa: toca cualquier punto para ver velocidad, revoluciones y consumo
+• Cuenta de Google opcional: coches, viajes e historial sincronizados entre tus móviles mediante una carpeta privada de tu propio Google Drive
 • Widget, copia de seguridad y restauración
 
 FUNCIONA CON

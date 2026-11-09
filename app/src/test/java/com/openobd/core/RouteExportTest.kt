@@ -398,13 +398,13 @@ class RouteExportTest {
         assertEquals(four.filamentOf(four.meshes.first().color), four.filamentOf(four.meshes.first { it.name == "Route" }.color))
 
         val mix = Route3mf.model(points, Route3mf.Options(colours = Route3mf.Colours.CMYKW), hill, f)
-        assertEquals(Route3mf.Ink.entries.map { it.hex }, mix.filaments.map { it.color })
+        assertEquals(Route3mf.Colours.CMYKW.inks.map { it.hex }, mix.filaments.map { it.color })
         assertEquals(1, mix.filamentOf(Route3mf.Ink.BLACK.hex)) // black is also the plinth: filament 1
         mix.meshes.forEach { assertSolid(it) }
         val ground = mix.meshes.first()
         // The top is a halftone of every spool; where it is higher it is lighter (the theme's pale peaks).
         val top = ground.t.indices.filter { k -> ground.t[k].all { ground.v[it][2] > 0.01 } } // sides and bottom touch z = 0
-        assertEquals(Route3mf.Ink.entries.size, ground.c.toSet().size)
+        assertEquals(5, ground.c.toSet().size)
         fun light(k: Int) = ground.c[k].removePrefix("#").toInt(16).let { ((it shr 16 and 255) + (it shr 8 and 255) + (it and 255)) / 765.0 }
         val zTop = top.map { k -> ground.t[k].maxOf { ground.v[it][2] } }
         val zHigh = zTop.sorted()[zTop.size * 9 / 10]; val zLow = zTop.sorted()[zTop.size / 4]
@@ -412,5 +412,22 @@ class RouteExportTest {
         val low = top.filterIndexed { n, _ -> zTop[n] <= zLow }.map(::light).average()
         assertTrue("peaks $high vs lowlands $low", high > low + 0.1)
         assertTrue(mix.meshes.none { it.name.startsWith("Route ") }) // no speed colours in mixing
+    }
+
+    @Test fun `landscape mixing gives green lowlands from green, brown, blue, black and white spools`() {
+        val mix = Route3mf.model(points, Route3mf.Options(colours = Route3mf.Colours.LANDSCAPE), hill, features())
+        // Loading order, the plinth's brown first.
+        assertEquals(Route3mf.Colours.LANDSCAPE.inks.map { it.hex }, mix.filaments.map { it.color })
+        assertEquals(Route3mf.Ink.BROWN.hex, mix.meshes.first().color)
+        mix.meshes.forEach { assertSolid(it) }
+        val ground = mix.meshes.first()
+        val top = ground.t.indices.filter { k -> ground.t[k].all { ground.v[it][2] > 0.01 } }
+        val zTop = top.map { k -> ground.t[k].maxOf { ground.v[it][2] } }
+        val quarter = zTop.sorted()[zTop.size / 4]
+        val low = top.filterIndexed { n, _ -> zTop[n] <= quarter }
+        // Area-average of the lowlands: green dominates (the Alpine style's lowland colour is green).
+        fun channel(k: Int, sh: Int) = (ground.c[k].removePrefix("#").toInt(16) shr sh) and 255
+        val g = low.map { channel(it, 8) }.average(); val r = low.map { channel(it, 16) }.average(); val b = low.map { channel(it, 0) }.average()
+        assertTrue("lowlands r=$r g=$g b=$b", g > r && g > b)
     }
 }

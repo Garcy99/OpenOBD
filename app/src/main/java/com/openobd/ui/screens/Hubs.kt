@@ -27,6 +27,9 @@ import androidx.compose.material.icons.filled.Map
 import androidx.compose.material.icons.filled.MenuBook
 import androidx.compose.material.icons.filled.MonitorHeart
 import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material.icons.filled.EmojiEvents
+import androidx.compose.material.icons.filled.Explore
+import androidx.compose.material.icons.filled.CloudSync
 import androidx.compose.material.icons.filled.Storage
 import androidx.compose.material.icons.filled.Terminal
 import androidx.compose.material.icons.filled.TravelExplore
@@ -222,7 +225,7 @@ fun MoreScreen(onNavigate: (String) -> Unit) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Column(Modifier.weight(1f)) {
                         Text("OpenOBD " + com.openobd.BuildConfig.VERSION_NAME, style = MaterialTheme.typography.titleLarge)
-                        Text(tr("Open source · No ads · No account · Your data stays on your phone"), style = MaterialTheme.typography.bodySmall,
+                        Text(tr("Open source · No ads · Account optional · Your data stays yours"), style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
                 }
@@ -267,6 +270,15 @@ fun MoreScreen(onNavigate: (String) -> Unit) {
             }
             SectionLabel(tr("App"))
             GroupCard {
+                val sync by app.sync.state.collectAsStateWithLifecycle()
+                NavRow(Icons.Default.CloudSync, tr("Google account and sync"),
+                    if (sync.connected) tr("Synced as %1\$s", sync.email ?: "Google") else tr("Optional: the same data on all your phones"),
+                    tint = MaterialTheme.colorScheme.primary) { onNavigate(Routes.ACCOUNT) }
+                GroupDivider()
+                NavRow(Icons.Default.Explore, tr("App tour"), tr("The basics in two minutes"), tint = MaterialTheme.colorScheme.primary) { onNavigate(Routes.tour(false)) }
+                GroupDivider()
+                NavRow(Icons.Default.EmojiEvents, tr("Full tour"), tr("Every feature, step by step"), tint = MaterialTheme.colorScheme.primary) { onNavigate(Routes.tour(true)) }
+                GroupDivider()
                 NavRow(Icons.Default.Settings, tr("Settings"), tr("Units, adapter options, alerts, theme"), tint = MaterialTheme.colorScheme.onSurfaceVariant) { onNavigate(Routes.SETTINGS) }
                 GroupDivider()
                 NavRow(Icons.Default.Info, tr("About"), tr("Version, licenses and supported adapters"), tint = MaterialTheme.colorScheme.onSurfaceVariant) { onNavigate(Routes.ABOUT) }

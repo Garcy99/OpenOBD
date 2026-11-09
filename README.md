@@ -5,7 +5,8 @@ read and clear trouble codes in every module, watch live data on gauges you desi
 before you buy it, follow your fuel consumption and maintenance, and change module settings with a backup
 behind every change.
 
-No ads, no subscriptions, no account. Your data stays on your phone.
+No ads, no subscriptions, no account needed. Your data stays on your phone, or syncs through your own Google
+Drive if you connect your account (optional).
 
 [![Build](https://github.com/Garcy99/OpenOBD/actions/workflows/android.yml/badge.svg)](https://github.com/Garcy99/OpenOBD/actions/workflows/android.yml)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
@@ -140,8 +141,10 @@ No adapter yet? Choose **Demo** as the connection: a simulated car with codes, m
   size, relief exaggeration, maximum height, base thickness and detail; the screen shows the total height and the
   filament list, and the file uses PrusaSlicer's 3MF dialect, so Bambu Studio, PrusaSlicer and Orca load each part with
   its filament and the altitude bands painted (set each filament's colour as the list shows); it can merge colours to fit
-  6 or 4 filaments, or use five spools (cyan, magenta, yellow, black, white) mixed as a fine halftone on the ground
-  for a continuous range of shades
+  6 or 4 filaments, or use five spools mixed as a fine halftone on the ground for a continuous range of shades
+  (CMYKW, or Landscape: brown, green, blue, black and white for deep greens)
+- **App tour**: the basics after installing, and an optional full tour that walks through every feature, with a
+  button to open each
 - **Google account sync** (optional): cars, trips with their routes, maintenance, fuel, health and scan history stay
   the same on every phone, kept in a private folder of the user's own Google Drive, with no OpenOBD server
   ([how it works and how to set it up](docs/GOOGLE_SYNC.md))
@@ -284,7 +287,8 @@ app/src/main/java/com/openobd/
 
 ## Privacy, license and credits
 
-- **Privacy**: no accounts, ads, analytics or tracking. What can leave your phone, and only when you use it, is
+- **Privacy**: no account needed (Google sync is optional), no ads, analytics or tracking, and no OpenOBD server.
+  What can leave your phone, and only when you use it, is
   listed in the [privacy policy](docs/PRIVACY.md).
 - **License**: MIT, see [LICENSE](LICENSE).
 - **Credits**:

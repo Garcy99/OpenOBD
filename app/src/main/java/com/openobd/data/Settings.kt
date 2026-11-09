@@ -96,6 +96,8 @@ data class AppSettings(
     val claudeApiKey: String = "",
     /** Speak alerts (thresholds, overheating, not charging, particulate filter cleaning). */
     val voiceAlerts: Boolean = false,
+    /** The basic app tour was shown or declined (on this phone). */
+    val tourSeen: Boolean = false,
 ) {
     companion object {
         val DEFAULT_DASHBOARD = listOf("010C", "010D", "0105", "0104", "CALC_PEDAL", "CALC_FUEL", "0142", "CALC_BOOST")
@@ -148,6 +150,7 @@ class SettingsRepository(private val context: Context, scope: CoroutineScope) {
         val dvlaKey = stringPreferencesKey("dvla_key")
         val claudeKey = stringPreferencesKey("claude_key")
         val voiceAlerts = booleanPreferencesKey("voice_alerts")
+        val tourSeen = booleanPreferencesKey("tour_seen")
     }
 
     private val json = Json { ignoreUnknownKeys = true }
@@ -193,6 +196,7 @@ class SettingsRepository(private val context: Context, scope: CoroutineScope) {
             dvlaApiKey = p[K.dvlaKey] ?: d.dvlaApiKey,
             claudeApiKey = p[K.claudeKey] ?: d.claudeApiKey,
             voiceAlerts = p[K.voiceAlerts] ?: d.voiceAlerts,
+            tourSeen = p[K.tourSeen] ?: d.tourSeen,
         )
     }
 
@@ -241,6 +245,7 @@ class SettingsRepository(private val context: Context, scope: CoroutineScope) {
             p[K.dvlaKey] = s.dvlaApiKey
             p[K.claudeKey] = s.claudeApiKey
             p[K.voiceAlerts] = s.voiceAlerts
+            p[K.tourSeen] = s.tourSeen
         }
     }
 }

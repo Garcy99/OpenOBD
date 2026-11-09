@@ -1,4 +1,4 @@
-OpenOBD turns your phone, tablet or car head unit and an ELM327-compatible OBD-II adapter (Bluetooth, Bluetooth LE, Wi-Fi or USB) into a complete car diagnostic tool. Free and open source: no ads, no subscriptions, no account, and your data stays on your phone.
+OpenOBD turns your phone, tablet or car head unit and an ELM327-compatible OBD-II adapter (Bluetooth, Bluetooth LE, Wi-Fi or USB) into a complete car diagnostic tool. Free and open source: no ads, no subscriptions and no account needed. Your data stays on your phone, or, if you choose, syncs through your own Google Drive.
 
 DIAGNOSE
 • Read and clear trouble codes in the engine and in every module: ABS, airbag, body, cluster, gearbox, climate, EV battery
@@ -25,6 +25,7 @@ GARAGE
 • Find your car in the official EU catalog (EEA), by licence plate (NL, UK) or by VIN (US)
 • Maintenance and inspection reminders, fuel log with real consumption
 • Trips on a map: tap any point to see speed, rpm and consumption there
+• Optional Google account: cars, trips and history synced across your phones through a private folder of your own Google Drive
 • Home-screen widget, backup and restore
 
 WORKS WITH

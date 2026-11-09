@@ -208,6 +208,7 @@ fun Route3dScreen(tripId: String, onBack: () -> Unit) {
                     Route3mf.Colours.SIX -> "Roads, markers, buildings and title share colours with the base and the peaks."
                     Route3mf.Colours.FOUR -> "Base, lowlands, peaks and water; the route prints in the base colour, standing above the ground."
                     Route3mf.Colours.CMYKW -> "Load black, cyan, magenta, yellow and white. The ground becomes a fine pattern of the five that blends into every shade of the style, like a printed photo; best seen from arm's length, with a 0.4 mm nozzle or finer. Always uses high detail."
+                    Route3mf.Colours.LANDSCAPE -> "Load brown, green, blue, black and white. Like CMYKW, the ground is a fine pattern of the five, but made for nature: deep greens for valleys and forests, browns for slopes, white peaks and blue water. Always uses high detail."
                 }))
                 Label("Shape")
                 FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
@@ -295,5 +296,6 @@ val route3dTexts = listOf(
     "Buildings are only added for areas up to %1\$s km across.", "This trip has no GPS route.",
     "One filament per colour of the style.", "Roads, markers, buildings and title share colours with the base and the peaks.",
     "Base, lowlands, peaks and water; the route prints in the base colour, standing above the ground.",
+    "Load brown, green, blue, black and white. Like CMYKW, the ground is a fine pattern of the five, but made for nature: deep greens for valleys and forests, browns for slopes, white peaks and blue water. Always uses high detail.",
     "Load black, cyan, magenta, yellow and white. The ground becomes a fine pattern of the five that blends into every shade of the style, like a printed photo; best seen from arm's length, with a 0.4 mm nozzle or finer. Always uses high detail.",
 )

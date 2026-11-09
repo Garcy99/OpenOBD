@@ -108,6 +108,9 @@ object Routes {
     const val PACKS = "packs"
     const val BATTERY = "battery"
     const val WELCOME = "welcome"
+    const val TOUR = "tour/{level}"
+    fun tour(advanced: Boolean) = "tour/" + if (advanced) "full" else "basic"
+    const val ACCOUNT = "account"
     const val LOG = "log/{name}"
     fun log(name: String) = "log/" + android.net.Uri.encode(name)
     const val DIESEL = "diesel"
@@ -237,7 +240,23 @@ fun OpenObdNavHost() {
                 composable(Routes.GUIDES) { com.openobd.ui.screens.ServiceGuidesScreen(onBack = back, onDieselHelper = { nav.navigate(Routes.DIESEL) }) }
                 composable(Routes.CODINGS) { com.openobd.ui.screens.CodingsScreen(onBack = back, onConnect = toHome) }
                 composable(Routes.EXPLORER) { com.openobd.ui.screens.IdExplorerScreen(onBack = back, onConnect = toHome) }
-                composable(Routes.WELCOME) { com.openobd.ui.screens.WelcomeScreen(onDone = { nav.goTab(Routes.HOME) }, onGarage = { nav.navigate(Routes.GARAGE) }) }
+                // After the first setup comes the basic tour (in place of the setup, so Back does not return to it).
+                composable(Routes.WELCOME) {
+                    com.openobd.ui.screens.WelcomeScreen(
+                        onDone = { nav.navigate(Routes.tour(false)) { popUpTo(Routes.WELCOME) { inclusive = true } } },
+                        onGarage = { nav.navigate(Routes.GARAGE) },
+                    )
+                }
+                composable(Routes.TOUR) { e ->
+                    com.openobd.ui.screens.TourScreen(
+                        advanced = e.arguments?.getString("level") == "full",
+                        onClose = { if (!nav.popBackStack()) nav.goTab(Routes.HOME) },
+                        // Opened on top of the tour, so Back returns to the same page of it.
+                        onOpen = { r -> nav.navigate(r) },
+                        onFullTour = { nav.navigate(Routes.tour(true)) { popUpTo(Routes.TOUR) { inclusive = true } } },
+                    )
+                }
+                composable(Routes.ACCOUNT) { com.openobd.ui.screens.AccountScreen(onBack = back) }
             composable(Routes.PACKS) { com.openobd.ui.screens.PacksScreen(onBack = back) }
             composable(Routes.LIGHTS) { com.openobd.ui.screens.WarningLightScreen(onBack = back, onSettings = { nav.navigate(Routes.SETTINGS) }) }
             composable(Routes.HEALTH) { com.openobd.ui.screens.HealthScreen(onBack = back) }
