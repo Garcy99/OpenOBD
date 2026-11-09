@@ -76,6 +76,8 @@ android {
             providers.gradleProperty("elmEmulator").orNull?.let { test.systemProperty("elmEmulator", it) }
             providers.gradleProperty("robolectricRepo").orNull?.let { test.systemProperty("robolectric.dependency.repo.url", it) }
             test.maxHeapSize = "3g"
+            // Failures show their message in the build log (CI only keeps the log).
+            test.testLogging { exceptionFormat = org.gradle.api.tasks.testing.logging.TestExceptionFormat.FULL; events("failed") }
         }
     }
 }

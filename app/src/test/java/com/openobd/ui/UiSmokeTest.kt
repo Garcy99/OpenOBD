@@ -56,7 +56,12 @@ class UiSmokeTest {
     private fun waitFor(timeoutMs: Long = 30_000, condition: () -> Boolean) {
         val end = System.currentTimeMillis() + timeoutMs
         while (!condition()) {
-            check(System.currentTimeMillis() < end) { "Timed out waiting" }
+            check(System.currentTimeMillis() < end) {
+                // Which wait it was: the caller's line (the stack's first frame is this helper).
+                "Timed out waiting at line " + Throwable().stackTrace.firstOrNull { it.methodName != "waitFor" && it.className.contains("UiSmokeTest") }?.lineNumber +
+                    "; state=" + c.session.state.value.javaClass.simpleName + ", readings=" + c.session.live.readings.value.keys.sorted().take(30) +
+                    ", trips=" + c.garage.data.value.trips.size
+            }
             Thread.sleep(50)
             rule.mainClock.advanceTimeBy(50)
         }
