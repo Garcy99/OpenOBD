@@ -24,6 +24,7 @@ import androidx.compose.material.icons.filled.LocalFireDepartment
 import androidx.compose.material.icons.filled.LocalGasStation
 import androidx.compose.material.icons.filled.ManageSearch
 import androidx.compose.material.icons.filled.Map
+import androidx.compose.material.icons.filled.Route
 import androidx.compose.material.icons.filled.MenuBook
 import androidx.compose.material.icons.filled.MonitorHeart
 import androidx.compose.material.icons.filled.Settings
@@ -175,6 +176,11 @@ fun GarageHubScreen(onNavigate: (String) -> Unit) {
                     if (fuel.totalLiters > 0) g.fuel.count { it.vehicleId == v.id }.let { n -> if (n == 1) tr("1 fill-up") else tr("%1\$s fill-ups", n) } + " · " + fmtL100(fuel.averageL100, settings.units) else tr("Log fill-ups to see your real consumption"),
                     tint = Orange) { onNavigate(Routes.FUEL) }
                 GroupDivider()
+                NavRow(Icons.Default.LocalGasStation, tr("Fuel prices"), tr("The cheapest stations around you, live"), tint = Good) { onNavigate(Routes.FUEL_PRICES) }
+                GroupDivider()
+                NavRow(Icons.Default.Route, tr("Automatic trips"), if (settings.autoTrips) tr("On") else tr("Record every drive without opening the app"),
+                    tint = Violet) { onNavigate(Routes.AUTO_TRIPS) }
+                GroupDivider()
                 NavRow(Icons.Default.Map, tr("Trips"),
                     if (trips.isNotEmpty()) (if (trips.size == 1) tr("1 trip") else tr("%1\$s trips", trips.size)) + " · " + fmtKm(trips.sumOf { it.distanceKm }, settings.units) else tr("Trips are saved automatically while connected"),
                     tint = Violet) { onNavigate(Routes.TRIPS) }
@@ -252,6 +258,8 @@ fun MoreScreen(onNavigate: (String) -> Unit) {
                 NavRow(Icons.Default.Fullscreen, tr("Head-up display"), tr("Mirrored display for the windshield"), tint = Violet) { onNavigate(Routes.HUD) }
                 GroupDivider()
                 NavRow(Icons.Default.Cast, tr("Car screen"), tr("Lend this phone's adapter to the car's screen over Wi-Fi"), tint = Violet) { onNavigate(Routes.BRIDGE) }
+                GroupDivider()
+                NavRow(Icons.Default.LocalGasStation, tr("Fuel prices"), tr("The cheapest stations around you, live"), tint = Good) { onNavigate(Routes.FUEL_PRICES) }
             }
             SectionLabel(tr("Records"))
             GroupCard {

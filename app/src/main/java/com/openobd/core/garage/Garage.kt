@@ -301,6 +301,9 @@ data class TripRecord(
     val fuelCalibration: Double = 1.0,
     /** True when the car reported its fuel rate (PID 5E) rather than it being estimated. */
     val fuelMeasured: Boolean = false,
+    /** Pump price (per litre) [cost] was worked out with; [fuelPriceLocal]: from the stations where the trip was. */
+    val fuelPrice: Double? = null,
+    val fuelPriceLocal: Boolean = false,
 ) {
     val eco: com.openobd.core.trip.EcoStats get() = com.openobd.core.trip.EcoStats(harshAccel, harshBrake, highRpmS, longIdleS, movingS + idleS, distanceKm)
     val avgL100: Double? get() = if (fuelL != null && distanceKm > 0.5) fuelL / distanceKm * 100 else null

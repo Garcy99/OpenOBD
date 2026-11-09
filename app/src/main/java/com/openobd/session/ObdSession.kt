@@ -108,6 +108,13 @@ class ObdSession(
 
     val live = LiveDataManager(scope)
     val trip = TripComputer()
+    /** Ends automatic trips when the engine stays off. */
+    val engineOff = EngineOffDetector()
+    /** True while connected for an automatic trip (started by the car's Bluetooth): ends when the engine stays off. */
+    @Volatile var autoTrip = false
+    private val _savedTrips = kotlinx.coroutines.flow.MutableSharedFlow<com.openobd.core.garage.TripRecord>(extraBufferCapacity = 4)
+    /** Every trip as it is saved (for the "trip saved" notification). */
+    val savedTrips: kotlinx.coroutines.flow.SharedFlow<com.openobd.core.garage.TripRecord> = _savedTrips
     val perf = PerformanceTimer()
 
     val dtcScan = MutableStateFlow<Op<DtcScan>>(Op.Idle)
@@ -157,6 +164,7 @@ class ObdSession(
 
     init {
         live.addListener(trip)
+        live.addListener(engineOff)
         live.addListener(perf)
         live.addListener(alertChecker())
         live.addListener { values, _, _ -> if (logs.isRecording) logs.append(values) }
@@ -201,6 +209,15 @@ class ObdSession(
 
     /** Reason this phone cannot connect right now (its adapter is lent to the car screen); set by the app. */
     var blocker: (AppSettings) -> String? = { null }
+
+    /**
+     * The usual pump price for this car's fuel at a point (null, null = where the phone is now), or null when not
+     * known; set by the app (Spanish stations).
+     */
+    var fuelPriceAt: suspend (Double?, Double?) -> Double? = { _, _ -> null }
+
+    /** Pump price where the current trip started, for its running cost (null = the one in Settings). */
+    val tripFuelPrice = MutableStateFlow<Double?>(null)
 
     /** Finds a phone running the bridge (address and port); replaceable in tests. */
     var findPhone: suspend () -> Pair<String, Int>? = { com.openobd.data.BridgeDiscovery.find(context) }
@@ -286,6 +303,9 @@ class ObdSession(
         trip.reset()
         tripStart = System.currentTimeMillis()
         tripActive = true
+        engineOff.reset(tripStart)
+        tripFuelPrice.value = null
+        if (s.connectionType != ConnectionType.DEMO) scope.launch { tripFuelPrice.value = runCatching { fuelPriceAt(null, null) }.getOrNull() }
         if (s.tripGps && s.connectionType != ConnectionType.DEMO) location.start()
         // Values stored with each point of the GPS track (shown when the map is tapped)
         if (s.tripGps || s.connectionType == ConnectionType.DEMO) live.subscribe("track", com.openobd.core.garage.TrackPoint.KEYS)
@@ -334,6 +354,7 @@ class ObdSession(
         voltageJob = scope.launch {
             while (isActive) {
                 delay(10_000)
+                if (autoTrip && engineOff.engineOff(System.currentTimeMillis())) { debug.add('!', "Engine off: ending the automatic trip"); disconnect(); break }
                 val e = elm ?: break
                 val v = e.readVoltage() ?: continue
                 (state.value as? ConnectionState.Connected)?.let { _state.value = it.copy(vehicle = it.vehicle.copy(voltage = v)) }
@@ -343,6 +364,7 @@ class ObdSession(
 
     fun disconnect() {
         userDisconnect = true
+        autoTrip = false
         connectJob?.cancel()
         scope.launch {
             cleanup()
@@ -501,18 +523,28 @@ class ObdSession(
         client?.takeIf { 0xA6 in (this.vehicle?.supportedPids ?: emptySet()) }?.let { runCatching { readOdometer(it) } }
         val price = settingsRepo.settings.value.fuelPricePerL
         val fuel = if (st.hasFuelData) st.fuelL else null
+        val local = tripFuelPrice.value
+        val tripId = garage.newId()
         garage.saveTrip(
             com.openobd.core.garage.TripRecord(
-                id = garage.newId(), vehicleId = vehicle.id, start = tripStart, end = System.currentTimeMillis(),
+                id = tripId, vehicleId = vehicle.id, start = tripStart, end = System.currentTimeMillis(),
                 distanceKm = st.distanceKm, fuelL = fuel, maxSpeed = st.maxSpeed, avgSpeed = st.avgSpeed, movingS = st.movingS,
                 idleS = st.idleS, maxRpm = st.maxRpm, cost = fuel?.let { f -> if (price > 0) f * price else null }, trackPoints = track.size,
                 harshAccel = st.eco.harshAccel, harshBrake = st.eco.harshBrake, highRpmS = st.eco.highRpmS, longIdleS = st.eco.longIdleS,
                 ecoScore = st.ecoScore,
                 fuelModel = DerivedSensors.FUEL_MODEL, fuelCalibration = live.params.calibration,
                 fuelMeasured = 0x5E in (this.vehicle?.supportedPids ?: emptySet()),
-            ),
+                fuelPrice = local ?: price.toDouble().takeIf { it > 0 }, fuelPriceLocal = local != null,
+            ).let { t -> if (local != null && fuel != null) t.copy(cost = fuel * local) else t },
             track,
         )
+        garage.data.value.trips.firstOrNull { it.id == tripId }?.let { _savedTrips.tryEmit(it) }
+        // The price where the trip ended (from the stations there), when it can be had: the trip's real cost.
+        if (fuel != null) scope.launch {
+            val end = track.lastOrNull()
+            val p = runCatching { fuelPriceAt(end?.lat, end?.lon) }.getOrNull() ?: return@launch
+            garage.updateTrip(tripId) { it.copy(cost = fuel * p, fuelPrice = p, fuelPriceLocal = true) }
+        }
         // Without an odometer PID, keep the vehicle's odometer roughly current from trip distance.
         val v = garage.data.value.active
         if (v != null && !v.odometerFromCar && v.odometerKm != null) garage.updateVehicle(v.id) { it.copy(odometerKm = it.odometerKm!! + st.distanceKm, odometerUpdatedAt = System.currentTimeMillis()) }

@@ -112,6 +112,8 @@ object Routes {
     fun tour(advanced: Boolean) = "tour/" + if (advanced) "full" else "basic"
     const val ACCOUNT = "account"
     const val BRIDGE = "bridge"
+    const val FUEL_PRICES = "fuel_prices"
+    const val AUTO_TRIPS = "auto_trips"
     const val LOG = "log/{name}"
     fun log(name: String) = "log/" + android.net.Uri.encode(name)
     const val DIESEL = "diesel"
@@ -262,6 +264,8 @@ fun OpenObdNavHost() {
                 }
                 composable(Routes.ACCOUNT) { com.openobd.ui.screens.AccountScreen(onBack = back) }
                 composable(Routes.BRIDGE) { com.openobd.ui.screens.BridgeScreen(onBack = back) }
+                composable(Routes.FUEL_PRICES) { com.openobd.ui.screens.FuelPricesScreen(onBack = back) }
+                composable(Routes.AUTO_TRIPS) { com.openobd.ui.screens.AutoTripsScreen(onBack = back) }
             composable(Routes.PACKS) { com.openobd.ui.screens.PacksScreen(onBack = back) }
             composable(Routes.LIGHTS) { com.openobd.ui.screens.WarningLightScreen(onBack = back, onSettings = { nav.navigate(Routes.SETTINGS) }) }
             composable(Routes.HEALTH) { com.openobd.ui.screens.HealthScreen(onBack = back) }

@@ -104,9 +104,12 @@ fun SettingsScreen(onBack: () -> Unit) {
                     v.replace(',', '.').toFloatOrNull()?.let { d -> update { it.copy(displacementL = d) } }
                 }
                 SwitchRow(tr("Record GPS track for trips (shown on a map)"), s.tripGps) { v -> update { it.copy(tripGps = v) } }
+                SwitchRow(tr("Live fuel prices near you (Spain): cheapest stations and trips priced where you drive"), s.fuelPrices) { v -> update { it.copy(fuelPrices = v) } }
                 NumberField(tr("Fuel price per liter (trip cost)"), s.fuelPricePerL.toString()) { v ->
                     v.replace(',', '.').toFloatOrNull()?.let { d -> update { it.copy(fuelPricePerL = d) } }
                 }
+                if (s.fuelPrices) Text(tr("Used where there are no live prices."), style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
             SectionCard(title = tr("Demo simulator")) {
                 Text(tr("Demo mode can imitate older cars and bad adapters, to see how the app copes without a real car."),

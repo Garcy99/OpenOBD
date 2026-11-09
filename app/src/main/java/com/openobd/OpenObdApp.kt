@@ -32,6 +32,8 @@ class AppContainer(private val app: Application) {
     var terrain: suspend (List<com.openobd.core.garage.TrackPoint>, Int, (Int, Int) -> Unit) -> com.openobd.core.trip.Terrain? = { pts, detail, progress ->
         com.openobd.data.TerrainDownloader(app, "OpenOBD/${com.openobd.BuildConfig.VERSION_NAME} (Android; open source)").around(pts, detail, progress)
     }
+    /** Pump prices around the car (Spain). */
+    val fuelPrices = com.openobd.data.FuelPriceRepository(app, "OpenOBD/${com.openobd.BuildConfig.VERSION_NAME} (Android; open source)")
     /** Aerial photos of an area (minLat, minLon, maxLat, maxLon) at about the given metres per pixel; replaceable in tests. */
     var imagery: suspend (DoubleArray, Double, (Int, Int) -> Unit) -> com.openobd.core.trip.TileImagery? = { area, mpp, progress ->
         com.openobd.data.ImageryDownloader(app, "OpenOBD/${com.openobd.BuildConfig.VERSION_NAME} (Android; open source)").around(area, mpp, progress)
@@ -78,6 +80,16 @@ class AppContainer(private val app: Application) {
         ObdSession(app, scope, settings, history, logs, dtcDatabase, garage, diagnostics.log).also { s ->
             // While the phone lends its adapter to the car screen, it cannot use it itself.
             s.blocker = { st -> if (bridge.running && st.connectionType != com.openobd.data.ConnectionType.PHONE) com.openobd.session.PHONE_BRIDGE_BUSY else null }
+            // Trips cost what fuel costs where they are driven (Spain), unless turned off in Settings.
+            s.fuelPriceAt = { lat, lon ->
+                val st = settings.settings.value
+                if (!st.fuelPrices) null else {
+                    val (la, lo) = if (lat != null && lon != null) lat to lon
+                        else com.openobd.data.CurrentLocation.get(app)?.let { it.latitude to it.longitude } ?: (null to null)
+                    if (la == null || lo == null) null
+                    else fuelPrices.localPrice(la, lo, com.openobd.data.FuelPriceRepository.fuelFor(st, s.diesel.isDiesel))
+                }
+            }
         }
     }
 
@@ -107,6 +119,7 @@ class OpenObdApp : Application() {
             if (android.os.Build.FINGERPRINT != "robolectric") container.updater.check()
         }
         keepWidgetUpdated()
+        notifySavedTrips()
         speakAlerts()
         // Keep a foreground service alive while connected so logging continues with the screen off.
         container.scope.launch {
@@ -116,6 +129,27 @@ class OpenObdApp : Application() {
                 if (connected && !wasConnected) startService()
                 if (!connected && wasConnected) stopService(Intent(this@OpenObdApp, ObdService::class.java))
                 wasConnected = connected
+            }
+        }
+    }
+
+    /** After an automatic trip (or any trip while the app is in the background): what it was, in a notification. */
+    private fun notifySavedTrips() {
+        container.scope.launch {
+            container.session.savedTrips.collect { t ->
+                val st = container.settings.settings.value
+                if (!st.autoTrips) return@collect
+                val nm = getSystemService(android.app.NotificationManager::class.java) ?: return@collect
+                if (android.os.Build.VERSION.SDK_INT >= 26) nm.createNotificationChannel(
+                    android.app.NotificationChannel("trips", com.openobd.ui.tr("Trip saved"), android.app.NotificationManager.IMPORTANCE_DEFAULT))
+                val text = listOfNotNull("%.1f km".format(t.distanceKm), com.openobd.ui.components.formatDuration((t.end - t.start) / 1000.0),
+                    t.fuelL?.let { "%.2f L".format(it) }, t.cost?.let { "%.2f €".format(it) }, t.ecoScore?.let { "Eco $it" }).joinToString(" · ")
+                val open = android.app.PendingIntent.getActivity(this@OpenObdApp, 2, Intent(this@OpenObdApp, MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP),
+                    android.app.PendingIntent.FLAG_IMMUTABLE)
+                runCatching {
+                    nm.notify(t.id.hashCode(), androidx.core.app.NotificationCompat.Builder(this@OpenObdApp, "trips").setSmallIcon(R.drawable.ic_stat_car)
+                        .setContentTitle(com.openobd.ui.tr("Trip saved")).setContentText(text).setContentIntent(open).setAutoCancel(true).build())
+                }
             }
         }
     }

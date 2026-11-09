@@ -155,6 +155,8 @@ class GarageRepository(context: Context) {
 
     suspend fun renameTrip(id: String, name: String) = update { d -> d.copy(trips = d.trips.map { if (it.id == id) it.copy(name = name.trim()) else it }) }
 
+    suspend fun updateTrip(id: String, transform: (TripRecord) -> TripRecord) = update { d -> d.copy(trips = d.trips.map { if (it.id == id) transform(it) else it }) }
+
     suspend fun deleteTrip(id: String) {
         update { d -> d.copy(trips = d.trips.filter { it.id != id }) }
         withContext(Dispatchers.IO) { trackFile(id).delete() }

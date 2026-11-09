@@ -462,8 +462,21 @@ fun FuelLogScreen(onBack: () -> Unit) {
             }
         }
     }
+    // At the pump: the price of the station you are at (or the usual one around), instead of the one in Settings.
+    var herePrice by remember { mutableStateOf<Pair<Double, String>?>(null) }
+    val context = androidx.compose.ui.platform.LocalContext.current
+    val pumpFuel = currentPumpFuel()
+    LaunchedEffect(editing?.id) {
+        if (editing == null || !settings.fuelPrices) return@LaunchedEffect
+        val here = com.openobd.data.CurrentLocation.get(context, maxAgeMs = 5 * 60_000L) ?: return@LaunchedEffect
+        val list = app.fuelPrices.around(here.latitude, here.longitude, 5.0) ?: return@LaunchedEffect
+        val near = com.openobd.core.fuel.FuelPricesEs.near(list.stations, here.latitude, here.longitude, pumpFuel, 5.0)
+        herePrice = near.firstOrNull()?.takeIf { it.km < 0.3 }?.let { s -> s.price(pumpFuel)!! to s.station.brand }
+            ?: com.openobd.core.fuel.FuelPricesEs.localPrice(list.stations, here.latitude, here.longitude, pumpFuel)?.let { it to "" }
+    }
     editing?.let { e ->
-        FuelEditor(e, isNew = g.fuel.none { it.id == e.id }, units = settings.units, defaultPrice = settings.fuelPricePerL.toDouble(),
+        FuelEditor(e, isNew = g.fuel.none { it.id == e.id }, units = settings.units, defaultPrice = herePrice?.first ?: settings.fuelPricePerL.toDouble(),
+            priceSource = herePrice?.let { (p, brand) -> if (brand.isNotEmpty()) tr("%1\$s/L at %2\$s, where you are", euros(p), brand) else tr("%1\$s/L, the usual price around you", euros(p)) },
             onDismiss = { editing = null },
             onSave = { editing = null; scope.launch { app.garage.upsertFuel(it) } },
             onDelete = { editing = null; scope.launch { app.garage.deleteFuel(e.id) } })
@@ -472,7 +485,8 @@ fun FuelLogScreen(onBack: () -> Unit) {
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun FuelEditor(e: FuelEntry, isNew: Boolean, units: UnitSystem, defaultPrice: Double, onDismiss: () -> Unit, onSave: (FuelEntry) -> Unit, onDelete: () -> Unit) {
+private fun FuelEditor(e: FuelEntry, isNew: Boolean, units: UnitSystem, defaultPrice: Double, onDismiss: () -> Unit, onSave: (FuelEntry) -> Unit, onDelete: () -> Unit,
+                       priceSource: String? = null) {
     var odo by remember { mutableStateOf(if (e.odometerKm > 0) "%.0f".format(fromKm(e.odometerKm, units)) else "") }
     var vol by remember { mutableStateOf(if (e.liters > 0) "%.2f".format(fromLiters(e.liters, units)) else "") }
     var total by remember { mutableStateOf(if (e.totalCost > 0) "%.2f".format(e.totalCost) else "") }
@@ -494,8 +508,10 @@ private fun FuelEditor(e: FuelEntry, isNew: Boolean, units: UnitSystem, defaultP
                     modifier = Modifier.fillMaxWidth(), keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number))
                 OutlinedTextField(vol, { vol = it }, label = { Text(tr("Fuel added (%1\$s)", (volUnit(units)))) }, singleLine = true,
                     modifier = Modifier.fillMaxWidth(), keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal))
-                OutlinedTextField(total, { total = it }, label = { Text(tr("Total paid") + if (defaultPrice > 0) tr(" (blank = settings price)") else "") }, singleLine = true,
+                OutlinedTextField(total, { total = it }, label = { Text(tr("Total paid") + if (defaultPrice > 0 && priceSource == null) tr(" (blank = settings price)") else "") }, singleLine = true,
+                    placeholder = { cost?.let { Text("%.2f".format(it)) } },
                     modifier = Modifier.fillMaxWidth(), keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal))
+                if (priceSource != null) Text(priceSource, style = MaterialTheme.typography.bodySmall, color = com.openobd.ui.theme.Good, modifier = Modifier.testTag("pumpPrice"))
                 Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.clickable { full = !full }) {
                     Checkbox(full, { full = it }); Text(tr("Full tank"))
                 }
@@ -526,8 +542,11 @@ fun TripsScreen(onBack: () -> Unit, onOpen: (String) -> Unit) {
     val g by app.garage.data.collectAsStateWithLifecycle()
     val v = g.active
     val trips = g.trips.filter { it.vehicleId == v?.id }
+    var poster by remember { mutableStateOf(false) }
     Column(Modifier.fillMaxSize()) {
-        ScreenTopBar(tr("Trip history"), onBack)
+        ScreenTopBar(tr("Trip history"), onBack, actions = {
+            if (trips.any { it.trackPoints > 1 }) IconButton(onClick = { poster = true }, modifier = Modifier.testTag("allTripsPoster")) { Icon(Icons.Default.Map, tr("Poster of all trips")) }
+        })
         if (trips.isEmpty()) {
             CenteredMessage(Icons.Default.Route, tr("Trips are saved automatically when you disconnect after driving. ") +
                 tr("Turn on GPS tracks in Settings to see them on a map."))
@@ -537,6 +556,10 @@ fun TripsScreen(onBack: () -> Unit, onOpen: (String) -> Unit) {
         LazyColumn(contentPadding = PaddingValues(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
             item {
                 Text(tr("%1\$s trips · %2\$s", trips.size, (fmtKm(totalKm, settings.units))), style = MaterialTheme.typography.titleMedium)
+            }
+            if (trips.count { it.trackPoints > 1 } >= 2) item {
+                com.openobd.ui.components.NoticeCard(Icons.Default.Map, tr("Poster of all trips"),
+                    tr("Every road you drove in a period on one A3 poster: the ones you drive most stand out."), com.openobd.ui.theme.Violet) { poster = true }
             }
             items(trips, key = { it.id }) { t ->
                 SectionCard(Modifier.clickable { onOpen(t.id) }) {
@@ -553,6 +576,7 @@ fun TripsScreen(onBack: () -> Unit, onOpen: (String) -> Unit) {
             }
         }
     }
+    if (poster) AllTripsPosterDialog(trips, v?.let { listOfNotNull(it.name, it.specs?.title?.takeIf { t -> t.isNotBlank() && t != it.name }).joinToString(" · ") }.orEmpty()) { poster = false }
 }
 
 /** What the car was doing at one point of a trip's route. */
@@ -582,6 +606,7 @@ fun TripDetailScreen(tripId: String, onBack: () -> Unit, onModel3d: () -> Unit =
     var confirmDelete by remember { mutableStateOf(false) }
     var point by remember { mutableStateOf<TrackPoint?>(null) }
     var exporting by remember { mutableStateOf(false) }
+    var video by remember { mutableStateOf(false) }
     LaunchedEffect(tripId) { track = app.garage.loadTrack(tripId) }
     Column(Modifier.fillMaxSize()) {
         ScreenTopBar(t?.name?.takeIf { it.isNotBlank() } ?: tr("Trip"), onBack, actions = {
@@ -615,7 +640,9 @@ fun TripDetailScreen(tripId: String, onBack: () -> Unit, onModel3d: () -> Unit =
                 KeyValueRow(tr("Fuel used"), t.fuelL?.let { fmtLiters(it, settings.units) } ?: "—")
                 KeyValueRow(tr("Average consumption"), fmtL100(t.avgL100, settings.units))
                 t.cost?.let { KeyValueRow(tr("Fuel cost"), fmtMoney(it)) }
+                t.fuelPrice?.let { KeyValueRow(tr("Fuel price"), euros(it) + "/L" + if (t.fuelPriceLocal) " · " + tr("where you drove") else "") }
             }
+            if (pts.size >= 2) RouteStationsCard(pts)
             if (t.ecoScore != null) EcoScoreCard(t.ecoScore, t.eco, g.vehicles.firstOrNull { it.id == t.vehicleId }?.specs?.fuel?.burnsDiesel == true)
             val speeds = pts.mapNotNull { p -> p.speedKmh?.let { p.t to ObdUnit.KMH.display(it.toDouble(), settings.units).value.toFloat() } }
             if (speeds.size >= 2) SectionCard(title = tr("Speed")) {
@@ -627,7 +654,12 @@ fun TripDetailScreen(tripId: String, onBack: () -> Unit, onModel3d: () -> Unit =
     if (exporting && t != null) {
         val v = g.vehicles.firstOrNull { it.id == t.vehicleId }
         val car = listOfNotNull(v?.name, v?.specs?.title?.takeIf { it.isNotBlank() && it != v.name }).joinToString(" · ")
-        RouteExportDialog(t, track.orEmpty(), car, onDismiss = { exporting = false }, onModel3d = { exporting = false; onModel3d() })
+        RouteExportDialog(t, track.orEmpty(), car, onDismiss = { exporting = false }, onModel3d = { exporting = false; onModel3d() },
+            onVideo = { exporting = false; video = true })
+    }
+    if (video && t != null) {
+        val v = g.vehicles.firstOrNull { it.id == t.vehicleId }
+        TripVideoDialog(t, track.orEmpty(), v?.name.orEmpty()) { video = false }
     }
     if (confirmDelete && t != null) AlertDialog(
         onDismissRequest = { confirmDelete = false },
@@ -635,4 +667,34 @@ fun TripDetailScreen(tripId: String, onBack: () -> Unit, onModel3d: () -> Unit =
         confirmButton = { TextButton(onClick = { confirmDelete = false; scope.launch { app.garage.deleteTrip(t.id); onBack() } }) { Text(tr("Delete"), color = MaterialTheme.colorScheme.error) } },
         dismissButton = { TextButton(onClick = { confirmDelete = false }) { Text(tr("Cancel")) } },
     )
+}
+
+/** The cheapest stations along a trip's route (for the routes you drive often), from the live prices. */
+@Composable
+private fun RouteStationsCard(points: List<TrackPoint>) {
+    val app = LocalApp.current
+    val context = androidx.compose.ui.platform.LocalContext.current
+    val settings = appSettings()
+    if (!settings.fuelPrices) return
+    val fuel = currentPumpFuel()
+    var found by remember(points) { mutableStateOf<List<com.openobd.core.fuel.StationNear>?>(null) }
+    LaunchedEffect(points, fuel) {
+        val route = points.map { it.lat to it.lon }
+        if (!com.openobd.core.fuel.FuelPricesEs.covers(route.first().first, route.first().second)) return@LaunchedEffect
+        val list = app.fuelPrices.along(route) ?: return@LaunchedEffect
+        found = com.openobd.core.fuel.FuelPricesEs.alongRoute(list.stations, route, fuel).take(3)
+    }
+    val list = found?.takeIf { it.isNotEmpty() } ?: return
+    SectionCard(title = tr("Cheapest %1\$s on this route", tr(fuel.label).lowercase()), modifier = Modifier.testTag("routeStations")) {
+        list.forEach { s ->
+            Row(Modifier.fillMaxWidth().clickable { com.openobd.data.FuelPriceRepository.directions(context, s.station) }.padding(vertical = 6.dp),
+                verticalAlignment = Alignment.CenterVertically) {
+                Column(Modifier.weight(1f)) {
+                    Text(s.station.brand, style = MaterialTheme.typography.titleSmall)
+                    Text(s.station.address + ", " + s.station.town, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1)
+                }
+                Text(euros(s.price(fuel) ?: 0.0), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, color = com.openobd.ui.theme.Good)
+            }
+        }
+    }
 }

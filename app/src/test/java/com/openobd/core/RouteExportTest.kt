@@ -458,7 +458,7 @@ class RouteExportTest {
         val lake = listOf(LatLon(40.414, -3.705), LatLon(40.414, -3.700), LatLon(40.418, -3.700), LatLon(40.418, -3.705))
         val poster = RoutePoster.layout(info, points, { it }, terrain = hill, pxPerMm = 2.0, water = listOf(lake))
         val img = poster.shapes.filterIsInstance<RoutePoster.Image>().single()
-        val fr = RoutePoster.frame(points)!!
+        val fr = RoutePoster.frame(points, profile = true)!!
         // The middle of the lake is lake blue.
         fun pixelAt(lat: Double, lon: Double): Int {
             var best = 0; var bd = Double.MAX_VALUE
@@ -478,7 +478,7 @@ class RouteExportTest {
     }
 
     @Test fun `satellite poster uses the aerial photo and credits it`() {
-        val fr = RoutePoster.frame(points)!!
+        val fr = RoutePoster.frame(points, profile = true)!!
         val a = fr.area()
         val z = com.openobd.core.trip.Imagery.zoomFor(a[0], a[1], a[2], a[3], fr.metresPerMm / RoutePoster.PHOTO_PX_PER_MM)
         // Photo pixels about as fine as the poster's, not much finer.
@@ -511,5 +511,58 @@ class RouteExportTest {
         val paris = points.map { it.copy(lat = it.lat + 8.45, lon = it.lon + 6.05) }
         val h2 = RouteHtml.write(info, paris, { it }, satelliteFirst = true)
         assertTrue(h2.contains("World_Imagery") && h2.contains("if(true){"))
+    }
+
+    @Test fun `video script opens on the whole route, follows the car and ends on the whole route`() {
+        val v = com.openobd.core.trip.TripVideo(points, seconds = 20.0, fps = 30)
+        assertEquals(600, v.frames)
+        val first = v.shot(0); val mid = v.shot(300); val last = v.shot(v.frames - 1)
+        assertEquals(0.0, first.close, 1e-9); assertEquals(1.0, first.title, 1e-9); assertEquals(0.0, first.done, 1e-9)
+        assertEquals(1.0, mid.close, 1e-9); assertEquals(0.0, mid.title, 1e-9)
+        assertTrue(mid.done in 0.3..0.7)
+        assertEquals(0.0, last.close, 1e-9); assertEquals(1.0, last.done, 1e-9)
+        // The car only moves forward, and the camera turns with the road (this route is a loop: all headings).
+        val shots = (0 until v.frames).map(v::shot)
+        assertTrue(shots.zipWithNext().all { (a, b) -> b.done >= a.done - 1e-12 })
+        val headings = shots.filter { it.close == 1.0 }.map { it.heading }
+        assertTrue(headings.max() - headings.min() > 300)
+        // Far away, north is up.
+        assertEquals(0.0, first.heading, 1e-9)
+        assertEquals(v.totalKm, v.kmAt(last), 1e-6)
+        val a = com.openobd.core.trip.TripVideo.area(points)
+        assertTrue(a[0] < points.minOf { it.lat } && a[2] > points.maxOf { it.lat } && a[1] < points.minOf { it.lon } && a[3] > points.maxOf { it.lon })
+    }
+
+    @Test fun `height profile under the poster's map, from the terrain or the GPS`() {
+        val gps = RouteGeometry.profile(points)!!
+        assertEquals(points.size, gps.km.size)
+        assertTrue(gps.km.toList().zipWithNext().all { (a, b) -> b >= a })
+        assertTrue(gps.max - gps.min in 30.0..90.0)
+        val t = RouteGeometry.profile(points, hill)!!
+        assertEquals(670.7, t.max, 1.5) // the hill at its nearest to the loop, not the GPS heights
+        assertEquals(null, RouteGeometry.profile(points.map { it.copy(alt = null) }))
+        val poster = RoutePoster.layout(info, points, { it })
+        assertTrue(poster.shapes.any { it is RoutePoster.Polygon })
+        assertTrue(poster.shapes.any { it is RoutePoster.Text && it.text.startsWith("Altitude") })
+        // Without heights: no profile, the map keeps the room.
+        val flat = RoutePoster.layout(info, points.map { it.copy(alt = null) }, { it })
+        assertTrue(flat.shapes.none { it is RoutePoster.Polygon })
+        assertTrue(RoutePoster.svg(poster).contains("<polygon"))
+    }
+
+    @Test fun `poster of all trips draws every route see-through with the totals`() {
+        val other = points.map { it.copy(lat = it.lat + 0.01, lon = it.lon + 0.02) }
+        val poster = RoutePoster.layoutMany("Last 12 months", "Opel Astra", listOf(points, other, points), listOf("Trips" to "3", "Distance" to "36.9 km"), { it }, terrain = hill)
+        val routes = poster.shapes.filterIsInstance<RoutePoster.Line>().filter { it.opacity < 1 }
+        assertEquals(3, routes.size)
+        assertTrue(poster.shapes.any { it is RoutePoster.Image })
+        assertTrue(poster.shapes.any { it is RoutePoster.Text && it.text == "36.9 km" })
+        val svg = RoutePoster.svg(poster)
+        assertTrue(svg.contains("stroke-opacity=\"0.55\""))
+        xml(svg)
+        // Both routes fit in the map box.
+        val fr = RoutePoster.frameMany(listOf(points, other))!!
+        val box = fr.area()
+        assertTrue(other.all { it.lat in box[0]..box[2] && it.lon in box[1]..box[3] })
     }
 }

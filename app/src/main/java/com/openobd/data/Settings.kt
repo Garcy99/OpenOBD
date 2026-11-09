@@ -103,6 +103,17 @@ data class AppSettings(
     val voiceAlerts: Boolean = false,
     /** The basic app tour was shown or declined (on this phone). */
     val tourSeen: Boolean = false,
+    /** Fuel whose pump prices are shown ([com.openobd.core.fuel.PumpFuel] name); empty = from the car's fuel. */
+    val pumpFuel: String = "",
+    /** Show fuel prices near you and price trips with them (Spain). */
+    val fuelPrices: Boolean = true,
+    /** Record trips on their own: connect when the phone joins [autoTripDevice] and stop when it leaves. */
+    val autoTrips: Boolean = false,
+    /** Bluetooth address of the car's own radio / hands-free that marks the start and end of a drive. */
+    val autoTripDevice: String? = null,
+    val autoTripDeviceName: String? = null,
+    /** The offer of automatic trips on Home was answered (set up or "not now"). */
+    val autoTripsOffered: Boolean = false,
 ) {
     companion object {
         val DEFAULT_DASHBOARD = listOf("010C", "010D", "0105", "0104", "CALC_PEDAL", "CALC_FUEL", "0142", "CALC_BOOST")
@@ -156,6 +167,12 @@ class SettingsRepository(private val context: Context, scope: CoroutineScope) {
         val claudeKey = stringPreferencesKey("claude_key")
         val voiceAlerts = booleanPreferencesKey("voice_alerts")
         val tourSeen = booleanPreferencesKey("tour_seen")
+        val pumpFuel = stringPreferencesKey("pump_fuel")
+        val fuelPrices = booleanPreferencesKey("fuel_prices")
+        val autoTrips = booleanPreferencesKey("auto_trips")
+        val autoTripDevice = stringPreferencesKey("auto_trip_device")
+        val autoTripDeviceName = stringPreferencesKey("auto_trip_device_name")
+        val autoTripsOffered = booleanPreferencesKey("auto_trips_offered")
     }
 
     private val json = Json { ignoreUnknownKeys = true }
@@ -202,6 +219,12 @@ class SettingsRepository(private val context: Context, scope: CoroutineScope) {
             claudeApiKey = p[K.claudeKey] ?: d.claudeApiKey,
             voiceAlerts = p[K.voiceAlerts] ?: d.voiceAlerts,
             tourSeen = p[K.tourSeen] ?: d.tourSeen,
+            pumpFuel = p[K.pumpFuel] ?: d.pumpFuel,
+            fuelPrices = p[K.fuelPrices] ?: d.fuelPrices,
+            autoTrips = p[K.autoTrips] ?: d.autoTrips,
+            autoTripDevice = p[K.autoTripDevice] ?: d.autoTripDevice,
+            autoTripDeviceName = p[K.autoTripDeviceName] ?: d.autoTripDeviceName,
+            autoTripsOffered = p[K.autoTripsOffered] ?: d.autoTripsOffered,
         )
     }
 
@@ -251,6 +274,12 @@ class SettingsRepository(private val context: Context, scope: CoroutineScope) {
             p[K.claudeKey] = s.claudeApiKey
             p[K.voiceAlerts] = s.voiceAlerts
             p[K.tourSeen] = s.tourSeen
+            p[K.pumpFuel] = s.pumpFuel
+            p[K.fuelPrices] = s.fuelPrices
+            p[K.autoTrips] = s.autoTrips
+            if (s.autoTripDevice != null) p[K.autoTripDevice] = s.autoTripDevice else p.remove(K.autoTripDevice)
+            if (s.autoTripDeviceName != null) p[K.autoTripDeviceName] = s.autoTripDeviceName else p.remove(K.autoTripDeviceName)
+            p[K.autoTripsOffered] = s.autoTripsOffered
         }
     }
 }

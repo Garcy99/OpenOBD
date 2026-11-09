@@ -149,6 +149,33 @@ object RouteGeometry {
         for (a in alts) { if (a - ref > 3) { total += a - ref; ref = a } else if (a < ref) ref = a }
         return total
     }
+
+    /** Distance (km from the start) and height (m) at every point: from [terrain] when given, else the GPS. */
+    class Profile(val km: DoubleArray, val elevation: DoubleArray) {
+        val min: Double get() = elevation.min()
+        val max: Double get() = elevation.max()
+    }
+
+    /**
+     * The route's height profile, or null without heights for most points. GPS heights are smoothed (they jump by
+     * several metres); the terrain's are already smooth.
+     */
+    fun profile(points: List<TrackPoint>, terrain: Terrain? = null): Profile? {
+        if (points.size < 2) return null
+        val raw = points.map { p -> terrain?.elevation(p.lat, p.lon) ?: p.alt?.toDouble() }
+        if (raw.count { it != null } < points.size / 2 + 1) return null
+        // Fill gaps with the nearest known height.
+        val filled = DoubleArray(raw.size)
+        var last = raw.firstNotNullOf { it }
+        for (i in raw.indices) { raw[i]?.let { last = it }; filled[i] = last }
+        val smooth = if (terrain != null) filled else DoubleArray(filled.size) { i ->
+            val a = max(0, i - 3); val b = min(filled.size - 1, i + 3); (a..b).sumOf { filled[it] } / (b - a + 1)
+        }
+        val km = DoubleArray(points.size)
+        val m = metres(points)
+        for (i in 1 until points.size) km[i] = km[i - 1] + sqrt((m[i].first - m[i - 1].first).let { it * it } + (m[i].second - m[i - 1].second).let { it * it }) / 1000
+        return Profile(km, smooth)
+    }
 }
 
 private val iso = SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss'Z'", Locale.US).apply { timeZone = TimeZone.getTimeZone("UTC") }
@@ -218,6 +245,9 @@ object RouteHtml {
         val data = points.joinToString(",", "[", "]") { p ->
             "[${f(p.lat, 6)},${f(p.lon, 6)},${(p.t - info.start) / 1000},${n(p.speedKmh, 1)},${n(p.rpm, 0)},${n(p.l100, 1)},${n(p.coolantC, 0)},${n(p.pedal, 0)},${n(p.boostBar, 2)},${n(p.alt, 0)}]"
         }
+        // Heights for the profile under the slider: the terrain's when there is one (smoother and truer than GPS).
+        val prof = RouteGeometry.profile(points, terrain)
+        val profJs = prof?.let { p -> p.km.indices.joinToString(",", "[", "]") { i -> "[${f(p.km[i], 3)},${f(p.elevation[i], 1)}]" } } ?: "null"
         val js = { s: String -> "\"" + s.replace("\\", "\\\\").replace("\"", "\\\"").replace("<", "\\u003c").replace("\n", " ") + "\"" }
         val labels = listOf(
             "speed" to "Speed", "rpm" to "Engine speed", "cons" to "Consumption", "coolant" to "Coolant", "pedal" to "Accelerator",
@@ -258,13 +288,13 @@ footer{color:var(--muted);font-size:12px;text-align:center;margin:18px 0}
 </style></head><body><main>
 <h1>${xml(info.title)}</h1><div class="sub">${xml(info.car)} · ${xml(date)}</div>
 <div class="card"><div id="map"></div><div class="legend">$legend</div></div>
-<div class="card"><div id="hint"></div><input id="slider" type="range" min="0" max="${max(0, points.size - 1)}" value="0" aria-label="Position"><div id="pt"></div></div>
+<div class="card"><div id="hint"></div><canvas id="prof" height="150" style="width:100%;height:150px;display:none;cursor:pointer"></canvas><input id="slider" type="range" min="0" max="${max(0, points.size - 1)}" value="0" aria-label="Position"><div id="pt"></div></div>
 <div class="card"><div class="stats">$stats</div></div>
 <p><a class="btn" download="${xml(fileName(info))}.gpx" href="data:application/gpx+xml;base64,$gpx">${xml(label("Save GPX for your GPS"))}</a></p>
 <footer>${xml(label("Made with OpenOBD"))} · ${xml(label("Map data © OpenStreetMap contributors"))}</footer>
 </main>
 <script>
-const D=$data,R=$relief,L$=$labels,C=${RouteGeometry.bandColors.joinToString(",", "[", "]") { "\"$it\"" }},U=${units.js()};
+const D=$data,PR=$profJs,R=$relief,L$=$labels,C=${RouteGeometry.bandColors.joinToString(",", "[", "]") { "\"$it\"" }},U=${units.js()};
 function band(s){return s==null?3:s<=50?0:s<=100?1:2}
 function fmtT(t){const h=Math.floor(t/3600),m=Math.floor(t%3600/60),s=t%60;return (h?h+':'+String(m).padStart(2,'0'):m)+':'+String(s).padStart(2,'0')}
 function row(k,v){return v==null?'':'<div class="s"><span>'+k+'</span><b>'+v+'</b></div>'}
@@ -273,7 +303,21 @@ let map=null,marker=null;
 function show(i){const p=D[i];if(!p)return;slider.value=i;
 pt.innerHTML=row(L$.time,fmtT(p[2]))+row(L$.speed,p[3]==null?null:U.speed(p[3]))+row(L$.rpm,p[4]==null?null:p[4]+' rpm')+row(L$.cons,p[5]==null?null:U.cons(p[5]))
 +row(L$.coolant,p[6]==null?null:U.temp(p[6]))+row(L$.pedal,p[7]==null?null:p[7]+' %')+row(L$.boost,p[8]==null?null:U.boost(p[8]))+row(L$.alt,p[9]==null?null:U.height(p[9]));
-if(map){marker.setLatLng([p[0],p[1]]);}}
+if(map){marker.setLatLng([p[0],p[1]]);}drawProf(i)}
+// Height profile with the speed on top (colour of each stretch), and where the slider is.
+const cv=document.getElementById('prof');if(PR){cv.style.display='block'}
+function drawProf(sel){if(!PR)return;const r=window.devicePixelRatio||1,W=cv.clientWidth,H=150;cv.width=W*r;cv.height=H*r;const g=cv.getContext('2d');g.scale(r,r);g.clearRect(0,0,W,H);
+const tot=PR[PR.length-1][0]||1;let lo=1e9,hi=-1e9;for(const q of PR){lo=Math.min(lo,q[1]);hi=Math.max(hi,q[1])}const sp=Math.max(hi-lo,10),pl=46,pb=18,ph=H-pb-8;
+const X=k=>pl+(W-pl-6)*k/tot,Y=e=>8+ph-ph*(e-lo)/sp;const cs=getComputedStyle(document.documentElement);
+g.beginPath();g.moveTo(X(0),8+ph);for(const q of PR)g.lineTo(X(q[0]),Y(q[1]));g.lineTo(X(tot),8+ph);g.closePath();g.fillStyle='rgba(140,120,90,.18)';g.fill();
+g.lineWidth=2.5;for(let i=1;i<PR.length;i++){g.strokeStyle=C[band(D[i][3])];g.beginPath();g.moveTo(X(PR[i-1][0]),Y(PR[i-1][1]));g.lineTo(X(PR[i][0]),Y(PR[i][1]));g.stroke()}
+g.fillStyle=cs.getPropertyValue('--muted');g.font='12px system-ui';g.textAlign='right';g.fillText(U.height(hi),pl-6,14);g.fillText(U.height(lo),pl-6,8+ph);
+g.textAlign='left';g.fillText(L$.alt,pl,H-3);g.textAlign='right';g.fillText(U.dist(tot),W-6,H-3);
+if(sel!=null&&PR[sel]){const x=X(PR[sel][0]);g.strokeStyle=cs.getPropertyValue('--ink');g.lineWidth=1;g.beginPath();g.moveTo(x,8);g.lineTo(x,8+ph);g.stroke();
+g.fillStyle=cs.getPropertyValue('--ink');g.beginPath();g.arc(x,Y(PR[sel][1]),4,0,7);g.fill()}}
+cv.addEventListener('click',e=>{if(!PR)return;const b=cv.getBoundingClientRect(),W=b.width,pl=46,tot=PR[PR.length-1][0]||1,k=(e.clientX-b.left-pl)/(W-pl-6)*tot;
+let best=0;for(let i=0;i<PR.length;i++)if(Math.abs(PR[i][0]-k)<Math.abs(PR[best][0]-k))best=i;show(best)});
+window.addEventListener('resize',()=>drawProf(+slider.value));
 slider.addEventListener('input',e=>show(+e.target.value));
 function nearest(lat,lon){let b=0,d=1e18;const k=Math.cos(lat*Math.PI/180);for(let i=0;i<D.length;i++){const x=(D[i][1]-lon)*k,y=D[i][0]-lat,q=x*x+y*y;if(q<d){d=q;b=i}}return b}
 function init(){if(typeof L==='undefined'){document.getElementById('map').innerHTML='<p style="padding:16px">'+L$.offline+'</p>';show(0);return}
@@ -372,8 +416,8 @@ data class Units(val imperial: Boolean = false) {
     fun bandLabel(b: Int) = if (imperial) listOf("Up to 30 mph", "30-60 mph", "Over 60 mph", "Speed unknown")[b] else RouteGeometry.bandLabels[b]
 
     /** The same conversions for the HTML map's script. */
-    fun js(): String = if (imperial) "{speed:v=>(v*0.621371).toFixed(0)+' mph',cons:v=>(235.215/v).toFixed(1)+' mpg',temp:v=>(v*9/5+32).toFixed(0)+' °F',boost:v=>(v*14.5038).toFixed(1)+' psi',height:v=>(v*3.28084).toFixed(0)+' ft'}"
-        else "{speed:v=>v.toFixed(0)+' km/h',cons:v=>v.toFixed(1)+' L/100 km',temp:v=>v.toFixed(0)+' °C',boost:v=>v.toFixed(2)+' bar',height:v=>v.toFixed(0)+' m'}"
+    fun js(): String = if (imperial) "{speed:v=>(v*0.621371).toFixed(0)+' mph',cons:v=>(235.215/v).toFixed(1)+' mpg',temp:v=>(v*9/5+32).toFixed(0)+' °F',boost:v=>(v*14.5038).toFixed(1)+' psi',height:v=>(v*3.28084).toFixed(0)+' ft',dist:v=>(v*0.621371).toFixed(1)+' mi'}"
+        else "{speed:v=>v.toFixed(0)+' km/h',cons:v=>v.toFixed(1)+' L/100 km',temp:v=>v.toFixed(0)+' °C',boost:v=>v.toFixed(2)+' bar',height:v=>v.toFixed(0)+' m',dist:v=>v.toFixed(1)+' km'}"
 
     companion object {
         val texts = listOf("Up to 30 mph", "30-60 mph", "Over 60 mph") + RouteGeometry.bandLabels
@@ -391,11 +435,13 @@ fun fileName(info: RouteInfo): String = "OpenOBD " + SimpleDateFormat("yyyy-MM-d
  */
 object RoutePoster {
     sealed interface Shape
-    data class Line(val points: List<Pair<Double, Double>>, val color: String, val width: Double) : Shape
+    data class Line(val points: List<Pair<Double, Double>>, val color: String, val width: Double, val opacity: Double = 1.0) : Shape
     data class Circle(val x: Double, val y: Double, val r: Double, val fill: String, val stroke: String?, val strokeWidth: Double = 0.0) : Shape
     data class Rect(val x: Double, val y: Double, val w: Double, val h: Double, val fill: String) : Shape
     /** [anchor]: 0 start, 1 middle, 2 end; [y] is the baseline. */
     data class Text(val x: Double, val y: Double, val text: String, val size: Double, val color: String, val bold: Boolean = false, val anchor: Int = 0) : Shape
+    /** A filled shape (the area under the height profile). */
+    data class Polygon(val points: List<Pair<Double, Double>>, val fill: String) : Shape
     /** A raster ([argb], [width] x [height] pixels) stretched over the rectangle; used for the relief. */
     class Image(val x: Double, val y: Double, val w: Double, val h: Double, val width: Int, val height: Int, val argb: IntArray) : Shape
 
@@ -419,9 +465,9 @@ object RoutePoster {
     }
 
     /** The map box for [points] on a page of [widthMm] x [heightMm] ([ground]: leave ground around the route). */
-    fun frame(points: List<TrackPoint>, widthMm: Double = 297.0, heightMm: Double = 420.0, ground: Boolean = true): Frame? {
+    fun frame(points: List<TrackPoint>, widthMm: Double = 297.0, heightMm: Double = 420.0, ground: Boolean = true, profile: Boolean = false): Frame? {
         val margin = widthMm * 0.08
-        val top = margin + 34; val statsH = heightMm * 0.2; val bottom = heightMm - margin - statsH
+        val top = margin + 34; val statsH = heightMm * 0.2; val bottom = heightMm - margin - statsH - (if (profile) profileBlock(heightMm) else 0.0)
         val boxW = widthMm - 2 * margin; val boxH = bottom - top
         val simple = RouteGeometry.simplify(points, 2.0)
         val m = RouteGeometry.metres(simple)
@@ -432,6 +478,99 @@ object RoutePoster {
         val offX = margin + (boxW - spanX * scale) / 2; val offY = top + (boxH - spanY * scale) / 2
         return Frame(margin, top, boxW, boxH, bottom, scale, offX, offY, minX, maxY, simple.first())
     }
+
+    private const val INK = "#16181D"
+    private const val MUTED = "#6B7280"
+
+    /** The relief or aerial photo under the map box, with its frame line and credits. */
+    private fun ground(
+        fr: Frame, terrain: Terrain?, imagery: TileImagery?, water: List<List<LatLon>>, pxPerMm: Double?, shapes: MutableList<Shape>, credits: MutableList<String>,
+    ) {
+        val image = imagery?.let { im -> photo(im, fr.boxW, fr.boxH, pxPerMm ?: PHOTO_PX_PER_MM, fr::latLon)?.also { credits += im.attributions } }
+            ?: terrain?.let { t ->
+                relief(t, fr.boxW, fr.boxH, pxPerMm ?: RELIEF_PX_PER_MM, water, at = fr::latLon)?.also {
+                    credits += t.attribution; if (water.isNotEmpty()) credits += Overpass.ATTRIBUTION
+                }
+            }
+        image?.let { (w, h, px) ->
+            shapes += Image(fr.margin, fr.top, fr.boxW, fr.boxH, w, h, px)
+            shapes += Line(listOf(fr.margin to fr.top, fr.margin + fr.boxW to fr.top, fr.margin + fr.boxW to fr.top + fr.boxH, fr.margin to fr.top + fr.boxH, fr.margin to fr.top), "#D6D3CC", 0.3)
+        }
+    }
+
+    /** Scale bar (a round distance close to a fifth of the box) and north arrow under the map. */
+    private fun scaleAndNorth(fr: Frame, units: Units, widthMm: Double, shapes: MutableList<Shape>) {
+        val margin = fr.margin; val scale = fr.scale; val bottom = fr.bottom
+        val target = fr.boxW / 5 / scale
+        val nice = listOf(10.0, 20.0, 50.0, 100.0, 200.0, 500.0, 1000.0, 2000.0, 5000.0, 10000.0, 20000.0, 50000.0, 100000.0, 200000.0, 500000.0)
+            .let { list -> if (units.imperial) list.map { it * 1.609344 } else list }.lastOrNull { it <= target } ?: 10.0
+        val barY = bottom + 6
+        shapes += Line(listOf(margin to barY, margin + nice * scale to barY), INK, 0.6)
+        shapes += Line(listOf(margin to barY - 1.5, margin to barY + 1.5), INK, 0.6)
+        shapes += Line(listOf(margin + nice * scale to barY - 1.5, margin + nice * scale to barY + 1.5), INK, 0.6)
+        val niceLabel = if (units.imperial) (nice / 1609.344).let { if (it >= 1) f(it, 0) + " mi" else f(it * 5280, 0) + " ft" }
+            else if (nice >= 1000) f(nice / 1000, 0) + " km" else f(nice, 0) + " m"
+        shapes += Text(margin + nice * scale + 3, barY + 1.5, niceLabel, widthMm * 0.018, MUTED)
+        val nx = widthMm - margin - 4; val ny = bottom + 2
+        shapes += Line(listOf(nx to ny + 6, nx to ny - 3), INK, 0.6)
+        shapes += Line(listOf(nx - 2.2 to ny, nx to ny - 3.5, nx + 2.2 to ny), INK, 0.6)
+        shapes += Text(nx, ny - 5.5, "N", widthMm * 0.02, INK, bold = true, anchor = 1)
+    }
+
+    private fun simplifyAll(tracks: List<List<TrackPoint>>) = tracks.filter { it.size >= 2 }.map { RouteGeometry.simplify(it, 5.0) }
+
+    /** The map box of [layoutMany] (to download the photos of exactly that area). */
+    fun frameMany(tracks: List<List<TrackPoint>>, widthMm: Double = 297.0, heightMm: Double = 420.0): Frame? =
+        frame(simplifyAll(tracks).flatten(), widthMm, heightMm, true)
+
+    /**
+     * Every trip of a period on one poster: the routes over the relief or aerial photos, drawn see-through so the
+     * roads driven most stand out, with the period's totals ([stats]: label, value).
+     */
+    fun layoutMany(
+        title: String, subtitle: String, tracks: List<List<TrackPoint>>, stats: List<Pair<String, String>>, label: (String) -> String,
+        units: Units = Units(), widthMm: Double = 297.0, heightMm: Double = 420.0,
+        terrain: Terrain? = null, pxPerMm: Double? = null, imagery: TileImagery? = null, water: List<List<LatLon>> = emptyList(),
+    ): Poster {
+        val shapes = mutableListOf<Shape>(Rect(0.0, 0.0, widthMm, heightMm, "#FFFFFF"))
+        val margin = widthMm * 0.08
+        shapes += Text(margin, margin + 12, title, widthMm * 0.055, INK, bold = true)
+        shapes += Text(margin, margin + 22, subtitle, widthMm * 0.024, MUTED)
+        val simple = simplifyAll(tracks)
+        val fr = frame(simple.flatten(), widthMm, heightMm, terrain != null || imagery != null)
+        val credits = mutableListOf<String>()
+        val bottom = fr?.bottom ?: (heightMm - margin - heightMm * 0.2)
+        if (fr != null) {
+            ground(fr, terrain, imagery, water, pxPerMm, shapes, credits)
+            val photo = imagery != null && shapes.any { it is Image }
+            val color = if (photo) "#FFB020" else "#E4572E"
+            val stroke = widthMm * 0.0045
+            val origin = fr.origin
+            val kx = 111_320.0 * cos(Math.toRadians(origin.lat)); val ky = 110_540.0
+            fun xy(p: TrackPoint): Pair<Double, Double> {
+                val xm = (p.lon - origin.lon) * kx; val ym = (p.lat - origin.lat) * ky
+                return (fr.offX + (xm - fr.minX) * fr.scale) to (fr.offY + (fr.maxY - ym) * fr.scale)
+            }
+            for (t in simple) shapes += Line(t.map(::xy), color, stroke, opacity = if (simple.size > 1) 0.55 else 1.0)
+            scaleAndNorth(fr, units, widthMm, shapes)
+        }
+        val cols = 3; val colW = (widthMm - 2 * margin) / cols
+        stats.forEachIndexed { i, (k, v) ->
+            val x = margin + (i % cols) * colW; val y = bottom + 20 + (i / cols) * widthMm * 0.08
+            shapes += Text(x, y, k, widthMm * 0.017, MUTED)
+            shapes += Text(x, y + widthMm * 0.035, v, widthMm * 0.03, INK, bold = true)
+        }
+        val legendY = heightMm - margin + 6
+        shapes += Text(widthMm - margin, legendY, "OpenOBD", widthMm * 0.017, MUTED, anchor = 2)
+        credits.forEachIndexed { i, c -> shapes += Text(widthMm - margin, legendY + 5 + i * 4, label(c), widthMm * 0.011, MUTED, anchor = 2) }
+        return Poster(widthMm, heightMm, shapes)
+    }
+
+    /** Room for the height profile under the map (with its gap). */
+    private fun profileBlock(heightMm: Double) = heightMm * 0.075 + 14
+
+    /** Whether the poster will carry a height profile (GPS heights, or the terrain's): reserves room for it. */
+    fun hasProfile(points: List<TrackPoint>, terrain: Terrain? = null) = RouteGeometry.profile(points, terrain) != null
 
     /** Resolution of the relief (8 px/mm = 203 dpi) and of the aerial photo (10 px/mm = 254 dpi). */
     const val RELIEF_PX_PER_MM = 8.0
@@ -453,23 +592,15 @@ object RoutePoster {
         shapes += Text(margin, margin + 22, listOf(info.car, date).filter { it.isNotBlank() }.joinToString("  ·  "), widthMm * 0.024, muted)
 
         val ground = terrain != null || imagery != null
-        val fr = frame(points, widthMm, heightMm, ground)
+        val prof = RouteGeometry.profile(points, terrain)
+        val fr = frame(points, widthMm, heightMm, ground, prof != null)
         val credits = mutableListOf<String>()
         val bottom = fr?.bottom ?: (heightMm - margin - heightMm * 0.2)
         if (fr != null) {
             val m = RouteGeometry.metres(RouteGeometry.simplify(points, 2.0))
             val top = fr.top; val boxW = fr.boxW; val boxH = fr.boxH; val scale = fr.scale
             fun xy(p: Pair<Double, Double>) = (fr.offX + (p.first - fr.minX) * scale) to (fr.offY + (fr.maxY - p.second) * scale)
-            val image = imagery?.let { im -> photo(im, boxW, boxH, pxPerMm ?: PHOTO_PX_PER_MM, fr::latLon)?.also { credits += im.attributions } }
-                ?: terrain?.let { t ->
-                    relief(t, boxW, boxH, pxPerMm ?: RELIEF_PX_PER_MM, water, at = fr::latLon)?.also {
-                        credits += t.attribution; if (water.isNotEmpty()) credits += Overpass.ATTRIBUTION
-                    }
-                }
-            image?.let { (w, h, px) ->
-                shapes += Image(margin, top, boxW, boxH, w, h, px)
-                shapes += Line(listOf(margin to top, margin + boxW to top, margin + boxW to top + boxH, margin to top + boxH, margin to top), "#D6D3CC", 0.3)
-            }
+            ground(fr, terrain, imagery, water, pxPerMm, shapes, credits)
             val stroke = widthMm * 0.0065
             // A smooth curve through every GPS point (not straight lines between them), coloured by speed.
             val curve = RouteGeometry.smooth(points, max(3.0, 0.15 / scale), 0.25 / scale)
@@ -489,22 +620,7 @@ object RoutePoster {
             val s = xy(m.first()); val e = xy(m.last())
             shapes += Circle(s.first, s.second, stroke * 1.6, "#16A34A", "#FFFFFF", stroke * 0.5)
             shapes += Circle(e.first, e.second, stroke * 1.6, ink, "#FFFFFF", stroke * 0.5)
-            // Scale bar: a round distance close to a fifth of the box
-            val target = boxW / 5 / scale
-            val nice = listOf(10.0, 20.0, 50.0, 100.0, 200.0, 500.0, 1000.0, 2000.0, 5000.0, 10000.0, 20000.0, 50000.0, 100000.0)
-                .let { list -> if (units.imperial) list.map { it * 1.609344 } else list }.lastOrNull { it <= target } ?: 10.0
-            val barY = bottom + 6
-            shapes += Line(listOf(margin to barY, margin + nice * scale to barY), ink, 0.6)
-            shapes += Line(listOf(margin to barY - 1.5, margin to barY + 1.5), ink, 0.6)
-            shapes += Line(listOf(margin + nice * scale to barY - 1.5, margin + nice * scale to barY + 1.5), ink, 0.6)
-            val niceLabel = if (units.imperial) (nice / 1609.344).let { if (it >= 1) f(it, 0) + " mi" else f(it * 5280, 0) + " ft" }
-                else if (nice >= 1000) f(nice / 1000, 0) + " km" else f(nice, 0) + " m"
-            shapes += Text(margin + nice * scale + 3, barY + 1.5, niceLabel, widthMm * 0.018, muted)
-            // North arrow
-            val nx = widthMm - margin - 4; val ny = bottom + 2
-            shapes += Line(listOf(nx to ny + 6, nx to ny - 3), ink, 0.6)
-            shapes += Line(listOf(nx - 2.2 to ny, nx to ny - 3.5, nx + 2.2 to ny), ink, 0.6)
-            shapes += Text(nx, ny - 5.5, "N", widthMm * 0.02, ink, bold = true, anchor = 1)
+            scaleAndNorth(fr, units, widthMm, shapes)
         }
 
         // Stats
@@ -517,8 +633,31 @@ object RoutePoster {
             info.avgL100?.let { label("Average consumption") to units.consumption(it) },
             RouteGeometry.climb(points)?.let { label("Climb") to units.height(it) },
         )
+        if (prof != null && fr != null) {
+            // Height profile: the area under the heights, its top edge coloured by speed like the route.
+            val x0 = margin; val w = fr.boxW; val y0 = bottom + 14; val h = heightMm * 0.075
+            val total = max(prof.km.last(), 1e-6)
+            val lo = prof.min; val span = max(prof.max - lo, 10.0)
+            fun px(i: Int) = (x0 + w * prof.km[i] / total) to (y0 + h - h * (prof.elevation[i] - lo) / span * 0.9)
+            val step = max(1, points.size / 600)
+            val idx = (points.indices step step).toMutableList().also { if (it.last() != points.lastIndex) it += points.lastIndex }
+            shapes += Polygon(listOf(x0 to y0 + h) + idx.map(::px) + listOf((x0 + w) to y0 + h), "#ECE7DD")
+            var run = mutableListOf<Pair<Double, Double>>(); var band = -1
+            for (i in idx) {
+                val b = RouteGeometry.band(points[i].speedKmh); val pt = px(i)
+                if (b != band && run.isNotEmpty()) { run += pt; shapes += Line(run, RouteGeometry.bandColors[band], 0.7); run = mutableListOf() }
+                run += pt; band = b
+            }
+            if (run.size >= 2) shapes += Line(run, RouteGeometry.bandColors[band], 0.7)
+            shapes += Line(listOf(x0 to y0 + h, (x0 + w) to y0 + h), "#D6D3CC", 0.3)
+            val small = widthMm * 0.013
+            shapes += Text(x0 - 2, y0 + h * 0.1 + small / 2, units.height(prof.max), small, muted, anchor = 2)
+            shapes += Text(x0 - 2, y0 + h, units.height(lo), small, muted, anchor = 2)
+            shapes += Text(x0 + w, y0 + h + small + 1.5, units.distance(prof.km.last()), small, muted, anchor = 2)
+            shapes += Text(x0, y0 + h + small + 1.5, label("Altitude") + " · " + label("colour: speed"), small, muted)
+        }
         val cols = 3; val colW = (widthMm - 2 * margin) / cols
-        val statsTop = bottom + 20
+        val statsTop = bottom + 20 + (if (prof != null && fr != null) profileBlock(heightMm) else 0.0)
         stats.forEachIndexed { i, (k, v) ->
             val x = margin + (i % cols) * colW; val y = statsTop + (i / cols) * widthMm * 0.08
             shapes += Text(x, y, k, widthMm * 0.017, muted)
@@ -725,8 +864,9 @@ object RoutePoster {
         append("""<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="${f(p.widthMm, 0)}mm" height="${f(p.heightMm, 0)}mm" viewBox="0 0 ${f(p.widthMm, 2)} ${f(p.heightMm, 2)}" font-family="Helvetica, Arial, sans-serif">""").append('\n')
         for (s in p.shapes) when (s) {
             is Image -> append("""<image x="${f(s.x, 2)}" y="${f(s.y, 2)}" width="${f(s.w, 2)}" height="${f(s.h, 2)}" preserveAspectRatio="none" xlink:href="${image(s.width, s.height, s.argb)}"/>""")
+            is Polygon -> append("""<polygon fill="${s.fill}" points="${s.points.joinToString(" ") { "${f(it.first, 2)},${f(it.second, 2)}" }}"/>""")
             is Rect -> append("""<rect x="${f(s.x, 2)}" y="${f(s.y, 2)}" width="${f(s.w, 2)}" height="${f(s.h, 2)}" fill="${s.fill}"/>""")
-            is Line -> append("""<polyline fill="none" stroke="${s.color}" stroke-width="${f(s.width, 2)}" stroke-linecap="round" stroke-linejoin="round" points="${s.points.joinToString(" ") { "${f(it.first, 2)},${f(it.second, 2)}" }}"/>""")
+            is Line -> append("""<polyline fill="none" stroke="${s.color}"${if (s.opacity < 1) " stroke-opacity=\"${f(s.opacity, 2)}\"" else ""} stroke-width="${f(s.width, 2)}" stroke-linecap="round" stroke-linejoin="round" points="${s.points.joinToString(" ") { "${f(it.first, 2)},${f(it.second, 2)}" }}"/>""")
             is Circle -> append("""<circle cx="${f(s.x, 2)}" cy="${f(s.y, 2)}" r="${f(s.r, 2)}" fill="${s.fill}"${s.stroke?.let { " stroke=\"$it\" stroke-width=\"${f(s.strokeWidth, 2)}\"" } ?: ""}/>""")
             is Text -> append("""<text x="${f(s.x, 2)}" y="${f(s.y, 2)}" font-size="${f(s.size, 2)}" fill="${s.color}"${if (s.bold) " font-weight=\"bold\"" else ""}${when (s.anchor) { 1 -> " text-anchor=\"middle\""; 2 -> " text-anchor=\"end\""; else -> "" }}>${xml(s.text)}</text>""")
         }.also { append('\n') }
@@ -739,5 +879,5 @@ val routeExportTexts = Route3mf.texts + listOf(Terrarium.ATTRIBUTION, Mapterhorn
     "Speed", "Engine speed", "Consumption", "Coolant", "Accelerator", "Boost", "Altitude", "Time into the trip",
     "Tap the route or move the slider to see what the car was doing there.", "The map needs an internet connection; the data below still works.",
     "Distance", "Duration", "Average speed (moving)", "Max speed", "Fuel used", "Average consumption", "Climb",
-    "Save GPX for your GPS", "Made with OpenOBD", "Map data © OpenStreetMap contributors", "Map", "Relief", "Satellite",
+    "Save GPX for your GPS", "Made with OpenOBD", "Map data © OpenStreetMap contributors", "Map", "Relief", "Satellite", "colour: speed", "Distance",
 ) + Units.texts

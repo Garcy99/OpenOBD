@@ -20,6 +20,12 @@ Drive if you connect your account (optional).
 | **Share a trip** | **Car screen bridge** | **Google account sync** | **App tour** |
 | ![](docs/screenshots/export.jpg) | ![](docs/screenshots/bridge.jpg) | ![](docs/screenshots/sync.jpg) | ![](docs/screenshots/tour.jpg) |
 
+### Cheaper fuel and trips that record themselves
+
+| Live fuel prices around you (Spain) | Automatic trips: every drive, no need to open the app |
+|---|---|
+| ![](docs/screenshots/fuel.jpg) | ![](docs/screenshots/auto-trips.jpg) |
+
 ### Your trips as maps, posters and 3D prints
 
 | A3 poster over the relief (2 m LiDAR, contours, lakes) | A3 poster over aerial photos |
@@ -33,6 +39,11 @@ Drive if you connect your account (optional).
 | Interactive web map (GPX inside): map, aerial photos or relief | The relief built into the file, works offline |
 |---|---|
 | ![](docs/screenshots/route-web-map.jpg) | ![](docs/screenshots/route-web-relief.jpg) |
+
+*Video of the drive (MP4): a flight over the relief or the aerial photos following the car, with its speed, engine
+speed and height profile:*
+
+![](docs/screenshots/route-video.jpg)
 
 | 3D map, Alpine style | 3D map, Forest style, round | 3D map, five spools mixed (Landscape) |
 |---|---|---|
@@ -73,11 +84,17 @@ the five spools that blends into every shade from a normal distance:*
 - **Codings & adaptations** with a backup before every write, a check afterwards, automatic restore if it fails
   and undo from the history
 - **Garage**: several cars, maintenance and inspection reminders, fuel log with real consumption, trips on a
-  map with the values at every point, exported to GPX, an interactive web map, a printable poster or a 3D model
+  map with the values at every point, exported to GPX, an interactive web map, a printable poster, a video or a 3D model
 - **Trips you can print**: GPX for any GPS, an interactive web map, an A3 poster over a detailed relief (2 m LiDAR in
   Spain) or over aerial photos where you can see single trees, and a
   **multicolour 3D map** of the terrain for your 3D printer (Bambu Studio, PrusaSlicer, Orca), with all colours,
   6 or 4 filaments, or five spools mixed for a continuous range of shades
+- **Cheaper fuel** (Spain): the cheapest stations around you with live official prices, what filling up there
+  saves, the cheapest ones on your usual routes, and trips priced with what fuel costs where you drive
+- **Automatic trips**: when the phone joins the car's Bluetooth, OpenOBD records the drive in the background and
+  saves it when the engine stops, with a notification of what it cost
+- **Videos and posters of your drives**: a flight over the terrain following the car (MP4), height profiles, and a
+  poster of every road you drove in a year
 - Works with **Bluetooth, Bluetooth LE, Wi-Fi and USB** adapters, on phones, tablets and Android car head units;
   a **car screen bridge** lets the car's screen use the phone's adapter over Wi-Fi
 - Optional **Google account sync** through your own Google Drive, **updates from inside the app**, and a guided

@@ -46,6 +46,13 @@ Only in these cases, and only when you trigger them:
   https://mapterhorn.com/privacy-policy/, https://aws.amazon.com/privacy/,
   https://wiki.osmfoundation.org/wiki/Privacy_Policy, https://www.ign.es/web/ign/portal/politica-de-privacidad,
   https://www.esri.com/en-us/privacy/overview
+- **Fuel prices** (Spain, can be turned off in Settings): to show the stations around you and price trips, the app
+  downloads the prices of your province (and the neighbouring ones) from the Spanish Ministry for the Ecological
+  Transition's open data (sedeaplicaciones.minetur.gob.es). Only the province number is sent, never your location;
+  the ministry sees your IP address. Your location is used on the phone to find the nearest stations.
+- **Automatic trips** (optional, off by default): the app is woken by Android when the phone joins the car's
+  Bluetooth device you chose, connects to your adapter and records the trip as usual. With "Allow all the time"
+  location, the route of those trips is recorded too. Nothing is sent anywhere; trips stay on the phone.
 - **Update check** (GitHub builds only): at most once a day, and when you press *Check for updates*, the app asks
   GitHub's public API (api.github.com) for the latest release and, if you choose to update, downloads its APK from
   GitHub. GitHub sees your IP address; nothing about you or your car is sent. GitHub's privacy statement:

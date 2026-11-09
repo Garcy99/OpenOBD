@@ -14,6 +14,8 @@
     <!-- Location: BLE scanning on Android 11 and older, and optional GPS tracks for trips -->
     <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
     <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
+    <!-- Automatic trips start in the background (when the car's Bluetooth joins): their GPS track needs this. -->
+    <uses-permission android:name="android.permission.ACCESS_BACKGROUND_LOCATION" />
     <!-- Wi-Fi adapters -->
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
@@ -74,6 +76,16 @@
             android:name=".service.ObdService"
             android:exported="false"
             android:foregroundServiceType="connectedDevice|location" />
+
+        <!-- Automatic trips: the car's own Bluetooth joining or leaving the phone (sent by the system only). -->
+        <receiver
+            android:name=".service.AutoTripReceiver"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.bluetooth.device.action.ACL_CONNECTED" />
+                <action android:name="android.bluetooth.device.action.ACL_DISCONNECTED" />
+            </intent-filter>
+        </receiver>
 
         <receiver
             android:name=".widget.CarWidget"

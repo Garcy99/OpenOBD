@@ -69,7 +69,10 @@ fun TripScreen(onBack: () -> Unit, onConnect: () -> Unit, onHistory: () -> Unit 
             EcoScoreCard(t.ecoScore, t.eco, session.trip.diesel)
             SectionCard(title = tr("Details")) {
                 KeyValueRow(tr("Fuel used"), if (t.hasFuelData) fmt(t.fuelL, ObdUnit.LITERS, 2) else tr("Not available"))
-                if (settings.fuelPricePerL > 0 && t.hasFuelData) KeyValueRow(tr("Fuel cost"), "%.2f".format(t.fuelL * settings.fuelPricePerL))
+                val localPrice by session.tripFuelPrice.collectAsStateWithLifecycle()
+                val price = localPrice ?: settings.fuelPricePerL.toDouble().takeIf { it > 0 }
+                if (price != null && t.hasFuelData) KeyValueRow(tr("Fuel cost"), "%.2f €".format(t.fuelL * price) +
+                    if (localPrice != null) " (" + tr("%1\$s/L here", euros(price)) + ")" else "")
                 KeyValueRow(tr("Average speed (moving)"), fmt(t.avgSpeed, ObdUnit.KMH, 0))
                 KeyValueRow(tr("Max speed"), fmt(t.maxSpeed, ObdUnit.KMH, 0))
                 KeyValueRow(tr("Max RPM"), "%.0f".format(t.maxRpm))

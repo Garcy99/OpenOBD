@@ -17,6 +17,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Map
+import androidx.compose.material.icons.filled.Movie
 import androidx.compose.material.icons.filled.Navigation
 import androidx.compose.material.icons.filled.Print
 import androidx.compose.material.icons.filled.Public
@@ -72,6 +73,8 @@ enum class RouteFormat(val ext: String, val mime: String, val title: String, val
         "The route over a detailed relief with contour lines and lakes, or over aerial photos: prints sharp on A3 and scales down to A4."),
     SVG("svg", "image/svg+xml", "Vector image (SVG)",
         "The same poster to edit or send to a print shop."),
+    MP4("mp4", "video/mp4", "Video of the drive (MP4)",
+        "The drive as a short film: a flight over the relief or the aerial photos following the car, with its speed, engine speed and height. To share or keep."),
     THREE_MF("3mf", "model/3mf", "3D map to print (3MF, multicolour)",
         "The terrain around the route coloured by altitude, with lakes, roads and buildings, cut as a hexagon, circle or square. See it in 3D before saving; every part comes painted with its filament."),
     ;
@@ -117,7 +120,7 @@ private fun waterArea(points: List<TrackPoint>): DoubleArray? {
 
 @OptIn(androidx.compose.foundation.layout.ExperimentalLayoutApi::class)
 @Composable
-fun RouteExportDialog(trip: TripRecord, points: List<TrackPoint>, car: String, onDismiss: () -> Unit, onModel3d: () -> Unit = {}) {
+fun RouteExportDialog(trip: TripRecord, points: List<TrackPoint>, car: String, onDismiss: () -> Unit, onModel3d: () -> Unit = {}, onVideo: () -> Unit = {}) {
     val context = LocalContext.current
     val app = com.openobd.ui.LocalApp.current
     val scope = rememberCoroutineScope()
@@ -152,7 +155,7 @@ fun RouteExportDialog(trip: TripRecord, points: List<TrackPoint>, car: String, o
                 } else null
                 val water = if (terrain != null) waterArea(points)?.let { area -> runCatching { app.water(area) }.getOrNull() }.orEmpty() else emptyList()
                 val imagery = if (usesGround && ground == PosterGround.SATELLITE && format != RouteFormat.HTML) {
-                    RoutePoster.frame(points)?.let { fr ->
+                    RoutePoster.frame(points, profile = RoutePoster.hasProfile(points))?.let { fr ->
                         status = tr("Downloading aerial photos… %1\$s of %2\$s", 0, "…")
                         app.imagery(fr.area(), fr.metresPerMm / RoutePoster.PHOTO_PX_PER_MM) { i, n -> status = tr("Downloading aerial photos… %1\$s of %2\$s", i, n) }
                     }.also { if (it == null) error = tr("The aerial photos could not be downloaded: exported without them.") }
@@ -167,6 +170,7 @@ fun RouteExportDialog(trip: TripRecord, points: List<TrackPoint>, car: String, o
                         RouteFormat.SVG -> file.writeText(RoutePoster.svg(RoutePoster.layout(info, points, label, units, terrain = terrain, imagery = imagery, water = water), ::jpegDataUri))
                         RouteFormat.PDF -> writePdf(file, RoutePoster.layout(info, points, label, units, terrain = terrain, imagery = imagery, water = water))
                         RouteFormat.THREE_MF -> error("3D models are made in their own screen")
+                        RouteFormat.MP4 -> error("Videos are made in their own dialog")
                     }
                     file
                 }
@@ -204,9 +208,10 @@ fun RouteExportDialog(trip: TripRecord, points: List<TrackPoint>, car: String, o
                         RouteFormat.PDF -> Icons.Default.Print
                         RouteFormat.SVG -> Icons.Default.Map
                         RouteFormat.THREE_MF -> Icons.Default.ViewInAr
+                        RouteFormat.MP4 -> Icons.Default.Movie
                     }
                     Row(Modifier.fillMaxWidth().clickable(enabled = busy == null) {
-                        if (f == RouteFormat.THREE_MF) onModel3d() else export(f)
+                        when (f) { RouteFormat.THREE_MF -> onModel3d(); RouteFormat.MP4 -> onVideo(); else -> export(f) }
                     }.padding(vertical = 8.dp).testTag("export_${f.ext}"), verticalAlignment = Alignment.Top) {
                         Icon(icon, null, Modifier.size(24.dp), tint = MaterialTheme.colorScheme.primary)
                         Spacer(Modifier.width(12.dp))
@@ -242,6 +247,7 @@ fun writePdf(file: File, poster: RoutePoster.Poster) {
             }
             c.drawPath(path, Paint(Paint.ANTI_ALIAS_FLAG).apply {
                 color = color(s.color); style = Paint.Style.STROKE; strokeWidth = (s.width * k).toFloat()
+                if (s.opacity < 1) alpha = (s.opacity * 255).toInt().coerceIn(0, 255)
                 strokeCap = Paint.Cap.ROUND; strokeJoin = Paint.Join.ROUND
             })
         }
@@ -252,6 +258,14 @@ fun writePdf(file: File, poster: RoutePoster.Poster) {
                     color = color(st); style = Paint.Style.STROKE; strokeWidth = (s.strokeWidth * k).toFloat()
                 })
             }
+        }
+        is RoutePoster.Polygon -> if (s.points.size >= 3) {
+            val path = Path().apply {
+                moveTo((s.points[0].first * k).toFloat(), (s.points[0].second * k).toFloat())
+                s.points.drop(1).forEach { lineTo((it.first * k).toFloat(), (it.second * k).toFloat()) }
+                close()
+            }
+            c.drawPath(path, Paint(Paint.ANTI_ALIAS_FLAG).apply { color = color(s.fill); style = Paint.Style.FILL })
         }
         is RoutePoster.Image -> {
             val bmp = android.graphics.Bitmap.createBitmap(s.argb, s.width, s.height, android.graphics.Bitmap.Config.ARGB_8888)
@@ -268,4 +282,110 @@ fun writePdf(file: File, poster: RoutePoster.Poster) {
     doc.finishPage(page)
     file.outputStream().use { doc.writeTo(it) }
     doc.close()
+}
+
+/** Which trips go on the poster of all trips. */
+enum class TripPeriod(val label: String) {
+    YEAR("This year"), MONTHS12("Last 12 months"), ALL("All trips");
+
+    fun includes(start: Long, now: Long = System.currentTimeMillis()): Boolean = when (this) {
+        ALL -> true
+        MONTHS12 -> start >= now - 365L * 24 * 3600_000
+        YEAR -> java.util.Calendar.getInstance().let { c -> c.timeInMillis = now; val y = c.get(java.util.Calendar.YEAR); c.timeInMillis = start; c.get(java.util.Calendar.YEAR) == y }
+    }
+
+    companion object {
+        val texts = entries.map { it.label } + listOf(
+            "Poster of all trips", "Every road you drove in a period on one A3 poster: the ones you drive most stand out.",
+            "Loading trips…", "No trips with a route in this period.", "Trips", "Driving time", "Fuel cost", "%1\$s trips with a route",
+            "My drives",
+        )
+    }
+}
+
+/** A poster of every trip of a period, over the relief or aerial photos. */
+@OptIn(androidx.compose.foundation.layout.ExperimentalLayoutApi::class)
+@Composable
+fun AllTripsPosterDialog(trips: List<TripRecord>, car: String, onDismiss: () -> Unit) {
+    val context = LocalContext.current
+    val app = com.openobd.ui.LocalApp.current
+    val scope = rememberCoroutineScope()
+    val settings = appSettings()
+    val units = Units(imperial = settings.units == UnitSystem.IMPERIAL)
+    var period by remember { mutableStateOf(TripPeriod.MONTHS12) }
+    var ground by remember { mutableStateOf(PosterGround.RELIEF) }
+    var busy by remember { mutableStateOf(false) }
+    var status by remember { mutableStateOf<String?>(null) }
+    var error by remember { mutableStateOf<String?>(null) }
+    val chosen = trips.filter { it.trackPoints > 1 && period.includes(it.start) }
+    val label: (String) -> String = { tr(it) }
+
+    fun export(format: RouteFormat) {
+        busy = true; error = null
+        scope.launch {
+            runCatching {
+                status = tr("Loading trips…")
+                val tracks = chosen.map { app.garage.loadTrack(it.id) }.filter { it.size >= 2 }
+                if (tracks.isEmpty()) error(tr("No trips with a route in this period."))
+                val all = tracks.flatten()
+                val terrain = if (ground == PosterGround.RELIEF) {
+                    status = tr("Downloading terrain…")
+                    app.terrain(all, 4000) { i, n -> status = tr("Downloading terrain… %1\$s of %2\$s", i, n) }
+                        .also { if (it == null) error = tr("The terrain could not be downloaded: exported without relief.") }
+                } else null
+                val imagery = if (ground == PosterGround.SATELLITE) RoutePoster.frameMany(tracks)?.let { fr ->
+                    app.imagery(fr.area(), fr.metresPerMm / RoutePoster.PHOTO_PX_PER_MM) { i, n -> status = tr("Downloading aerial photos… %1\$s of %2\$s", i, n) }
+                }.also { if (it == null) error = tr("The aerial photos could not be downloaded: exported without them.") } else null
+                val stats = listOfNotNull(
+                    tr("Trips") to chosen.size.toString(),
+                    tr("Distance") to units.distance(chosen.sumOf { it.distanceKm }),
+                    tr("Driving time") to com.openobd.ui.components.formatDuration(chosen.sumOf { (it.end - it.start) / 1000.0 }),
+                    chosen.mapNotNull { it.fuelL }.takeIf { it.isNotEmpty() }?.let { tr("Fuel used") to units.volume(it.sum()) },
+                    chosen.mapNotNull { it.cost }.takeIf { it.isNotEmpty() }?.let { tr("Fuel cost") to "%.0f €".format(it.sum()) },
+                )
+                val first = chosen.minOf { it.start }; val last = chosen.maxOf { it.start }
+                val df = DateFormat.getDateInstance(DateFormat.MEDIUM)
+                val subtitle = listOf(car, df.format(Date(first)) + " – " + df.format(Date(last))).filter { it.isNotBlank() }.joinToString("  ·  ")
+                status = null
+                withContext(Dispatchers.Default) {
+                    val poster = RoutePoster.layoutMany(tr(period.label).let { if (period == TripPeriod.ALL) tr("My drives") else it }, subtitle, tracks, stats, label, units,
+                        terrain = terrain, imagery = imagery)
+                    val dir = File(context.cacheDir, "reports").apply { mkdirs() }
+                    val file = File(dir, "OpenOBD " + tr(period.label) + "." + format.ext)
+                    if (format == RouteFormat.PDF) writePdf(file, poster) else file.writeText(RoutePoster.svg(poster, ::jpegDataUri))
+                    file
+                }
+            }.onSuccess { shareFile(context, it, format.mime); if (error == null) onDismiss() }
+                .onFailure { error = it.message ?: tr("Could not create the file: %1\$s", "") }
+            busy = false; status = null
+        }
+    }
+
+    AlertDialog(
+        onDismissRequest = { if (!busy) onDismiss() },
+        title = { Text(tr("Poster of all trips")) },
+        text = {
+            Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text(tr("Every road you drove in a period on one A3 poster: the ones you drive most stand out."), style = MaterialTheme.typography.bodySmall)
+                FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    TripPeriod.entries.forEach { p -> FilterChip(period == p, { period = p }, label = { Text(tr(p.label)) }, enabled = !busy, modifier = Modifier.testTag("period_${p.name}")) }
+                }
+                Text(tr("%1\$s trips with a route", chosen.size), style = MaterialTheme.typography.bodyMedium)
+                Text(tr("Background"), fontWeight = FontWeight.SemiBold)
+                FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    PosterGround.entries.forEach { g -> FilterChip(ground == g, { ground = g }, label = { Text(tr(g.label)) }, enabled = !busy) }
+                }
+                if (busy) LinearProgressIndicator(Modifier.fillMaxWidth())
+                status?.let { Text(it, style = MaterialTheme.typography.bodySmall) }
+                error?.let { ErrorText(it) }
+            }
+        },
+        confirmButton = {
+            Row {
+                TextButton(onClick = { export(RouteFormat.SVG) }, enabled = !busy && chosen.isNotEmpty()) { Text("SVG") }
+                TextButton(onClick = { export(RouteFormat.PDF) }, enabled = !busy && chosen.isNotEmpty(), modifier = Modifier.testTag("allTripsPdf")) { Text("PDF") }
+            }
+        },
+        dismissButton = { TextButton(onClick = onDismiss, enabled = !busy) { Text(tr("Close")) } },
+    )
 }

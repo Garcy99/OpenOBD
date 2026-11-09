@@ -32,6 +32,8 @@ import androidx.compose.material.icons.filled.Inventory2
 import androidx.compose.material.icons.filled.LocalFireDepartment
 import androidx.compose.material.icons.filled.LocalGasStation
 import androidx.compose.material.icons.filled.Map
+import androidx.compose.material.icons.filled.Movie
+import androidx.compose.material.icons.filled.Route
 import androidx.compose.material.icons.filled.MonitorHeart
 import androidx.compose.material.icons.filled.NotificationsActive
 import androidx.compose.material.icons.filled.PhotoCamera
@@ -98,6 +100,9 @@ object Tours {
             Routes.GARAGE_HUB),
         TourPage(Icons.Default.Share, Orange, null, "Share and print your routes",
             "Open a trip and press Share to make a GPX for any GPS, an interactive web map, a poster to print or a colour 3D map for your 3D printer."),
+        TourPage(Icons.Default.LocalGasStation, Good, null, "Cheaper fuel",
+            "Home shows the cheapest station around you, live, and what filling up there saves. Trips are priced with what fuel costs where you drive (Spain).",
+            Routes.FUEL_PRICES),
         TourPage(Icons.Default.CloudSync, null, null, "Your data",
             "Everything stays on your phone. If you want, connect your Google account to keep the same data on all your phones through your own Google Drive, or save a backup file.",
             Routes.ACCOUNT),
@@ -127,6 +132,11 @@ object Tours {
             Routes.TRIPS),
         TourPage(Icons.Default.Print, Orange, "Trips", "GPX, web map and poster",
             "From a trip, Share makes:\n• a GPX file for Garmin, OsmAnd, Komoot or Google Earth;\n• an interactive web page anyone can open, with the car's data at every point and the relief built in;\n• an A3 poster (PDF or SVG) with the route over the relief coloured by altitude."),
+        TourPage(Icons.Default.Route, Violet, "Trips", "Automatic trips",
+            "Every drive can be recorded without opening the app: choose your car's Bluetooth (its radio or hands-free) in More → Automatic trips. When the phone joins it, OpenOBD connects in the background, records the trip with its route and saves it when the engine stops; a notification tells you what it cost.",
+            Routes.AUTO_TRIPS),
+        TourPage(Icons.Default.Movie, Orange, "Trips", "Videos, profiles and all your trips",
+            "From a trip, Share also makes a video of the drive: a flight over the relief or the aerial photos following the car, with its speed. Posters and web maps carry the height profile of the route, coloured by speed.\n\nIn Trip history, the map button makes a poster with every trip of a period: the roads you drive most stand out."),
         TourPage(Icons.Default.ViewInAr, Orange, "Trips", "3D maps to print",
             "The 3D map turns the terrain around the route into a model: colours by altitude, lakes, roads and buildings, a hexagon, circle or square, the title and coordinates. Turn it around in the preview before saving.\n\nChoose all colours, 6 or 4 filaments, or mix five spools on the surface (CMYKW or Landscape). Every part comes painted for Bambu Studio, PrusaSlicer and Orca, and the app lists which colour goes with each filament number."),
         TourPage(Icons.Default.Warning, Warn, "Diagnose", "Codes in every module",
@@ -150,6 +160,9 @@ object Tours {
         TourPage(Icons.Default.LocalGasStation, Violet, "Garage", "Fuel, maintenance and ITV",
             "Log fill-ups to know your real consumption and cost; the trip estimate learns from them. Maintenance reminders warn by kilometres or date: oil, timing belt, tyres, ITV and anything you add.",
             Routes.MAINTENANCE),
+        TourPage(Icons.Default.LocalGasStation, Violet, "Garage", "Fuel prices",
+            "More → Fuel prices lists every station around you with today's price of your fuel, sorted by price or distance, with the way there. When you log a fill-up, the price of the station you are at is filled in for you.",
+            Routes.FUEL_PRICES),
         TourPage(Icons.Default.MonitorHeart, Violet, "Garage", "Car health and battery",
             "Car health follows battery voltage, fuel trims, warm-up time and more over months, so slow problems show early. The battery & starting test measures how the battery copes when the engine starts.",
             Routes.HEALTH),

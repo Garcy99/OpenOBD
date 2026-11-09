@@ -186,6 +186,7 @@ fun HomeScreen(onNavigate: (String) -> Unit, onTab: (String) -> Unit, onLive: (I
         ScreenColumn {
             CarHero(state, onConnect = ::connect, onAdapter = { showAdapter = true }, onNavigate = onNavigate)
             CarScoreCard(onDiagnose = { onTab(Routes.DIAGNOSTICS) })
+            FuelNearbyCard(onOpen = { onNavigate(Routes.FUEL_PRICES) })
             AttentionFeed(state, onNavigate, onTab, onStartSetup = { onNavigate(Routes.WELCOME) },
                 onSkipSetup = { scope.launch { app.settings.update { it.copy(onboarded = true) } } })
             SectionLabel(tr("Quick actions"))
@@ -201,6 +202,7 @@ fun HomeScreen(onNavigate: (String) -> Unit, onTab: (String) -> Unit, onLive: (I
                 { m -> ActionTile(Icons.Default.Fullscreen, tr("HUD"), m) { onNavigate(Routes.HUD) } },
             ))
             RecentTrip(onNavigate)
+            AutoTripsCard(onOpen = { onNavigate(Routes.AUTO_TRIPS) })
             if (state !is ConnectionState.Connected && garage.trips.isEmpty()) GettingStarted()
         }
     }

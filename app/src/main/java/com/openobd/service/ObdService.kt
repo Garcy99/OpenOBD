@@ -16,6 +16,7 @@ import com.openobd.OpenObdApp
 import com.openobd.R
 import com.openobd.session.ConnectionState
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 
 /** Foreground service that keeps the OBD connection (and data logging) alive in the background. */
@@ -41,17 +42,24 @@ class ObdService : LifecycleService() {
             stopSelf()
             return START_NOT_STICKY
         }
+        if (intent?.action == ACTION_AUTO_STOP) {
+            if (session.state.value !is ConnectionState.Disconnected) session.disconnect()
+            return START_NOT_STICKY
+        }
+        val auto = intent?.action == ACTION_AUTO_START
         if (intent?.action == ACTION_SHOW_GAUGES) { showGauges(); return START_NOT_STICKY }
         if (intent?.action == ACTION_HIDE_GAUGES) { hideGauges(); return START_NOT_STICKY }
         try {
             ServiceCompat.startForeground(
-                this, NOTIFICATION_ID, build("Connected"),
+                this, NOTIFICATION_ID, build(if (auto) com.openobd.ui.tr("Connecting to the car…") else "Connected"),
                 if (Build.VERSION.SDK_INT >= 29) {
                     var type = ServiceInfo.FOREGROUND_SERVICE_TYPE_CONNECTED_DEVICE
                     val gps = (application as OpenObdApp).container.settings.settings.value.tripGps
-                    if (gps && checkSelfPermission(android.Manifest.permission.ACCESS_FINE_LOCATION) == android.content.pm.PackageManager.PERMISSION_GRANTED) {
-                        type = type or ServiceInfo.FOREGROUND_SERVICE_TYPE_LOCATION
-                    }
+                    fun has(p: String) = checkSelfPermission(p) == android.content.pm.PackageManager.PERMISSION_GRANTED
+                    // Started from the background (automatic trips), the GPS can only be used with "Allow all the time".
+                    val allowed = has(android.Manifest.permission.ACCESS_FINE_LOCATION) &&
+                        (!auto || Build.VERSION.SDK_INT < 29 || has(android.Manifest.permission.ACCESS_BACKGROUND_LOCATION))
+                    if (gps && allowed) type = type or ServiceInfo.FOREGROUND_SERVICE_TYPE_LOCATION
                     type
                 } else 0,
             )
@@ -59,11 +67,19 @@ class ObdService : LifecycleService() {
             stopSelf()
             return START_NOT_STICKY
         }
-        lifecycleScope.launch {
+        if (auto && session.state.value !is ConnectionState.Connected) {
+            autoJob?.cancel()
+            autoJob = lifecycleScope.launch { autoConnect() }
+        }
+        if (statusJob?.isActive == true) return START_NOT_STICKY
+        statusJob = lifecycleScope.launch {
             val nm = getSystemService(NotificationManager::class.java)
             while (true) {
                 val s = session.state.value
-                if (s !is ConnectionState.Connected) { stopSelf(); break }
+                if (s !is ConnectionState.Connected) {
+                    if (autoJob?.isActive == true) { delay(1000); continue }
+                    stopSelf(); break
+                }
                 val rpm = session.live.latestValue("010C")
                 val speed = session.live.latestValue("010D")
                 val parts = listOfNotNull(
@@ -77,6 +93,31 @@ class ObdService : LifecycleService() {
             }
         }
         return START_NOT_STICKY
+    }
+
+    private var autoJob: kotlinx.coroutines.Job? = null
+    private var statusJob: kotlinx.coroutines.Job? = null
+
+    /**
+     * An automatic trip: the car's Bluetooth just joined the phone, so the engine is (about to be) on. The adapter
+     * can take a few seconds to wake up, so this tries for about two minutes.
+     */
+    private suspend fun autoConnect() {
+        repeat(6) { attempt ->
+            if (session.state.value is ConnectionState.Connected) { session.autoTrip = true; return }
+            if (session.state.value !is ConnectionState.Connecting) session.connect()
+            kotlinx.coroutines.withTimeoutOrNull(45_000) {
+                session.state.first { it is ConnectionState.Connected || it is ConnectionState.Failed }
+            }
+            if (session.state.value is ConnectionState.Connected) { session.autoTrip = true; return }
+            if (attempt < 5) delay(10_000)
+        }
+        getSystemService(NotificationManager::class.java).notify(NOTIFICATION_ID + 1,
+            NotificationCompat.Builder(this, CHANNEL).setSmallIcon(R.drawable.ic_stat_car)
+                .setContentTitle(com.openobd.ui.tr("Automatic trip"))
+                .setContentText(com.openobd.ui.tr("Could not connect to the adapter. The trip was not recorded."))
+                .setAutoCancel(true).build())
+        session.disconnect()
     }
 
     /** Floating window with the first three dashboard values, over other apps. */
@@ -132,6 +173,8 @@ class ObdService : LifecycleService() {
         const val ACTION_DISCONNECT = "com.openobd.DISCONNECT"
         const val ACTION_SHOW_GAUGES = "com.openobd.SHOW_GAUGES"
         const val ACTION_HIDE_GAUGES = "com.openobd.HIDE_GAUGES"
+        const val ACTION_AUTO_START = "com.openobd.AUTO_TRIP_START"
+        const val ACTION_AUTO_STOP = "com.openobd.AUTO_TRIP_STOP"
         /** Whether the floating window is on screen, for the button that toggles it. */
         val gaugesShown = kotlinx.coroutines.flow.MutableStateFlow(false)
     }
