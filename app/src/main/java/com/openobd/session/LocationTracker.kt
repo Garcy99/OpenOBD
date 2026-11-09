@@ -27,11 +27,17 @@ class LocationTracker(private val context: Context) {
         if (!hasPermission()) return false
         val lm = context.getSystemService(LocationManager::class.java) ?: return false
         if (!lm.isProviderEnabled(LocationManager.GPS_PROVIDER)) return false
-        val l = LocationListener { loc: Location ->
-            synchronized(points) {
-                points += TrackPoint.of(loc.time, loc.latitude, loc.longitude, (loc.speed * 3.6f).takeIf { loc.hasSpeed() },
-                    loc.altitude.toFloat().takeIf { loc.hasAltitude() }, valueProvider)
+        // A full listener: before Android 11 the other callbacks have no default and a lambda crashes when they fire.
+        val l = object : LocationListener {
+            override fun onLocationChanged(loc: Location) {
+                synchronized(points) {
+                    points += TrackPoint.of(loc.time, loc.latitude, loc.longitude, (loc.speed * 3.6f).takeIf { loc.hasSpeed() },
+                        loc.altitude.toFloat().takeIf { loc.hasAltitude() }, valueProvider)
+                }
             }
+            @Deprecated("Deprecated in Java") override fun onStatusChanged(provider: String?, status: Int, extras: android.os.Bundle?) {}
+            override fun onProviderEnabled(provider: String) {}
+            override fun onProviderDisabled(provider: String) {}
         }
         return runCatching {
             lm.requestLocationUpdates(LocationManager.GPS_PROVIDER, 2000L, 5f, l, Looper.getMainLooper())

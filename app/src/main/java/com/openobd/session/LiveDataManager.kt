@@ -65,6 +65,8 @@ class LiveDataManager(private val scope: CoroutineScope) {
         /** Unanswered requests before a maker value is only retried now and then (every [RETRY_CYCLES] cycles). */
         const val MAX_UNANSWERED = 6
         const val RETRY_CYCLES = 60L
+        /** The brands' built-in values (a guess per car); the ones the user added are always asked for. */
+        val BUILTIN_IDS: Set<String> by lazy { com.openobd.core.brand.Families.all.flatMap { it.builtinPids }.map { it.id }.toSet() }
         /** ... and only after this long without an answer. */
         const val GIVE_UP_MS = 20_000L
     }
@@ -135,8 +137,8 @@ class LiveDataManager(private val scope: CoroutineScope) {
         var failures = 0
         var windowStart = System.currentTimeMillis()
         var windowCycles = 0
-        // Maker values this car never answers (the brand's oil pressure on an engine without the sensor ...) are
-        // asked again only now and then, so they do not slow every other gauge down.
+        // Built-in maker values this car never answers (the brand's oil pressure on an engine without the sensor ...)
+        // are asked again only now and then, so they do not slow every other gauge down.
         val unanswered = HashMap<String, Int>()
         val firstMiss = HashMap<String, Long>()
         val answered = HashSet<String>()
@@ -155,7 +157,8 @@ class LiveDataManager(private val scope: CoroutineScope) {
             if (customKeys != lastCustomKeys) { (customKeys - lastCustomKeys).forEach { unanswered.remove(it); firstMiss.remove(it) }; lastCustomKeys = customKeys }
             val nowMs = System.currentTimeMillis()
             val customs = customKeys.mapNotNull { CustomSensors.pid(it) }.filter { p ->
-                p.key in answered || (unanswered[p.key] ?: 0) < MAX_UNANSWERED || nowMs - (firstMiss[p.key] ?: nowMs) < GIVE_UP_MS || cycle % RETRY_CYCLES == 0L
+                p.id !in BUILTIN_IDS || p.key in answered || (unanswered[p.key] ?: 0) < MAX_UNANSWERED || nowMs - (firstMiss[p.key] ?: nowMs) < GIVE_UP_MS ||
+                    cycle % RETRY_CYCLES == 0L
             }
             if (pids.isEmpty() && customs.isEmpty()) { delay(250); continue }
             val slowPids = pids.filter { p -> Pids.all[p]?.sensors?.all { it.slow } == true }

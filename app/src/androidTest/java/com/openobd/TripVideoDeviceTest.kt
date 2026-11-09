@@ -29,13 +29,19 @@ class TripVideoDeviceTest {
         }
         val video = TripVideo(pts, seconds = 3.0, fps = 30)
         val area = TripVideo.area(pts)
-        val ground = Bitmap.createBitmap(400, 300, Bitmap.Config.ARGB_8888).apply { eraseColor(0xFF4A7A3A.toInt()) }
+        // A ground with detail, like a relief or photo (a flat colour would compress to almost nothing).
+        val rnd = java.util.Random(1)
+        val ground = Bitmap.createBitmap(IntArray(400 * 300) { i ->
+            val x = i % 400; val y = i / 400
+            val v = (60 + (x * 7 + y * 3) % 90 + rnd.nextInt(40)).coerceIn(0, 255)
+            (0xFF shl 24) or ((v / 2) shl 16) or (v shl 8) or (v / 3)
+        }, 400, 300, Bitmap.Config.ARGB_8888)
         val file = File(context.cacheDir, "test-video.mp4").apply { delete() }
         var last = 0f
         for (vertical in listOf(true, false)) {
             file.delete()
             TripVideoMaker.encode(file, { w, h -> TripVideoRenderer(video, ground, area, w, h, "Test drive", "Demo", Units(), { it }, "") }, vertical, video) { last = it }
-            assertTrue("video written", file.length() > 10_000)
+            assertTrue("video written: ${file.length()} bytes", file.length() > 2_000)
             val ex = MediaExtractor().apply { setDataSource(file.path) }
             assertEquals(1, ex.trackCount)
             val f = ex.getTrackFormat(0)

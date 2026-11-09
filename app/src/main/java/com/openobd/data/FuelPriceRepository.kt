@@ -128,7 +128,13 @@ object CurrentLocation {
                     if (cont.isActive) cont.resume(l)
                 }
                 for (p in providers) {
-                    val l = LocationListener { done(it) }
+                    // Every callback overridden: before Android 11 they have no default (a lambda crashes there).
+                    val l = object : LocationListener {
+                        override fun onLocationChanged(location: Location) = done(location)
+                        @Deprecated("Deprecated in Java") override fun onStatusChanged(provider: String?, status: Int, extras: android.os.Bundle?) {}
+                        override fun onProviderEnabled(provider: String) {}
+                        override fun onProviderDisabled(provider: String) {}
+                    }
                     listeners += l
                     runCatching { lm.requestLocationUpdates(p, 0L, 0f, l, Looper.getMainLooper()) }
                 }
