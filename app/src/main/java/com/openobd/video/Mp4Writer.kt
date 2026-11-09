@@ -50,9 +50,16 @@ class Mp4Writer(file: File, val width: Int, val height: Int, private val fps: In
     fun finish() {
         if (finished) return
         finished = true
-        codec.signalEndOfInputStream()
-        drain(true)
-        close()
+        try {
+            codec.signalEndOfInputStream()
+            drain(true)
+            check(written > 0) { "The video encoder produced no frames" }
+            runCatching { codec.stop() }; runCatching { codec.release() }
+            // Writes the index of the file: without it no player can open the video, so a failure here is reported.
+            muxer.stop()
+        } finally {
+            runCatching { muxer.release() }; runCatching { surface.release() }; runCatching { codec.release() }
+        }
     }
 
     override fun close() {
@@ -66,8 +73,9 @@ class Mp4Writer(file: File, val width: Int, val height: Int, private val fps: In
         while (true) {
             val i = codec.dequeueOutputBuffer(info, 10_000)
             when {
-                i == MediaCodec.INFO_TRY_AGAIN_LATER -> { if (!end || ++idle > 300) return }
-                i == MediaCodec.INFO_OUTPUT_FORMAT_CHANGED -> { track = muxer.addTrack(codec.outputFormat); muxer.start(); started = true }
+                // At the end, wait for the encoder to finish (a software encoder can take seconds).
+                i == MediaCodec.INFO_TRY_AGAIN_LATER -> { if (!end || ++idle > 2000) return }
+                i == MediaCodec.INFO_OUTPUT_FORMAT_CHANGED -> { if (!started) { track = muxer.addTrack(codec.outputFormat); muxer.start(); started = true } }
                 i >= 0 -> {
                     val buf = codec.getOutputBuffer(i)
                     if (info.flags and MediaCodec.BUFFER_FLAG_CODEC_CONFIG != 0) info.size = 0

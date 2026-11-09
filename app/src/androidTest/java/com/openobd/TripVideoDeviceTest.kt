@@ -43,7 +43,7 @@ class TripVideoDeviceTest {
             TripVideoMaker.encode(file, { w, h -> TripVideoRenderer(video, ground, area, w, h, "Test drive", "Demo", Units(), { it }, "") }, vertical, video) { last = it }
             assertTrue("video written: ${file.length()} bytes", file.length() > 2_000)
             val ex = MediaExtractor().apply { setDataSource(file.path) }
-            assertEquals(1, ex.trackCount)
+            assertEquals("tracks in a ${file.length()}-byte file", 1, ex.trackCount)
             val f = ex.getTrackFormat(0)
             assertEquals(MediaFormat.MIMETYPE_VIDEO_AVC, f.getString(MediaFormat.KEY_MIME))
             val w = f.getInteger(MediaFormat.KEY_WIDTH); val h = f.getInteger(MediaFormat.KEY_HEIGHT)
