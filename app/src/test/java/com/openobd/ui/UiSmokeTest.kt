@@ -59,8 +59,8 @@ class UiSmokeTest {
             check(System.currentTimeMillis() < end) {
                 // Which wait it was: the caller's line (the stack's first frame is this helper).
                 "Timed out waiting at line " + Throwable().stackTrace.firstOrNull { it.methodName != "waitFor" && it.className.contains("UiSmokeTest") }?.lineNumber +
-                    "; state=" + c.session.state.value.javaClass.simpleName + ", readings=" + c.session.live.readings.value.keys.sorted().take(30) +
-                    ", trips=" + c.garage.data.value.trips.size
+                    "; state=" + app.container.session.state.value::class.simpleName + ", readings=" + app.container.session.live.readings.value.keys.sorted().take(30) +
+                    ", trips=" + app.container.garage.data.value.trips.size
             }
             Thread.sleep(50)
             rule.mainClock.advanceTimeBy(50)
