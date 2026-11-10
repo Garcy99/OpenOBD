@@ -36,6 +36,9 @@ class VoiceFeature internal constructor(private val s: ObdSession) {
         _announcements.tryEmit(w.alert(e.sensorName, e.value, def?.unit ?: ObdUnit.NONE, def?.decimals ?: 0))
     }
 
+    /** Says [a] when spoken alerts are on. */
+    internal fun say(a: Announcement) { if (watch != null) _announcements.tryEmit(a) }
+
     internal fun onLinkLost() {
         if (watch != null) _announcements.tryEmit(Announcement("Connection to the car lost."))
     }

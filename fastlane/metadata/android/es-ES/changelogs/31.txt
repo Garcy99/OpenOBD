@@ -1,0 +1,5 @@
+• Diésel: acceso en Inicio al filtro de partículas con su carga, y avisos cuando regenera o se corta una regeneración (coches que lo informan)
+• Dónde has aparcado: mapa y ruta a pie en Inicio
+• Mapa del viaje coloreado por consumo
+• Resumen mensual con PDF: km, combustible, dinero, CO₂, frente al dato oficial y lo que ahorrarías como en tus mejores viajes
+• Opel/GM: vida del aceite y del filtro de aire según el coche

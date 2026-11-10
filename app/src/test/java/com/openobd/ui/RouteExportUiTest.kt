@@ -65,7 +65,8 @@ class RouteExportUiTest {
 
         rule.onAllNodes(hasText("Garage") and isSelectable())[0].performClick()
         rule.waitForIdle()
-        rule.onAllNodes(hasText("Trips") and hasClickAction())[0].performClick()
+        // The Garage hub grew longer: the row may be below the screen.
+        rule.onAllNodes(hasText("Trips") and hasClickAction())[0].performScrollTo().performClick()
         rule.waitForIdle()
         rule.onAllNodes(hasText("km", substring = true) and hasClickAction())[0].performClick()
         waitFor { rule.onAllNodesWithContentDescription("Export route").fetchSemanticsNodes().isNotEmpty() }

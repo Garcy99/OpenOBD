@@ -97,6 +97,15 @@ class AppContainer(private val app: Application) {
         }
     }
 
+    /** A screen a notification asked to open (taken by the navigation once shown). */
+    val openRequest = kotlinx.coroutines.flow.MutableStateFlow<String?>(null)
+
+    /** Where the car was left at the end of its last trip. */
+    val parking = com.openobd.data.Parking(app)
+
+    /** Oil and air filter life left, as the car's own computer counts them (GM / Opel). */
+    val serviceLife = com.openobd.data.ServiceLife(app)
+
     /** New versions from GitHub, installed from inside the app. */
     val updater = com.openobd.data.Updater(app)
 
@@ -129,6 +138,10 @@ class OpenObdApp : Application() {
         }
         keepWidgetUpdated()
         notifySavedTrips()
+        notifyRegenerations()
+        rememberParking()
+        readServiceLife()
+        notifyMonthlySummary()
         speakAlerts()
         // Keep a foreground service alive while connected so logging continues with the screen off.
         container.scope.launch {
@@ -174,6 +187,113 @@ class OpenObdApp : Application() {
         }
     }
 
+    /**
+     * The particulate filter regenerating: a lasting notification while it does (keep the engine running), then
+     * whether it finished or was cut short. Each one is remembered for the diesel screen.
+     */
+    private fun notifyRegenerations() {
+        // The filter's load as the car reports it, kept for Home while not connected (when it changes by a point).
+        container.scope.launch {
+            var last = -1
+            container.session.diesel.regen.collect { st ->
+                val pct = st?.loadPct ?: return@collect
+                if (pct.toInt() != last) { last = pct.toInt(); com.openobd.data.RegenHistory(this@OpenObdApp).saveLoad(pct) }
+            }
+        }
+        container.scope.launch {
+            container.session.diesel.regenEvents.collect { e ->
+                com.openobd.data.RegenHistory(this@OpenObdApp).record(e)
+                val nm = getSystemService(android.app.NotificationManager::class.java) ?: return@collect
+                if (android.os.Build.VERSION.SDK_INT >= 26) nm.createNotificationChannel(
+                    android.app.NotificationChannel("regen", com.openobd.ui.tr("Particulate filter"), android.app.NotificationManager.IMPORTANCE_HIGH))
+                val open = android.app.PendingIntent.getActivity(this@OpenObdApp, 3, Intent(this@OpenObdApp, MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP)
+                    .putExtra(MainActivity.EXTRA_OPEN, com.openobd.ui.Routes.DIESEL), android.app.PendingIntent.FLAG_IMMUTABLE)
+                val (title, text, ongoing) = when (e) {
+                    is com.openobd.core.diesel.RegenWatch.Event.Started -> Triple(com.openobd.ui.tr("Filter regenerating"),
+                        com.openobd.ui.tr("Keep the engine running and, if you can, drive on at a steady pace until it ends."), true)
+                    is com.openobd.core.diesel.RegenWatch.Event.Ended -> Triple(com.openobd.ui.tr("Filter regeneration finished"),
+                        com.openobd.ui.tr("It took %1\$s.", com.openobd.ui.components.formatDuration(e.seconds.toDouble())), false)
+                    is com.openobd.core.diesel.RegenWatch.Event.Interrupted -> Triple(com.openobd.ui.tr("Filter regeneration interrupted"),
+                        com.openobd.ui.tr("The engine stopped after %1\$s. Plan a steady 15-20 minute drive soon so the filter can finish cleaning itself.",
+                            com.openobd.ui.components.formatDuration(e.seconds.toDouble())), false)
+                }
+                runCatching {
+                    nm.notify(REGEN_NOTIFICATION, androidx.core.app.NotificationCompat.Builder(this@OpenObdApp, "regen").setSmallIcon(R.drawable.ic_stat_car)
+                        .setContentTitle(title).setContentText(text)
+                        .setStyle(androidx.core.app.NotificationCompat.BigTextStyle().bigText(text))
+                        .setOngoing(ongoing).setAutoCancel(!ongoing).setOnlyAlertOnce(false).setContentIntent(open).build())
+                }
+            }
+        }
+    }
+
+    /** At the start of a month (the first time the app runs in it): last month's figures in a notification. */
+    private fun notifyMonthlySummary() {
+        container.scope.launch {
+            kotlinx.coroutines.delay(5_000)
+            val prefs = getSharedPreferences("summary", MODE_PRIVATE)
+            val now = java.util.Calendar.getInstance()
+            val key = now.get(java.util.Calendar.YEAR) * 12 + now.get(java.util.Calendar.MONTH)
+            if (prefs.getInt("notified", 0) >= key) return@launch
+            prefs.edit().putInt("notified", key).apply()
+            val car = container.garage.data.value.active ?: return@launch
+            val (py, pm) = com.openobd.core.garage.MonthlySummary.previousMonth(now.get(java.util.Calendar.YEAR), now.get(java.util.Calendar.MONTH))
+            val g = container.garage.data.value
+            val s = com.openobd.core.garage.MonthlySummary.of(py, pm, g.trips.filter { it.vehicleId == car.id }, g.fuel.filter { it.vehicleId == car.id },
+                diesel = car.specs?.fuel?.burnsDiesel == true, lpg = car.specs?.fuel == com.openobd.core.specs.SpecFuel.LPG,
+                officialL100 = car.specs?.consumptionL100, fallbackPrice = container.settings.settings.value.fuelPricePerL.toDouble())
+            if (s.trips == 0) return@launch
+            val nm = getSystemService(android.app.NotificationManager::class.java) ?: return@launch
+            if (android.os.Build.VERSION.SDK_INT >= 26) nm.createNotificationChannel(
+                android.app.NotificationChannel("summary", com.openobd.ui.tr("Monthly summary"), android.app.NotificationManager.IMPORTANCE_DEFAULT))
+            val text = listOfNotNull("%.0f km".format(s.km), s.fuelL?.let { "%.1f L".format(it) }, s.cost?.let { "%.2f €".format(it) },
+                s.co2Kg?.let { "%.0f kg CO₂".format(it) }).joinToString(" · ")
+            val open = android.app.PendingIntent.getActivity(this@OpenObdApp, 4, Intent(this@OpenObdApp, MainActivity::class.java)
+                .addFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP).putExtra(MainActivity.EXTRA_OPEN, com.openobd.ui.Routes.MONTH), android.app.PendingIntent.FLAG_IMMUTABLE)
+            runCatching {
+                nm.notify(78, androidx.core.app.NotificationCompat.Builder(this@OpenObdApp, "summary").setSmallIcon(R.drawable.ic_stat_car)
+                    .setContentTitle(com.openobd.ui.tr("Your %1\$s", com.openobd.ui.screens.monthName(py, pm))).setContentText(text)
+                    .setContentIntent(open).setAutoCancel(true).build())
+            }
+        }
+    }
+
+    /** Once per connection to a GM / Opel car: how much oil and air filter life its computer says is left. */
+    private fun readServiceLife() {
+        container.scope.launch {
+            var last: ConnectionState? = null
+            container.session.state.collect { st ->
+                val fresh = st is ConnectionState.Connected && last !is ConnectionState.Connected
+                last = st
+                if (!fresh) return@collect
+                val pids = container.session.brand.value?.family?.builtinPids.orEmpty().filter { it in com.openobd.core.brand.GM_SERVICE_PIDS }
+                val car = container.garage.data.value.active ?: return@collect
+                if (pids.isEmpty()) return@collect
+                container.scope.launch {
+                    // After the first live values, so it does not hold up the gauges.
+                    kotlinx.coroutines.delay(8_000)
+                    val v = runCatching { container.session.modules.readCustomValues(pids) }.getOrNull() ?: return@launch
+                    val oil = (v["X_gm_oil_life"] ?: v["X_gm_oil_life_b"])?.takeIf { it in 0.0..100.0 }
+                    val air = v["X_gm_air_filter"]?.takeIf { it in 0.0..100.0 }
+                    container.serviceLife.save(com.openobd.data.ServiceLife.Reading(car.id, oil, air, System.currentTimeMillis()))
+                }
+            }
+        }
+    }
+
+    /** Each saved trip leaves the car where its GPS track ends (or where the phone is then, without a track). */
+    private fun rememberParking() {
+        container.scope.launch {
+            container.session.savedTrips.collect { t ->
+                val end = runCatching { container.garage.loadTrack(t.id).lastOrNull() }.getOrNull()
+                val at = end?.let { it.lat to it.lon }
+                    ?: runCatching { com.openobd.data.CurrentLocation.get(this@OpenObdApp, maxAgeMs = 3 * 60_000L, timeoutMs = 15_000L) }.getOrNull()?.let { it.latitude to it.longitude }
+                    ?: return@collect
+                container.parking.set(com.openobd.data.Parking.Spot(at.first, at.second, t.end, t.vehicleId))
+            }
+        }
+    }
+
     /** Speaks the session's voice alerts in the app's language. */
     private fun speakAlerts() {
         val speaker = com.openobd.data.Speaker(this)
@@ -191,5 +311,9 @@ class OpenObdApp : Application() {
     private fun startService() {
         val i = Intent(this, ObdService::class.java)
         runCatching { androidx.core.content.ContextCompat.startForegroundService(this, i) }
+    }
+
+    companion object {
+        private const val REGEN_NOTIFICATION = 77
     }
 }

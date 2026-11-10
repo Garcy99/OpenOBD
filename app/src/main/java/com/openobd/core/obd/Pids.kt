@@ -362,7 +362,22 @@ private class PidTableBuilder {
         pid(0x88, 13, "SCR induce system")
         pid(0x89, 41, "Run time for AECD #11-#15")
         pid(0x8A, 41, "Run time for AECD #16-#20")
-        pid(0x8B, 7, "Diesel aftertreatment")
+        // Diesel aftertreatment status (SAE J1979): which fields the car fills in (A), whether the particulate filter is
+        // regenerating (B), how loaded it is towards the next regeneration (C), and the average time and distance between them.
+        pid(0x8B, 7, "Diesel aftertreatment") {
+            s(0x8B, "R", "DPF regeneration in progress", "DPF regen", ObdUnit.NONE, 0.0, 1.0, D, labeler = { if (it >= 0.5) "Yes" else "No" }) {
+                if (bit(it[0], 0)) (it[1] and 1).toDouble() else null
+            }
+            s(0x8B, "T", "DPF regeneration trigger (load towards the next one)", "DPF load", ObdUnit.PERCENT, 0.0, 100.0, D, 1) {
+                if (bit(it[0], 4)) pct(it[2]) else null
+            }
+            s(0x8B, "M", "Average time between DPF regenerations", "Regen every", ObdUnit.MINUTES, 0.0, 65535.0, D, slow = true) {
+                if (bit(it[0], 5)) u16(it, 3).toDouble() else null
+            }
+            s(0x8B, "K", "Average distance between DPF regenerations", "Regen every", ObdUnit.KM, 0.0, 65535.0, D, slow = true) {
+                if (bit(it[0], 6)) u16(it, 5).toDouble() else null
+            }
+        }
         pid(0x8C, 17, "O2 sensor (wide range)")
         percent(0x8D, "Throttle position G", "Throttle G", E)
         torquePct(0x8E, "Engine friction - percent torque", "Friction torque")

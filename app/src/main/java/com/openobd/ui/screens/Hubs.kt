@@ -8,6 +8,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.size
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.CalendarMonth
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.BatteryChargingFull
 import androidx.compose.material.icons.filled.CheckCircle
@@ -180,6 +181,9 @@ fun GarageHubScreen(onNavigate: (String) -> Unit) {
                 GroupDivider()
                 NavRow(Icons.Default.Route, tr("Automatic trips"), if (settings.autoTrips) tr("On") else tr("Record every drive without opening the app"),
                     tint = Violet) { onNavigate(Routes.AUTO_TRIPS) }
+                GroupDivider()
+                NavRow(Icons.Default.CalendarMonth, tr("Monthly summary"), tr("Distance, fuel, money and CO₂ of each month, against the official figure"),
+                    tint = Good) { onNavigate(Routes.MONTH) }
                 GroupDivider()
                 NavRow(Icons.Default.Map, tr("Trips"),
                     if (trips.isNotEmpty()) (if (trips.size == 1) tr("1 trip") else tr("%1\$s trips", trips.size)) + " · " + fmtKm(trips.sumOf { it.distanceKm }, settings.units) else tr("Trips are saved automatically while connected"),

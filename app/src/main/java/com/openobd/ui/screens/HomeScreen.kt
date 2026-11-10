@@ -28,6 +28,9 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.filled.BatteryChargingFull
+import androidx.compose.material.icons.filled.LocalFireDepartment
+import androidx.compose.material.icons.filled.OilBarrel
+import androidx.compose.material3.Button
 import androidx.compose.material.icons.filled.Bluetooth
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Usb
@@ -185,6 +188,8 @@ fun HomeScreen(onNavigate: (String) -> Unit, onTab: (String) -> Unit, onLive: (I
         })
         ScreenColumn {
             CarHero(state, onConnect = ::connect, onAdapter = { showAdapter = true }, onNavigate = onNavigate)
+            DpfCard(onOpen = { onNavigate(Routes.DIESEL) })
+            if (state !is ConnectionState.Connected) ParkedCard()
             CarScoreCard(onDiagnose = { onTab(Routes.DIAGNOSTICS) })
             FuelNearbyCard(onOpen = { onNavigate(Routes.FUEL_PRICES) })
             AttentionFeed(state, onNavigate, onTab, onStartSetup = { onNavigate(Routes.WELCOME) },
@@ -415,6 +420,14 @@ private fun AttentionFeed(state: ConnectionState, onNavigate: (String) -> Unit, 
                 }
             })
     }
+    // The car's own count of oil life left (GM / Opel) running low.
+    val life by app.serviceLife.latest.collectAsStateWithLifecycle()
+    life[car?.id]?.oilPct?.takeIf { it < com.openobd.data.ServiceLife.OIL_LOW_PCT }?.let { pct ->
+        notices += {
+            NoticeCard(Icons.Default.OilBarrel, tr("Oil change soon"), tr("The car's computer says %1\$s %% of the engine oil's life is left.", "%.0f".format(pct)), Warn,
+                trailing = { TextButton(onClick = { onNavigate(Routes.MAINTENANCE) }) { Text(tr("Maintenance")) } })
+        }
+    }
     if (!settings.onboarded && state !is ConnectionState.Connected) notices += {
         NoticeCard(Icons.Default.WavingHand, tr("Welcome to OpenOBD"), tr("A two-minute setup: your adapter, your car and what the app can do for it."),
             MaterialTheme.colorScheme.primary,
@@ -494,6 +507,73 @@ private fun RecentTrip(onNavigate: (String) -> Unit) {
                     style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
             t.ecoScore?.let { ScoreRing(it, size = 48.dp, stroke = 5.dp) }
+        }
+    }
+}
+
+/**
+ * Diesel cars only: a shortcut to the particulate filter with how loaded it is (live, or as last reported), whether it
+ * is regenerating now and how the last regeneration went.
+ */
+@Composable
+private fun DpfCard(onOpen: () -> Unit) {
+    val app = LocalApp.current
+    val context = LocalContext.current
+    val garage by app.garage.data.collectAsStateWithLifecycle()
+    val regen by app.session.diesel.regen.collectAsStateWithLifecycle()
+    val car = garage.active ?: return
+    val diesel = car.specs?.fuel?.burnsDiesel == true || (app.session.state.collectAsStateWithLifecycle().value is ConnectionState.Connected && app.session.diesel.isDiesel)
+    if (!diesel) return
+    val history = remember(regen?.active, regen?.loadPct?.toInt()) { com.openobd.data.RegenHistory(context).summary() }
+    var now by remember { mutableStateOf(System.currentTimeMillis()) }
+    LaunchedEffect(regen?.active) { while (true) { now = System.currentTimeMillis(); kotlinx.coroutines.delay(10_000) } }
+    val active = regen?.active == true
+    val load = regen?.loadPct ?: history.loadPct
+    val liveLoad = regen?.loadPct != null
+    SectionCard(Modifier.clickable(onClick = onOpen).testTag("dpfCard")) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            IconBadge(Icons.Default.LocalFireDepartment, if (active) Orange else Violet, 40.dp)
+            Spacer(Modifier.width(12.dp))
+            Column(Modifier.weight(1f)) {
+                Text(if (active) tr("Filter regenerating") else tr("Particulate filter"), style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold)
+                val line = when {
+                    active -> tr("Keep the engine running and, if you can, drive on at a steady pace until it ends.") +
+                        (regen?.since?.let { " · " + com.openobd.ui.components.formatDuration((now - it) / 1000.0) } ?: "")
+                    load != null -> tr("%1\$s %% loaded", "%.0f".format(load)) +
+                        (if (!liveLoad) history.loadAt?.let { " · " + tr("as of %1\$s", DateFormat.getDateInstance(DateFormat.MEDIUM).format(Date(it))) } ?: "" else "")
+                    history.lastAt != null -> tr("Last regeneration: %1\$s", DateFormat.getDateTimeInstance(DateFormat.MEDIUM, DateFormat.SHORT).format(Date(history.lastAt))) +
+                        if (history.lastInterrupted) " · " + tr("interrupted") else ""
+                    else -> tr("Load, regenerations and the conditions to clean it")
+                }
+                Text(line, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                if (!active && load != null) LinearProgressIndicator({ (load / 100).toFloat().coerceIn(0f, 1f) }, Modifier.fillMaxWidth().padding(top = 6.dp),
+                    color = if (load >= 80) Orange else Good)
+                if (!active && load != null && history.lastInterrupted) Text(tr("The last regeneration was cut short."), style = MaterialTheme.typography.labelSmall, color = Orange)
+            }
+            Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, null, tint = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
+    }
+}
+
+/** Where the car was left at the end of its last trip, with a map and walking directions. */
+@Composable
+private fun ParkedCard() {
+    val app = LocalApp.current
+    val context = LocalContext.current
+    val spot by app.parking.spot.collectAsStateWithLifecycle()
+    val s = spot ?: return
+    // Only recent spots (a week): older ones are probably stale.
+    if (System.currentTimeMillis() - s.at > 7 * 24 * 3600_000L) return
+    SectionLabel(tr("Where you parked"))
+    SectionCard(Modifier.testTag("parkedCard")) {
+        com.openobd.ui.components.SpotMap(s.lat, s.lon, Modifier.fillMaxWidth().height(150.dp).clip(RoundedCornerShape(12.dp)))
+        Row(Modifier.padding(top = 10.dp), verticalAlignment = Alignment.CenterVertically) {
+            Column(Modifier.weight(1f)) {
+                Text(tr("Parked %1\$s", DateFormat.getDateTimeInstance(DateFormat.MEDIUM, DateFormat.SHORT).format(Date(s.at))),
+                    style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+            TextButton(onClick = { app.parking.clear() }) { Text(tr("Hide")) }
+            Button(onClick = { com.openobd.data.Parking.walkTo(context, s) }, modifier = Modifier.testTag("walkToCar")) { Text(tr("Take me there")) }
         }
     }
 }

@@ -1,0 +1,5 @@
+• Diesel: Home shortcut to the particulate filter with its load, and alerts when it regenerates or a regeneration is cut short (cars that report it)
+• Where you parked: map and walking directions on Home
+• Trip map coloured by consumption
+• Monthly summary with PDF: km, fuel, money, CO₂, against the official figure and what your best trips would save
+• Opel/GM: oil and air filter life from the car

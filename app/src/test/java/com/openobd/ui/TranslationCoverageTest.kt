@@ -69,6 +69,7 @@ class TranslationCoverageTest {
         keys += MS_CAN_BUSY
         com.openobd.core.specs.SpecFuel.entries.forEach { keys += it.label }
         com.openobd.core.specs.DgtLabel.entries.forEach { keys += it.label }
+        keys += com.openobd.core.diesel.RegenWatch.texts
         keys += com.openobd.core.specs.EeaCatalog.ATTRIBUTION
         keys += com.openobd.core.specs.EeaCatalog.UNAVAILABLE
         keys += listOf("Low", "Moderate", "High", "Unknown", "Demo car (simulated)")

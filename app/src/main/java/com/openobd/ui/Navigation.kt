@@ -104,6 +104,7 @@ object Routes {
     const val MAINTENANCE = "maintenance"
     const val FUEL = "fuel"
     const val TRIPS = "trips"
+    const val MONTH = "month"
     const val TRIP = "trip/{id}"
     fun trip(id: String) = "trip/$id"
     const val TRIP_3D = "trip3d/{id}"
@@ -167,6 +168,10 @@ fun OpenObdNavHost() {
     val snackbar = remember { SnackbarHostState() }
     val app = LocalApp.current
 
+    // Screens asked for by a notification.
+    LaunchedEffect(Unit) {
+        app.openRequest.collect { r -> if (r != null) { runCatching { nav.navigate(r) }; app.openRequest.value = null } }
+    }
     LaunchedEffect(Unit) {
         app.session.alerts.collect { e ->
             val unit = com.openobd.core.obd.SensorCatalog.get(e.rule.sensorKey)?.unit?.symbol ?: ""
@@ -301,6 +306,7 @@ fun OpenObdNavHost() {
                 composable(Routes.ABOUT) { AboutScreen(onBack = back) }
                 composable(Routes.GARAGE) { com.openobd.ui.screens.GarageScreen(onBack = back, onNavigate = { nav.navigate(it) }) }
                 composable(Routes.FINDCAR) { e -> com.openobd.ui.screens.FindCarScreen(e.arguments?.getString("id").orEmpty(), onBack = back) }
+                composable(Routes.MONTH) { com.openobd.ui.screens.MonthlySummaryScreen(onBack = back) }
                 composable(Routes.MAINTENANCE) { com.openobd.ui.screens.MaintenanceScreen(onBack = back) }
                 composable(Routes.FUEL) { com.openobd.ui.screens.FuelLogScreen(onBack = back) }
                 composable(Routes.TRIPS) { com.openobd.ui.screens.TripsScreen(onBack = back, onOpen = { nav.navigate(Routes.trip(it)) }) }

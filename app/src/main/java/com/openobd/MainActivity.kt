@@ -24,6 +24,7 @@ class MainActivity : ComponentActivity() {
         enableEdgeToEdge()
         val container = (application as OpenObdApp).container
         handleUsbAttach(intent)
+        handleOpen(intent)
         setContent {
             val settings by container.settings.settings.collectAsStateWithLifecycle()
             val state by container.session.state.collectAsStateWithLifecycle()
@@ -49,6 +50,15 @@ class MainActivity : ComponentActivity() {
         }
     }
 
+    /** A notification asking for a screen (the monthly summary, the diesel helper). */
+    private fun handleOpen(intent: android.content.Intent?) {
+        intent?.getStringExtra(EXTRA_OPEN)?.let { (application as OpenObdApp).container.openRequest.value = it }
+    }
+
+    companion object {
+        const val EXTRA_OPEN = "com.openobd.OPEN"
+    }
+
     /** Coming back to the app (also after days in the background): look for a new version, at most every few hours. */
     override fun onStart() {
         super.onStart()
@@ -66,6 +76,7 @@ class MainActivity : ComponentActivity() {
 
     override fun onNewIntent(intent: android.content.Intent) {
         super.onNewIntent(intent)
+        handleOpen(intent)
         handleUsbAttach(intent)
     }
 

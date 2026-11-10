@@ -131,6 +131,16 @@ val FORD_TYRE_PIDS = tyres("ford", "Ford", { listOf("222813", "222814", "222816"
 /** Toyota / Lexus tyre pressure monitor (address 750, sub-address 2A): Corolla, RAV4 ... */
 val TOYOTA_TYRE_PIDS = tyres("toy", "Toyota", { "2130" }, { "ABCD"[it] + "/58-0.5" }, "750", receive = "758", extAddr = "2A")
 
+/**
+ * The service indicators of GM engine computers (Global A: Opel / Vauxhall, Chevrolet ...): engine oil life left and
+ * air filter life left, as the car itself counts them (OBDb). Engines without them do not answer.
+ */
+val GM_SERVICE_PIDS = listOf(
+    CustomPid("gm_oil_life", "Engine oil life remaining (GM)", "Oil life", "224DC0", "A*100/255", 0.0, 100.0, "%", "7E0", source = "GM ECM, OBDb (CC BY-SA 4.0)"),
+    CustomPid("gm_oil_life_b", "Remaining oil life (GM)", "Oil life", "22119F", "A", 0.0, 100.0, "%", "7E0", source = "GM ECM, OBDb (CC BY-SA 4.0)"),
+    CustomPid("gm_air_filter", "Air filter life remaining (GM)", "Air filter", "2236A7", "A", 0.0, 100.0, "%", "7E0", source = "GM ECM, OBDb (CC BY-SA 4.0)"),
+)
+
 data class Brand(val id: String, val name: String, val family: BrandFamily, val wmis: List<String>)
 
 private fun m(name: String, short: String, tx: Int, rx: Int, cat: ModuleCategory, secondary: Boolean = false) =
@@ -319,7 +329,7 @@ object Families {
         "GMLAN physical addressing. Modules that do not speak UDS are read with the GMLAN service (\$A9) and cleared with \$04. " +
             "Global B vehicles (2020+) may block access through the gateway.",
         discoveryRanges = listOf(0x240..0x25F to "6XX", 0x700..0x7F7 to "7XX"),
-        builtinPids = GM_OIL_PIDS + GM_TYRE_PIDS,
+        builtinPids = GM_OIL_PIDS + GM_TYRE_PIDS + GM_SERVICE_PIDS,
     )
 
     /** Opel / Vauxhall on GM's Global A architecture (Astra H/J/K, Insignia A, Corsa D/E, Zafira B/C, Meriva B, Mokka). */
@@ -340,7 +350,7 @@ object Families {
             "reachable with an HS/MS-CAN switch adapter; some body modules use single-wire CAN (pin 1), which ELM327 adapters cannot reach.",
         secondaryBus = OPEL_MS,
         discoveryRanges = listOf(0x240..0x25F to "6XX", 0x700..0x7F7 to "7XX"),
-        builtinPids = GM_OIL_PIDS + GM_TYRE_PIDS,
+        builtinPids = GM_OIL_PIDS + GM_TYRE_PIDS + GM_SERVICE_PIDS,
     )
 
     val STELLANTIS = BrandFamily("stellantis", "Stellantis / FCA / PSA", obdBase,

@@ -46,6 +46,7 @@ import com.openobd.core.service.Procedures
 import com.openobd.session.Op
 import com.openobd.ui.LocalApp
 import com.openobd.ui.components.ErrorText
+import com.openobd.ui.components.KeyValueRow
 import com.openobd.ui.components.NotConnected
 import com.openobd.ui.components.ScreenTopBar
 import com.openobd.ui.components.SectionCard
@@ -88,8 +89,17 @@ fun DieselScreen(onBack: () -> Unit, onConnect: () -> Unit, onGuides: () -> Unit
                 Text(tr("%1\$s of %2\$s minutes in the right conditions", "%.0f".format(minutes), "%.0f".format((s?.targetSeconds ?: 1200.0) / 60)), fontWeight = FontWeight.SemiBold)
                 LinearProgressIndicator(progress = { s?.progress ?: 0f }, modifier = Modifier.fillMaxWidth().padding(top = 6.dp))
             }
+            val watch by session.diesel.regen.collectAsStateWithLifecycle()
             SectionCard(title = tr("Regeneration")) {
-                when (s?.regenActive) {
+                val w = watch
+                // The car's own regeneration status (standard PID 8B) is the surest sign; temperatures otherwise.
+                if (w?.source == com.openobd.core.diesel.RegenWatch.Source.STATUS) {
+                    if (w.active) Text(tr("Regeneration in progress - keep driving like this."), color = Good, fontWeight = FontWeight.Bold)
+                    else Text(tr("No regeneration running right now."))
+                    w.loadPct?.let { Text(tr("Filter load towards the next regeneration: %1\$s %%", "%.0f".format(it))) }
+                    Text(tr("Your car reports its regeneration status: OpenOBD tells you on every drive when one starts and ends."),
+                        style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                } else when (s?.regenActive) {
                     null -> Text(tr("This car does not report exhaust or filter temperatures over standard OBD, so a running regeneration cannot be seen directly. Use the conditions above, or find the manufacturer value with the identifier explorer."),
                         style = MaterialTheme.typography.bodySmall)
                     true -> Text(tr("Regeneration in progress - keep driving like this."), color = Good, fontWeight = FontWeight.Bold)
@@ -98,6 +108,18 @@ fun DieselScreen(onBack: () -> Unit, onConnect: () -> Unit, onGuides: () -> Unit
                 s?.dpfTempC?.let { Text(tr("Exhaust / filter temperature: %1\$s °C", "%.0f".format(it))) }
                 s?.dpfDeltaKpa?.let { Text(tr("Filter pressure difference: %1\$s kPa (rises as the filter fills)", "%.2f".format(it))) }
                 if ((s?.regensSeen ?: 0) > 0) Text(tr("Regenerations seen this drive: %1\$s", s!!.regensSeen))
+            }
+            val ctx = androidx.compose.ui.platform.LocalContext.current
+            val history = remember { com.openobd.data.RegenHistory(ctx).summary() }
+            if (history.finished + history.interrupted > 0) SectionCard(title = tr("Regenerations on your drives")) {
+                KeyValueRow(tr("Finished"), history.finished.toString())
+                KeyValueRow(tr("Interrupted"), history.interrupted.toString())
+                history.lastAt?.let {
+                    KeyValueRow(tr("Last one"), java.text.DateFormat.getDateTimeInstance(java.text.DateFormat.MEDIUM, java.text.DateFormat.SHORT).format(java.util.Date(it)) +
+                        " · " + (if (history.lastInterrupted) tr("interrupted") else tr("finished")))
+                }
+                if (history.lastInterrupted) Text(tr("The last one was cut short: a steady 15-20 minute drive lets the filter finish cleaning itself."),
+                    color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
             }
             SectionCard(title = tr("Manufacturer DPF values")) {
                 if (dpfPids.isEmpty()) {

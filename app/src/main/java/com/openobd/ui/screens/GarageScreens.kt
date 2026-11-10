@@ -51,6 +51,8 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.background
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
@@ -253,6 +255,21 @@ fun MaintenanceScreen(onBack: () -> Unit) {
                     }
                     if (v.odometerKm == null) Text(tr("Enter the odometer so distance-based reminders work. Cars that report it over OBD update it automatically."),
                         style = MaterialTheme.typography.bodySmall, color = Warn)
+                }
+            }
+            // What the car's own computer counts (GM / Opel), read at the last connection.
+            app.serviceLife.latest.value[v.id]?.let { r ->
+                item {
+                    SectionCard(title = tr("According to the car")) {
+                        r.oilPct?.let { pct ->
+                            Text(tr("Engine oil life left: %1\$s %%", "%.0f".format(pct)), fontWeight = FontWeight.SemiBold)
+                            LinearProgressIndicator({ (pct / 100).toFloat() }, Modifier.fillMaxWidth().padding(vertical = 6.dp),
+                                color = if (pct < com.openobd.data.ServiceLife.OIL_LOW_PCT) Warn else Good)
+                        }
+                        r.airFilterPct?.let { pct -> Text(tr("Air filter life left: %1\$s %%", "%.0f".format(pct))) }
+                        Text(tr("Read on %1\$s", java.text.DateFormat.getDateInstance(java.text.DateFormat.MEDIUM).format(java.util.Date(r.at))),
+                            style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
                 }
             }
             if (items.isEmpty()) item {
@@ -625,7 +642,13 @@ fun TripDetailScreen(tripId: String, onBack: () -> Unit, onModel3d: () -> Unit =
                 keyboardActions = androidx.compose.foundation.text.KeyboardActions(onDone = { saveName() }),
                 modifier = Modifier.fillMaxWidth().testTag("tripName"))
             if (pts.size >= 2) {
-                SectionCard { TrackMap(pts, Modifier.fillMaxWidth().height(300.dp), selected = point) { point = it } }
+                // Colour by speed, or by consumption to see where this drive spent most.
+                val limits = remember(pts) { com.openobd.core.trip.TrackColoring.consumptionLimits(pts) }
+                var coloring by remember(pts) { mutableStateOf(if (limits != null) com.openobd.core.trip.TrackColoring.Mode.CONSUMPTION else com.openobd.core.trip.TrackColoring.Mode.SPEED) }
+                SectionCard {
+                    TrackMap(pts, Modifier.fillMaxWidth().height(300.dp), selected = point, coloring = coloring) { point = it }
+                    TrackLegend(coloring, limits, settings.units, onMode = { coloring = it }, canConsumption = limits != null)
+                }
                 Text(tr("Map data © OpenStreetMap contributors") + " · " + tr("Tap the route to see what the car was doing there."),
                     style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 point?.let { TrackPointCard(it, t.start, settings.units) }
@@ -694,6 +717,30 @@ private fun RouteStationsCard(points: List<TrackPoint>) {
                     Text(s.station.address + ", " + s.station.town, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1)
                 }
                 Text(euros(s.price(fuel) ?: 0.0), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, color = com.openobd.ui.theme.Good)
+            }
+        }
+    }
+}
+
+/** What the route's colours mean, and the choice between speed and consumption. */
+@OptIn(androidx.compose.foundation.layout.ExperimentalLayoutApi::class)
+@Composable
+private fun TrackLegend(mode: com.openobd.core.trip.TrackColoring.Mode, limits: Pair<Double, Double>?, units: com.openobd.core.obd.UnitSystem,
+                        onMode: (com.openobd.core.trip.TrackColoring.Mode) -> Unit, canConsumption: Boolean) {
+    val m = com.openobd.core.trip.TrackColoring.Mode.entries
+    androidx.compose.foundation.layout.Row(Modifier.padding(top = 8.dp), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+        androidx.compose.material3.FilterChip(mode == m[0], { onMode(m[0]) }, label = { Text(tr("Colour: speed")) }, modifier = Modifier.testTag("colorSpeed"))
+        if (canConsumption) androidx.compose.material3.FilterChip(mode == m[1], { onMode(m[1]) }, label = { Text(tr("Colour: consumption")) }, modifier = Modifier.testTag("colorConsumption"))
+    }
+    val colors = com.openobd.core.trip.TrackColoring.colors(mode).map { androidx.compose.ui.graphics.Color(android.graphics.Color.parseColor(it)) }
+    val labels = if (mode == m[0]) com.openobd.core.trip.RouteGeometry.bandLabels.map { tr(it) }
+        else limits?.let { (a, b) -> listOf(tr("Under %1\$s", fmtL100(a, units)), tr("%1\$s to %2\$s", fmtL100(a, units), fmtL100(b, units)),
+            tr("Over %1\$s", fmtL100(b, units)), tr("Stopped")) }.orEmpty()
+    androidx.compose.foundation.layout.FlowRow(Modifier.padding(top = 6.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+        labels.forEachIndexed { i, l ->
+            androidx.compose.foundation.layout.Row(verticalAlignment = Alignment.CenterVertically) {
+                androidx.compose.foundation.layout.Box(Modifier.size(10.dp).background(colors[i], androidx.compose.foundation.shape.CircleShape))
+                Text(" $l", style = MaterialTheme.typography.labelSmall)
             }
         }
     }

@@ -317,6 +317,7 @@ class ObdSession(
         _state.value = ConnectionState.Connected(snapshot)
         updateBrand()
         live.params = fuelParams(s, snapshot)
+        diesel.onConnected(supported)
         live.timeoutsBeforeLost = if (s.connectionType == ConnectionType.PHONE || s.connectionType == ConnectionType.WIFI) 12 else 4
         live.start(c, supported)
         live.subscribe("trip", listOf("010D", "010C", "CALC_FUEL"))
@@ -411,6 +412,7 @@ class ObdSession(
     private suspend fun linkLost(message: String) {
         if (userDisconnect || state.value !is ConnectionState.Connected) return
         voice.onLinkLost()
+        diesel.onLinkLost(System.currentTimeMillis())
         // The trip is kept for a while: if the link comes back (a Bluetooth or Wi-Fi hiccup), it simply goes on.
         val keepTrip = tripActive && settingsRepo.settings.value.autoConnect
         cleanup(keepTrip = keepTrip)
