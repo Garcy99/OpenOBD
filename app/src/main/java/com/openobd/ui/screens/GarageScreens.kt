@@ -180,6 +180,7 @@ private fun VehicleEditor(v: Vehicle, isNew: Boolean, units: UnitSystem, onDismi
     var odo by remember { mutableStateOf(v.odometerKm?.let { "%.0f".format(fromKm(it, units)) }.orEmpty()) }
     var brandId by remember { mutableStateOf(v.brandId) }
     var picking by remember { mutableStateOf(false) }
+    var tank by remember { mutableStateOf(v.tankL?.let { "%.0f".format(ObdUnit.LITERS.display(it, units).value) }.orEmpty()) }
     var confirmDelete by remember { mutableStateOf(false) }
     AlertDialog(
         onDismissRequest = onDismiss,
@@ -191,6 +192,10 @@ private fun VehicleEditor(v: Vehicle, isNew: Boolean, units: UnitSystem, onDismi
                     singleLine = true, modifier = Modifier.fillMaxWidth())
                 OutlinedTextField(odo, { odo = it.filter { c -> c.isDigit() || c == '.' } }, label = { Text(tr("Odometer (%1\$s)", (distUnit(units)))) }, singleLine = true,
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number), modifier = Modifier.fillMaxWidth())
+                OutlinedTextField(tank, { tank = it.filter { c -> c.isDigit() || c == '.' }.take(5) },
+                    label = { Text(tr("Fuel tank capacity (%1\$s)", ObdUnit.LITERS.display(1.0, units).unit.symbol)) }, singleLine = true,
+                    supportingText = { Text(tr("For the litres and range of the tank gauge. It is in the owner's manual.")) },
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number), modifier = Modifier.fillMaxWidth().testTag("tankCapacity"))
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Text(tr("Brand: ") + (brandId?.let { Brands.byId[it]?.name } ?: vin.takeIf { it.length >= 3 }?.let { Brands.detect(it)?.name?.let { n -> tr("%1\$s (from VIN)", n) } } ?: "auto"),
                         modifier = Modifier.weight(1f))
@@ -203,7 +208,9 @@ private fun VehicleEditor(v: Vehicle, isNew: Boolean, units: UnitSystem, onDismi
         confirmButton = {
             TextButton(onClick = {
                 val km = odo.toDoubleOrNull()?.let { toKm(it, units) }
-                onSave(v.copy(name = name.trim().ifEmpty { tr("My car") }, vin = vin.takeIf { it.length >= 11 }, brandId = brandId,
+                val litresPerUnit = 1.0 / ObdUnit.LITERS.display(1.0, units).value
+                val tankL = tank.toDoubleOrNull()?.takeIf { it in 5.0..300.0 }?.let { it * litresPerUnit }
+                onSave(v.copy(name = name.trim().ifEmpty { tr("My car") }, vin = vin.takeIf { it.length >= 11 }, brandId = brandId, tankL = tankL,
                     odometerKm = km ?: v.odometerKm, odometerFromCar = if (km != null && km != v.odometerKm) false else v.odometerFromCar,
                     odometerUpdatedAt = if (km != null) System.currentTimeMillis() else v.odometerUpdatedAt))
             }) { Text(tr("Save")) }

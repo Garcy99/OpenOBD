@@ -234,3 +234,55 @@ fun DigitalTile(label: String, valueText: String, unit: String, minText: String?
         Text(listOfNotNull(minText?.let { "↓ $it" }, maxText?.let { "↑ $it" }).joinToString("   "), style = MaterialTheme.typography.labelMedium, color = ink.copy(alpha = 0.7f))
     }
 }
+
+/**
+ * A fuel tank: a container that fills to the level, red when nearly empty, with the percentage and a line below
+ * ([detail]: litres left and range).
+ */
+@Composable
+fun TankGauge(
+    label: String,
+    fraction: Float?,
+    valueText: String,
+    unit: String,
+    detail: String?,
+    modifier: Modifier = Modifier,
+    ink: Color = MaterialTheme.colorScheme.onSurface,
+    accent: Color = Cyan,
+) {
+    val level by animateFloatAsState((fraction ?: 0f).coerceIn(0f, 1f), tween(600), label = "tank")
+    val fill = when { fraction == null -> ink.copy(alpha = 0.2f); level < 0.12f -> Bad; level < 0.25f -> Warn; else -> accent }
+    Column(modifier.aspectRatio(1f).padding(12.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+        Text(label, style = MaterialTheme.typography.labelLarge, color = ink.copy(alpha = 0.8f), maxLines = 1, overflow = TextOverflow.Ellipsis)
+        Box(Modifier.weight(1f).fillMaxWidth().padding(vertical = 6.dp), contentAlignment = Alignment.Center) {
+            Canvas(Modifier.fillMaxSize()) {
+                // The tank: a rounded body with a filler neck on top; fuel up to the level.
+                val w = size.minDimension * 0.62f
+                val h = size.height * 0.92f
+                val left = (size.width - w) / 2
+                val top = size.height - h
+                val r = androidx.compose.ui.geometry.CornerRadius(w * 0.14f)
+                val neckW = w * 0.22f
+                drawRoundRect(ink.copy(alpha = 0.35f), topLeft = Offset(left + w * 0.62f, top - h * 0.06f), size = Size(neckW, h * 0.1f),
+                    cornerRadius = androidx.compose.ui.geometry.CornerRadius(neckW * 0.2f))
+                drawRoundRect(ink.copy(alpha = 0.08f), topLeft = Offset(left, top), size = Size(w, h), cornerRadius = r)
+                if (fraction != null && level > 0f) {
+                    val fh = h * level
+                    drawRoundRect(Brush.verticalGradient(listOf(fill.copy(alpha = 0.75f), fill), top + h - fh, top + h),
+                        topLeft = Offset(left, top + h - fh), size = Size(w, fh), cornerRadius = r)
+                }
+                // Quarter marks.
+                for (q in 1..3) {
+                    val y = top + h * (1 - q / 4f)
+                    drawLine(ink.copy(alpha = 0.3f), Offset(left + w * 0.06f, y), Offset(left + w * 0.2f, y), strokeWidth = 2.dp.toPx())
+                }
+                drawRoundRect(ink.copy(alpha = 0.5f), topLeft = Offset(left, top), size = Size(w, h), cornerRadius = r, style = Stroke(2.dp.toPx()))
+            }
+            Row(verticalAlignment = Alignment.Bottom) {
+                Text(valueText, style = MaterialTheme.typography.headlineMedium.copy(fontFeatureSettings = "tnum"), fontWeight = FontWeight.Bold, color = ink, maxLines = 1)
+                Text(" $unit", style = MaterialTheme.typography.labelLarge, color = ink.copy(alpha = 0.75f), modifier = Modifier.padding(bottom = 4.dp))
+            }
+        }
+        if (detail != null) Text(detail, style = MaterialTheme.typography.labelMedium, color = ink.copy(alpha = 0.8f), maxLines = 1, overflow = TextOverflow.Ellipsis)
+    }
+}

@@ -318,6 +318,7 @@ class ObdSession(
         updateBrand()
         live.params = fuelParams(s, snapshot)
         diesel.onConnected(supported)
+        setUpTank(supported)
         live.timeoutsBeforeLost = if (s.connectionType == ConnectionType.PHONE || s.connectionType == ConnectionType.WIFI) 12 else 4
         live.start(c, supported)
         live.subscribe("trip", listOf("010D", "010C", "CALC_FUEL"))
@@ -406,6 +407,41 @@ class ObdSession(
         }
     }
 
+    // ------------------------------------------------------------------ fuel tank
+
+    private val tankPrefs by lazy { context.getSharedPreferences("tank", android.content.Context.MODE_PRIVATE) }
+
+    /**
+     * The tank gauge for this connection: the car's capacity, its usual consumption (fill-ups, else trips) for the
+     * range, and where to start when the car does not report its level (the last estimate, else the fuel log).
+     */
+    private fun setUpTank(supported: Set<Int>) {
+        val g = garage.data.value
+        val car = g.active
+        val cap = car?.tankL
+        if (car == null || (0x2F !in supported && cap == null)) { live.tank = null; live.unsubscribe("tank"); return }
+        val fills = g.fuel.filter { it.vehicleId == car.id }.sortedBy { it.date }
+        val trips = g.trips.filter { it.vehicleId == car.id }
+        val l100 = com.openobd.core.garage.FuelStats.compute(fills).averageL100
+            ?: trips.filter { it.fuelL != null && it.distanceKm > 5 }.takeLast(20).takeIf { it.isNotEmpty() }?.let { t -> t.sumOf { it.fuelL!! } / t.sumOf { it.distanceKm } * 100 }
+        val lastFull = fills.lastOrNull { it.fullTank }
+        val savedAt = tankPrefs.getLong("${car.id}:at", 0)
+        val start = if (savedAt > (fills.lastOrNull()?.date ?: 0)) tankPrefs.getFloat("${car.id}:l", -1f).takeIf { it >= 0 }?.toDouble()
+            else com.openobd.core.obd.FuelTankEstimator.fromLog(cap, lastFull?.date,
+                fills.filter { lastFull != null && it.date > lastFull.date }.sumOf { it.liters },
+                trips.filter { lastFull != null && it.start > lastFull.date }.sumOf { it.fuelL ?: 0.0 })
+        live.tank = com.openobd.core.obd.FuelTankEstimator(cap, start, l100)
+        // Always followed while connected, so the estimate keeps up even when no gauge shows it.
+        live.subscribe("tank", listOf(DerivedSensors.TANK.key))
+    }
+
+    /** Keeps the tank estimate for the next connection (when the car does not report its level). */
+    private fun saveTank() {
+        val car = garage.data.value.active ?: return
+        val l = live.tank?.litres ?: return
+        tankPrefs.edit().putFloat("${car.id}:l", l.toFloat()).putLong("${car.id}:at", System.currentTimeMillis()).apply()
+    }
+
     /** For tests: the link drops as if the adapter or the Wi-Fi went away. */
     internal fun dropLinkForTest() { transport?.let { t -> t.onDisconnected?.invoke(null) } }
 
@@ -439,6 +475,7 @@ class ObdSession(
     }
 
     private suspend fun cleanup(keepTrip: Boolean = false) {
+        saveTank()
         compressionIgnition = null
         health.finish()
         if (!keepTrip) finishTrip()

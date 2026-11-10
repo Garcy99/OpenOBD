@@ -77,6 +77,9 @@ class LiveDataManager(private val scope: CoroutineScope) {
      */
     @Volatile var timeoutsBeforeLost = 4
 
+    /** The fuel tank estimate of this connection (set by the session with the car's tank and consumption). */
+    @Volatile var tank: com.openobd.core.obd.FuelTankEstimator? = null
+
     private val subscriptions = MutableStateFlow<Map<String, Set<String>>>(emptyMap())
     private val _readings = MutableStateFlow<Map<String, Reading>>(emptyMap())
     val readings: StateFlow<Map<String, Reading>> = _readings
@@ -221,6 +224,12 @@ class LiveDataManager(private val scope: CoroutineScope) {
             }
             val calc = DerivedSensors.compute(latest, params)
             for ((k, v) in calc) { latest[k] = v; fresh += k }
+            // The tank: estimated across cycles (level sensor steadied by the fuel burnt).
+            tank?.update(latest, now)?.let { e ->
+                e.pct?.let { latest[DerivedSensors.TANK.key] = it; fresh += DerivedSensors.TANK.key }
+                e.litres?.let { latest[DerivedSensors.TANK_L.key] = it; fresh += DerivedSensors.TANK_L.key }
+                e.rangeKm?.let { latest[DerivedSensors.RANGE.key] = it; fresh += DerivedSensors.RANGE.key }
+            }
             // Speed-dependent values become invalid when stopped
             if ("CALC_CONS" !in calc) latest.remove("CALC_CONS")
 

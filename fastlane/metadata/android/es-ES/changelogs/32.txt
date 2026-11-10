@@ -1,0 +1,2 @@
+• Reloj del depósito: el nivel que da el coche, sin los vaivenes del combustible y combinado con lo que vas gastando, así baja de forma suave; litros que quedan y autonomía (pon la capacidad del depósito en los datos del coche)
+• Detecta los repostajes solo; en coches sin sensor de nivel se sigue desde el último repostaje

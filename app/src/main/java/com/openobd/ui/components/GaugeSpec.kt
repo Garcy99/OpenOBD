@@ -4,7 +4,7 @@ import com.openobd.core.obd.UnitSystem
 
 /** How one dashboard gauge is drawn. */
 enum class GaugeStyle(val code: String, val label: String) {
-    ARC("a", "Arc"), NEEDLE("n", "Needle"), BAR("b", "Bar"), DIGITAL("d", "Number");
+    ARC("a", "Arc"), NEEDLE("n", "Needle"), BAR("b", "Bar"), DIGITAL("d", "Number"), TANK("t", "Tank");
 
     companion object {
         fun of(code: String?) = entries.firstOrNull { it.code == code }

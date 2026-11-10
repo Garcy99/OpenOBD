@@ -1,0 +1,2 @@
+• Fuel tank gauge: the level the car reports, steadied against sloshing and combined with the fuel you burn, so it falls smoothly; litres left and range (enter the tank capacity in the car's details)
+• Refills are spotted by themselves; cars without a level sensor are followed from the last fill-up

@@ -23,6 +23,8 @@ data class Vehicle(
     /** Settings this car can change (from packs or typed in), and routines it can run. */
     val codings: List<com.openobd.core.brand.Coding> = emptyList(),
     val routines: List<com.openobd.core.brand.Routine> = emptyList(),
+    /** Fuel tank capacity in litres (for the tank gauge's litres and range); null = not known. */
+    val tankL: Double? = null,
 )
 
 /** The same vehicle with every custom PID, coding and routine id unique (the first of a repeated id keeps it). */

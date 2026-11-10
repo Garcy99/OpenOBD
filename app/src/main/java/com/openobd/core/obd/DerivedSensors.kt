@@ -36,7 +36,13 @@ object DerivedSensors {
     val AFR = SensorDef("CALC_AFR", -1, "Commanded air-fuel ratio", "AFR", ObdUnit.AFR, 8.0, 22.0, C, 1) { null }
     val AIRFLOW = SensorDef("CALC_AIRFLOW", -1, "Air flow (MAF or speed-density estimate)", "Air flow", ObdUnit.GRAMS_PER_SEC, 0.0, 300.0, C, 1) { null }
 
-    val all: List<SensorDef> = listOf(FUEL, CONSUMPTION, BOOST, PEDAL, POWER, TORQUE, AFR, AIRFLOW)
+    /** The fuel tank (see [FuelTankEstimator]): how full, how many litres, how far it goes. */
+    val TANK = SensorDef("CALC_TANK", -1, "Fuel tank", "Fuel tank", ObdUnit.PERCENT, 0.0, 100.0, C, 0) { null }
+    val TANK_L = SensorDef("CALC_TANK_L", -1, "Fuel in the tank", "Fuel left", ObdUnit.LITERS, 0.0, 120.0, C, 1) { null }
+    val RANGE = SensorDef("CALC_RANGE", -1, "Range with the fuel left", "Range", ObdUnit.KM, 0.0, 1500.0, C, 0) { null }
+    val tankKeys = setOf(TANK.key, TANK_L.key, RANGE.key)
+
+    val all: List<SensorDef> = listOf(FUEL, CONSUMPTION, BOOST, PEDAL, POWER, TORQUE, AFR, AIRFLOW, TANK, TANK_L, RANGE)
     val byKey: Map<String, SensorDef> = all.associateBy { it.key }
 
     /** Alternative sets of input sensor keys; the first set whose PIDs are all supported is used. */
@@ -59,8 +65,16 @@ object DerivedSensors {
     )
 
     /** Input sensor keys needed for [key] given the supported PIDs, or null if it cannot be computed. */
-    fun requirements(key: String, supported: Set<Int>, diesel: Boolean = false): List<String>? =
-        ((if (diesel) dieselInputs[key] else null) ?: inputs[key])?.firstOrNull { set -> set.all { pidOf(it) in supported } }
+    fun requirements(key: String, supported: Set<Int>, diesel: Boolean = false): List<String>? {
+        // The tank: the level the car reports and the fuel burnt (either is enough to keep an estimate).
+        if (key in tankKeys) {
+            val fuel = requirements("CALC_FUEL", supported, diesel).orEmpty()
+            val level = if (0x2F in supported) listOf("012F") else emptyList()
+            if (level.isEmpty() && fuel.isEmpty()) return null
+            return (level + fuel + (if (0x0D in supported) listOf("010D") else emptyList())).distinct()
+        }
+        return ((if (diesel) dieselInputs[key] else null) ?: inputs[key])?.firstOrNull { set -> set.all { pidOf(it) in supported } }
+    }
 
     fun isAvailable(key: String, supported: Set<Int>) = requirements(key, supported) != null
 

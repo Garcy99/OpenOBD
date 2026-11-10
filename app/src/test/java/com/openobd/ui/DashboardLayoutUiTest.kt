@@ -48,6 +48,11 @@ class DashboardLayoutUiTest {
         // The demo car reports PID 5C: the oil temperature gauge reads it.
         waitFor { rule.onAllNodesWithText("Oil temp").fetchSemanticsNodes().isNotEmpty() }
         waitFor { c.session.live.latestValue("015C") != null }
+        // The fuel tank gauge joins too, and reads the demo car's level (steadied) as soon as there are a few readings.
+        waitFor { c.settings.settings.value.tankGaugeAdded && c.settings.settings.value.dashboard.any { it.startsWith("CALC_TANK") } }
+        waitFor(60_000) { c.session.live.latestValue("CALC_TANK") != null }
+        assertTrue(c.session.live.latestValue("CALC_TANK")!! in 0.0..100.0)
+        waitFor { rule.onAllNodesWithText("Fuel tank").fetchSemanticsNodes().isNotEmpty() }
     }
 
     /** A car screen whose climate bar covers the bottom: the space set aside in Settings stays free of the app. */

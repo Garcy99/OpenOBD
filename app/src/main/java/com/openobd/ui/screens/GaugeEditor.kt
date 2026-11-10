@@ -31,6 +31,7 @@ import androidx.compose.material3.TextButton
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -83,7 +84,8 @@ private fun scaleLabel(v: Double, span: Double): String = when {
 /** One dashboard gauge drawn the way [spec] and the dashboard [theme] say. */
 @Composable
 fun GaugeView(spec: GaugeSpec, theme: GaugeTheme, def: SensorDef, reading: Reading?, units: UnitSystem, supportedHere: Boolean, shift: Boolean = false) {
-    val style = spec.style ?: theme.defaultStyle
+    // The fuel tank reads best as a tank.
+    val style = spec.style ?: if (spec.key in com.openobd.core.obd.DerivedSensors.tankKeys) GaugeStyle.TANK else theme.defaultStyle
     val custom = spec.appliesTo(units)
     val (dlo, dhi) = displayRange(def, units)
     val lo = (if (custom) spec.min else null) ?: dlo
@@ -114,6 +116,15 @@ fun GaugeView(spec: GaugeSpec, theme: GaugeTheme, def: SensorDef, reading: Readi
             Modifier.fillMaxWidth(), redFrom, warn, ink = ink, needle = spec.color?.let(::rgb) ?: Color(theme.needle), accent = accent.last())
         GaugeStyle.BAR -> BarGauge(tileLabel, valueText, f.unit, fraction, Modifier.fillMaxWidth(), redFrom, warn, minText, maxText, accent, ink)
         GaugeStyle.DIGITAL -> DigitalTile(tileLabel, valueText, f.unit, minText, maxText, warn, ink)
+        GaugeStyle.TANK -> {
+            // Litres left and range under the level, when the car's tank capacity is known.
+            val readings by com.openobd.ui.LocalApp.current.session.live.readings.collectAsStateWithLifecycle()
+            val litres = readings[com.openobd.core.obd.DerivedSensors.TANK_L.key]?.value
+            val range = readings[com.openobd.core.obd.DerivedSensors.RANGE.key]?.value
+            val detail = listOfNotNull(litres?.let { formatSensor(com.openobd.core.obd.DerivedSensors.TANK_L, it, units).let { f2 -> f2.value + " " + f2.unit } },
+                range?.let { formatSensor(com.openobd.core.obd.DerivedSensors.RANGE, it, units).let { f2 -> "≈ " + f2.value + " " + f2.unit } }).joinToString(" · ").ifEmpty { null }
+            com.openobd.ui.components.TankGauge(label, fraction, valueText, f.unit, detail, Modifier.fillMaxWidth(), ink, accent.last())
+        }
     }
 }
 

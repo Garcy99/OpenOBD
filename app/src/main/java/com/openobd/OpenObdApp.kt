@@ -134,6 +134,13 @@ class OpenObdApp : Application() {
                     s.copy(dashboard = s.dashboard + missing, oilGaugesAdded = true)
                 }
             }
+            // Once: the fuel tank gauge joins dashboards made before it existed.
+            container.settings.readOnce().takeIf { !it.tankGaugeAdded }?.let {
+                container.settings.update { s ->
+                    s.copy(dashboard = if (s.dashboard.none { com.openobd.ui.components.GaugeSpec.parse(it).key == "CALC_TANK" }) s.dashboard + "CALC_TANK" else s.dashboard,
+                        tankGaugeAdded = true)
+                }
+            }
             container.sync.syncIfConnected(force = true)
         }
         keepWidgetUpdated()
