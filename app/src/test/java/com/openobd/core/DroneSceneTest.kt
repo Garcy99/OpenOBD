@@ -121,4 +121,14 @@ class DroneSceneTest {
         val mid = script.video.frames / 2
         assertEquals(DroneScript.NEAR, script.windowsAt(mid).first().level)
     }
+
+    @Test
+    fun `buildings across a cliff are left out instead of standing as giant walls`() {
+        // 400 m long over the slope of this ground (2000 m per degree of longitude, about 10 m per 400 m): kept;
+        // on a cliff ten times steeper: left out.
+        val cliff = Ground(frame, Terrain { _, lon -> 1000 + (lon + 4.13) * 40_000 })
+        val long = MapBuilding(square(100.0, 30.0, 400.0), 9.0)
+        assertEquals(1, DroneScene(SceneFeatures.NONE.copy(buildings = listOf(long)), ground, script).buildingCount)
+        assertEquals(0, DroneScene(SceneFeatures.NONE.copy(buildings = listOf(long)), cliff, script).buildingCount)
+    }
 }

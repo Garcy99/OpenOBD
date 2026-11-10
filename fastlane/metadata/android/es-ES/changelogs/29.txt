@@ -1,0 +1,3 @@
+• Vídeo del viaje en 3D real: edificios con sus tejados y ventanas, árboles en bosques, parques y carreteras, lagos y ríos (OpenStreetMap)
+• Fotos aéreas nítidas cerca del coche (alrededor de 1 m por píxel)
+• Pantallas de coche: la app respeta las barras del sistema y en Ajustes > Pantalla puedes dejar sitio a la barra del climatizador

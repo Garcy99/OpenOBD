@@ -203,9 +203,13 @@ class DroneScene(features: SceneFeatures, private val ground: Ground, route: Dro
         val pts = raw.let { if (Polygons.area(it) < 0) it.reversed() else it }
         if (abs(Polygons.area(pts)) < 6) return false
         val grounds = pts.map { (x, y) -> ground.exact(x, y) }
-        // Walls go a little into the ground on slopes, so no building floats; the roof is level.
+        // Outlines across a cliff or a whole hillside (walls, ruins, odd mapping) would stand as giant walls.
+        val spread = grounds.max() - grounds.min()
+        if (spread > MAX_SLOPE_SPREAD) return false
+        // Walls go a little into the ground on slopes, so no building floats; the roof is level, over the highest
+        // corner on gentle ground, over the middle on steeper ground (the uphill side then sits in the slope).
         val base = grounds.min() - 1.5
-        val top = grounds.max() + heightM
+        val top = (if (spread < 6) grounds.max() else grounds.average()) + heightM
         val seed = hash(index * 13 + 7).toFloat()
         var along = 0.0
         for (i in pts.indices) {
@@ -232,6 +236,8 @@ class DroneScene(features: SceneFeatures, private val ground: Ground, route: Dro
         const val TREE_RANGE = 1100.0
         const val MAX_BUILDINGS = 30_000
         const val MAX_TREES = 120_000
+        /** Metres of height difference under one building beyond which it is left out. */
+        const val MAX_SLOPE_SPREAD = 20.0
 
         /** A steady pseudo-random number 0..1 for [i]. */
         fun hash(i: Int): Double {
