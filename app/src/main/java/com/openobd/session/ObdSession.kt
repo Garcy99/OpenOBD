@@ -41,6 +41,8 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharedFlow
@@ -100,6 +102,15 @@ class ObdSession(
     private val location = LocationTracker(context)
     @Volatile private var tripActive = false
     @Volatile private var tripStart = 0L
+    /** After a lost link: the trip waits this long for the car to come back before it is saved. */
+    private var tripEnd: Job? = null
+    /** What the last connection learnt about the car, to come back quickly after a lost link. */
+    private data class Known(val type: ConnectionType, val supported: Set<Int>, val ecus: List<com.openobd.core.obd.EcuInfo>, val vin: String?,
+                             val info: com.openobd.core.elm.ElmInfo)
+    private var known: Known? = null
+    /** True while the app is getting a lost link back by itself (the trip goes on meanwhile). */
+    @Volatile var reconnecting = false
+        private set
     private val _state = MutableStateFlow<ConnectionState>(ConnectionState.Disconnected)
     val state: StateFlow<ConnectionState> = _state
 
@@ -234,7 +245,7 @@ class ObdSession(
                 throw e
             } catch (e: Exception) {
                 debug.error("Connection failed", e)
-                cleanup()
+                cleanup(keepTrip = tripEnd?.isActive == true)
                 _state.value = ConnectionState.Failed(e.message ?: e.javaClass.simpleName)
             }
         }
@@ -261,7 +272,7 @@ class ObdSession(
     }
 
     private suspend fun doConnect(s: AppSettings) {
-        cleanup()
+        cleanup(keepTrip = tripEnd?.isActive == true)
         if (s.connectionType == ConnectionType.PHONE) _state.value = ConnectionState.Connecting("Looking for your phone")
         val t = createTransport(s)
         transport = t
@@ -279,39 +290,59 @@ class ObdSession(
             stn = info.isStn
         }
         client = c
-        _state.value = ConnectionState.Connecting("Reading supported sensors")
-        val supported = c.discover()
-        _state.value = ConnectionState.Connecting("Reading VIN")
-        val vin = runCatching { c.readVin() }.getOrNull()
+        // Back after a lost link to the same car: what it supports is already known, so the gauges return at once.
+        val again = known?.takeIf { it.type == s.connectionType && tripEnd?.isActive == true }
+        val supported: Set<Int>
+        val vin: String?
+        if (again != null) {
+            c.restore(again.ecus)
+            supported = again.supported
+            vin = again.vin
+        } else {
+            _state.value = ConnectionState.Connecting("Reading supported sensors")
+            supported = c.discover()
+            _state.value = ConnectionState.Connecting("Reading VIN")
+            vin = runCatching { c.readVin() }.getOrNull()
+        }
+        known = Known(s.connectionType, supported, c.ecus, vin, info)
         // Compression ignition flag of the monitor status (PID 01, byte B bit 3): tells diesels apart for the fuel estimate.
         compressionIgnition = runCatching { c.readPids(listOf(0x01))[0x01]?.getOrNull(1)?.let { (it shr 3) and 1 == 1 } }.getOrNull()
         val voltage = e.readVoltage()
         val snapshot = VehicleSnapshot(t.description, info, supported, c.ecus, vin, voltage, s.connectionType == ConnectionType.DEMO)
         selectVehicleFor(vin)
-        if (0xA6 in supported) readOdometer(c)
+        if (again == null && 0xA6 in supported) readOdometer(c)
         // Battery at rest is only meaningful with the engine off.
         val rpmAtConnect = runCatching { c.readPids(listOf(0x0C))[0x0C]?.takeIf { it.size >= 2 }?.let { ((it[0] shl 8) or it[1]) / 4.0 } }.getOrNull()
         health.start(garage.data.value.active?.id, voltage?.takeIf { rpmAtConnect == 0.0 })
         _state.value = ConnectionState.Connected(snapshot)
         updateBrand()
         live.params = fuelParams(s, snapshot)
+        live.timeoutsBeforeLost = if (s.connectionType == ConnectionType.PHONE || s.connectionType == ConnectionType.WIFI) 12 else 4
         live.start(c, supported)
         live.subscribe("trip", listOf("010D", "010C", "CALC_FUEL"))
         live.subscribe("health", health.keys)
         updateAlertSubscriptions(s)
         trip.diesel = diesel.isDiesel
-        trip.reset()
-        tripStart = System.currentTimeMillis()
-        tripActive = true
-        engineOff.reset(tripStart)
-        tripFuelPrice.value = null
-        if (s.connectionType != ConnectionType.DEMO) scope.launch { tripFuelPrice.value = runCatching { fuelPriceAt(null, null) }.getOrNull() }
+        val resumed = tripEnd?.isActive == true && tripActive
+        tripEnd?.cancel(); tripEnd = null
+        reconnecting = false
+        if (resumed) {
+            // The same trip goes on: a lost link no longer cuts a drive in pieces.
+            debug.event("Link back: the trip goes on")
+        } else {
+            trip.reset()
+            tripStart = System.currentTimeMillis()
+            tripActive = true
+            engineOff.reset(tripStart)
+            tripFuelPrice.value = null
+            if (s.connectionType != ConnectionType.DEMO) scope.launch { tripFuelPrice.value = runCatching { fuelPriceAt(null, null) }.getOrNull() }
+        }
         if (s.tripGps && s.connectionType != ConnectionType.DEMO) location.start()
         // Values stored with each point of the GPS track (shown when the map is tapped)
         if (s.tripGps || s.connectionType == ConnectionType.DEMO) live.subscribe("track", com.openobd.core.garage.TrackPoint.KEYS)
         startVoltageMonitor()
-        // Pre-load monitor status for the home screen
-        scope.launch { runCatching { scanDtcsInternal(record = false) } }
+        // Pre-load monitor status for the home screen (not again when only the link came back)
+        if (!resumed) scope.launch { runCatching { scanDtcsInternal(record = false) } }
     }
 
     /** From the car's monitor status at connection; null when unknown. */
@@ -365,28 +396,50 @@ class ObdSession(
     fun disconnect() {
         userDisconnect = true
         autoTrip = false
+        reconnecting = false
         connectJob?.cancel()
         scope.launch {
+            tripEnd?.cancel(); tripEnd = null
             cleanup()
             _state.value = ConnectionState.Disconnected
         }
     }
 
+    /** For tests: the link drops as if the adapter or the Wi-Fi went away. */
+    internal fun dropLinkForTest() { transport?.let { t -> t.onDisconnected?.invoke(null) } }
+
     private suspend fun linkLost(message: String) {
         if (userDisconnect || state.value !is ConnectionState.Connected) return
         voice.onLinkLost()
-        cleanup()
+        // The trip is kept for a while: if the link comes back (a Bluetooth or Wi-Fi hiccup), it simply goes on.
+        val keepTrip = tripActive && settingsRepo.settings.value.autoConnect
+        cleanup(keepTrip = keepTrip)
         _state.value = ConnectionState.Failed(message)
-        if (settingsRepo.settings.value.autoConnect) {
-            delay(3000)
-            if (state.value is ConnectionState.Failed && !userDisconnect) connect()
+        if (!settingsRepo.settings.value.autoConnect) return
+        if (keepTrip) {
+            tripEnd?.cancel()
+            tripEnd = scope.launch {
+                delay(TRIP_GRACE_MS)
+                reconnecting = false
+                if (state.value !is ConnectionState.Connected) finishTrip()
+            }
         }
+        // Tries again and again while the trip waits (or once, without a trip).
+        reconnecting = true
+        val until = System.currentTimeMillis() + if (keepTrip) TRIP_GRACE_MS else 0
+        do {
+            delay(if (settingsRepo.settings.value.connectionType.let { it == ConnectionType.PHONE || it == ConnectionType.WIFI }) 1500 else 3000)
+            if (userDisconnect || newestSession !== this || state.value is ConnectionState.Connected) break
+            if (state.value !is ConnectionState.Connecting) connect()
+            withTimeoutOrNull(45_000) { state.first { it is ConnectionState.Connected || it is ConnectionState.Failed } }
+        } while (!userDisconnect && newestSession === this && state.value !is ConnectionState.Connected && System.currentTimeMillis() < until)
+        if (state.value !is ConnectionState.Connected) reconnecting = false
     }
 
-    private suspend fun cleanup() {
+    private suspend fun cleanup(keepTrip: Boolean = false) {
         compressionIgnition = null
         health.finish()
-        finishTrip()
+        if (!keepTrip) finishTrip()
         live.stop()
         voltageJob?.cancel()
         if (logs.isRecording) stopRecording()
@@ -656,6 +709,9 @@ class ObdSession(
 @Volatile private var newestSession: ObdSession? = null
 
 /** Messages about the phone bridge (English keys, translated by the app). */
+/** How long a trip waits for a lost link to come back before it is saved (and a new one starts). */
+const val TRIP_GRACE_MS = 5 * 60_000L
+
 const val PHONE_NOT_FOUND = "No phone with the OpenOBD bridge found. On the phone, open More → Car screen and start the bridge; connect this screen to the phone's Wi-Fi hotspot (or the same Wi-Fi)."
 const val PHONE_BRIDGE_BUSY = "This phone is lending its adapter to the car screen. Stop the bridge (More → Car screen) to connect here."
 

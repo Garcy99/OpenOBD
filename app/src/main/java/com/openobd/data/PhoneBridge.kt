@@ -25,9 +25,20 @@ import kotlin.coroutines.resume
 object BridgeDiscovery {
     private const val TYPE = "_openobd._tcp"
 
+    /** Where the phone was found last time: tried first, so coming back after a hiccup takes a moment, not a search. */
+    @Volatile private var last: Pair<String, Int>? = null
+
     /** The phone announced on the network, else the Wi-Fi gateway (the phone, when this screen is on its hotspot). */
-    suspend fun find(context: Context): Pair<String, Int>? =
-        withTimeoutOrNull(5_000) { announced(context) } ?: gateway(context)?.let { it to ObdBridge.DEFAULT_PORT }
+    suspend fun find(context: Context): Pair<String, Int>? {
+        last?.let { if (reachable(it)) return it }
+        val found = withTimeoutOrNull(5_000) { announced(context) } ?: gateway(context)?.let { it to ObdBridge.DEFAULT_PORT }
+        if (found != null) last = found
+        return found
+    }
+
+    private suspend fun reachable(at: Pair<String, Int>): Boolean = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+        runCatching { java.net.Socket().use { it.connect(java.net.InetSocketAddress(at.first, at.second), 1500) }; true }.getOrDefault(false)
+    }
 
     private suspend fun announced(context: Context): Pair<String, Int>? = suspendCancellableCoroutine { cont ->
         val nsd = context.getSystemService(NsdManager::class.java) ?: return@suspendCancellableCoroutine cont.resume(null)

@@ -71,6 +71,12 @@ class LiveDataManager(private val scope: CoroutineScope) {
         const val GIVE_UP_MS = 20_000L
     }
 
+    /**
+     * Unanswered requests in a row before the link counts as lost: a few for an adapter in the car, more over a phone
+     * bridge or Wi-Fi, where a second's hiccup is normal and the link comes back by itself.
+     */
+    @Volatile var timeoutsBeforeLost = 4
+
     private val subscriptions = MutableStateFlow<Map<String, Set<String>>>(emptyMap())
     private val _readings = MutableStateFlow<Map<String, Reading>>(emptyMap())
     val readings: StateFlow<Map<String, Reading>> = _readings
@@ -184,10 +190,10 @@ class LiveDataManager(private val scope: CoroutineScope) {
             val data = if (toRead.isEmpty()) emptyMap() else try {
                 client.readPids(toRead)
             } catch (e: ElmException) {
-                if (e.error == ElmError.TIMEOUT && ++failures >= 4) { onAdapterLost?.invoke(); return }
+                if (e.error == ElmError.TIMEOUT && ++failures >= timeoutsBeforeLost) { onAdapterLost?.invoke(); return }
                 delay(200); continue
             } catch (e: Exception) {
-                if (++failures >= 4) { onAdapterLost?.invoke(); return }
+                if (++failures >= timeoutsBeforeLost) { onAdapterLost?.invoke(); return }
                 delay(200); continue
             }
             // A maker value counts as unanswered only when the car answered the rest of the cycle (not while the
@@ -196,7 +202,7 @@ class LiveDataManager(private val scope: CoroutineScope) {
                 if (customData[p.key] != null) { answered += p.key; unanswered.remove(p.key); firstMiss.remove(p.key) }
                 else if (p.key !in answered) { unanswered[p.key] = (unanswered[p.key] ?: 0) + 1; firstMiss.getOrPut(p.key) { System.currentTimeMillis() } }
             }
-            if (data.isEmpty() && customData.isEmpty() && ++failures >= 25) { onAdapterLost?.invoke(); return }
+            if (data.isEmpty() && customData.isEmpty() && ++failures >= timeoutsBeforeLost * 6) { onAdapterLost?.invoke(); return }
             if (data.isNotEmpty() || customData.isNotEmpty()) failures = 0
 
             val now = System.currentTimeMillis()

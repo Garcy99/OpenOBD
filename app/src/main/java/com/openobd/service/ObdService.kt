@@ -23,6 +23,7 @@ import kotlinx.coroutines.launch
 class ObdService : LifecycleService() {
     private val session get() = (application as OpenObdApp).container.session
     private var gauges: FloatingGauges? = null
+    private val awake by lazy { KeepAwake(this, "obd") }
     private var gaugesJob: kotlinx.coroutines.Job? = null
 
     override fun onCreate() {
@@ -77,9 +78,13 @@ class ObdService : LifecycleService() {
             while (true) {
                 val s = session.state.value
                 if (s !is ConnectionState.Connected) {
-                    if (autoJob?.isActive == true) { delay(1000); continue }
+                    if (autoJob?.isActive == true || s is ConnectionState.Connecting || session.reconnecting) { delay(1000); continue }
+                    awake.release()
                     stopSelf(); break
                 }
+                // Reading the car with the screen off: processor (and Wi-Fi for Wi-Fi adapters and the phone bridge) awake.
+                val type = (application as OpenObdApp).container.settings.settings.value.connectionType
+                awake.hold(overWifi = type == com.openobd.data.ConnectionType.WIFI || type == com.openobd.data.ConnectionType.PHONE)
                 val rpm = session.live.latestValue("010C")
                 val speed = session.live.latestValue("010D")
                 val parts = listOfNotNull(
@@ -151,6 +156,7 @@ class ObdService : LifecycleService() {
     }
 
     override fun onDestroy() {
+        awake.release()
         hideGauges()
         super.onDestroy()
     }

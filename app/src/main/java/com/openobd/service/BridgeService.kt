@@ -20,6 +20,7 @@ import kotlinx.coroutines.launch
 /** Keeps the phone bridge alive with the screen off, and shows whether the car screen is connected. */
 class BridgeService : LifecycleService() {
     private val bridge get() = (application as OpenObdApp).container.bridge
+    private val awake by lazy { KeepAwake(this, "bridge") }
 
     override fun onCreate() {
         super.onCreate()
@@ -31,17 +32,19 @@ class BridgeService : LifecycleService() {
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         super.onStartCommand(intent, flags, startId)
-        if (intent?.action == ACTION_STOP) { bridge.stop(); stopSelf(); return START_NOT_STICKY }
+        if (intent?.action == ACTION_STOP) { bridge.stop(); awake.release(); stopSelf(); return START_NOT_STICKY }
         try {
             ServiceCompat.startForeground(this, NOTIFICATION_ID, build(tr("Starting…")),
                 if (Build.VERSION.SDK_INT >= 29) ServiceInfo.FOREGROUND_SERVICE_TYPE_CONNECTED_DEVICE else 0)
         } catch (e: Exception) {
             stopSelf(); return START_NOT_STICKY
         }
+        // The phone keeps working for the car screen with its own screen off: processor and Wi-Fi stay awake.
+        awake.hold(overWifi = true)
         lifecycleScope.launch {
             val nm = getSystemService(NotificationManager::class.java)
             bridge.state.collect { s ->
-                if (!bridge.running && !s.running) { stopSelf(); return@collect }
+                if (!bridge.running && !s.running) { awake.release(); stopSelf(); return@collect }
                 val text = when {
                     s.adapter == null -> s.error?.let { tr(it) } ?: tr("Connecting to the adapter…")
                     s.client != null -> tr("Car screen connected (%1\$s)", s.client)
@@ -51,6 +54,11 @@ class BridgeService : LifecycleService() {
             }
         }
         return START_NOT_STICKY
+    }
+
+    override fun onDestroy() {
+        awake.release()
+        super.onDestroy()
     }
 
     private fun build(text: String): Notification {

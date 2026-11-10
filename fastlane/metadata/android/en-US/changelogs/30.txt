@@ -1,0 +1,3 @@
+• Car screen bridge much steadier: the phone stays awake and keeps Wi-Fi at full speed, picks the adapter up again by itself without cutting the screen off, and the screen tolerates short hiccups
+• A lost link no longer splits the trip: it goes on when the car comes back, and the gauges return in seconds
+• New versions are offered every time the app is opened

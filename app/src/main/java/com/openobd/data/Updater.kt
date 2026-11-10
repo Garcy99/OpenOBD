@@ -77,22 +77,29 @@ class Updater(private val context: Context) {
         }
     }
 
+    /** The last answer from GitHub and when it came (automatic checks reuse it for a few minutes). */
+    @Volatile private var cached: Pair<Long, Release>? = null
+    /** When the last automatic check ran (tests set it back to pretend the app was opened again later). */
+    @Volatile internal var lastAuto = 0L
+
     /**
-     * Checks for a newer version. Automatic checks ([manual] false) run each time the app comes to the screen, at
-     * most every few hours (sooner again when the last one could not reach GitHub, e.g. no data in the car), and
-     * stay quiet about a version the user chose to skip or put off.
+     * Checks for a newer version. Automatic checks ([manual] false) run every time the app is opened, so a new
+     * version pops up then even if it was put off before ("Later"); only a version the user chose to skip stays
+     * quiet. GitHub is asked at most every few minutes (the answer is kept meanwhile).
      */
     suspend fun check(manual: Boolean = false) {
         if (!enabled) return
-        val now = System.currentTimeMillis()
-        if (!manual && now - prefs.getLong("last", 0) < AUTO_EVERY) return
-        if (!manual && now - prefs.getLong("tried", 0) < RETRY) return
         if (_state.value.let { it is State.Downloading || it is State.Checking || it is State.Ready }) return
-        if (!manual && _state.value is State.Available) return
-        _state.value = State.Checking
-        prefs.edit().putLong("tried", now).apply()
-        val r = latest()
-        // Only a check that reached GitHub counts: one without signal is tried again soon.
+        val now = System.currentTimeMillis()
+        if (!manual) {
+            if (_state.value is State.Available) return
+            // The same opening (the screen turning, a dialog closing) is not a new one.
+            if (now - lastAuto < MIN_BETWEEN) return
+            lastAuto = now
+        }
+        val fresh = cached?.takeIf { !manual && now - it.first < KEEP }?.second
+        if (fresh == null) _state.value = State.Checking
+        val r = fresh ?: latest()?.also { cached = now to it }
         if (r != null) prefs.edit().putLong("last", now).apply()
         _state.value = when {
             r == null -> if (manual) State.Failed("Could not check for updates. Check your internet connection.") else State.Idle
@@ -102,7 +109,7 @@ class Updater(private val context: Context) {
         }
     }
 
-    /** Hides the offer until the next check (tomorrow, or a manual one). */
+    /** Hides the offer until the app is opened again (or a manual check). */
     fun later() { _state.value = State.Idle }
 
     /** Never offers this version again on its own. */
@@ -158,10 +165,10 @@ class Updater(private val context: Context) {
 
     companion object {
         const val REPO = "Garcy99/OpenOBD"
-        /** Between automatic checks that reached GitHub. */
-        const val AUTO_EVERY = 6 * 3600_000L
-        /** Between automatic attempts when the last one could not reach it. */
-        const val RETRY = 10 * 60_000L
+        /** Automatic checks closer together than this count as one opening. */
+        const val MIN_BETWEEN = 30_000L
+        /** How long GitHub's answer is reused by automatic checks. */
+        const val KEEP = 10 * 60_000L
         val texts = listOf(
             "Could not check for updates. Check your internet connection.", "The download failed. Try again later.",
             "This version is signed with a different key than the app installed on this phone, so Android cannot install it over it. Back up your data (Settings → Backup), uninstall OpenOBD and install the new version from GitHub.",

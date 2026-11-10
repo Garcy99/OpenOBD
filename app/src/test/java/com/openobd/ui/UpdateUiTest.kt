@@ -73,26 +73,34 @@ class UpdateUiTest {
     }
 
     @Test
-    fun automaticCheckPopsUpAndRetriesWithoutSignal() {
+    fun popsUpEachTimeTheAppIsOpened() {
         val c = (rule.activity.application as OpenObdApp).container
         runBlocking { c.settings.update { it.copy(language = "en", onboarded = true, tourSeen = true) } }
         waitFor { I18n.language == "en" }
-        val prefs = rule.activity.getSharedPreferences("updates", android.content.Context.MODE_PRIVATE)
-        prefs.edit().clear().commit()
-        // No signal: nothing shows, and the next automatic check is not put off for hours.
-        c.updater.latest = { null }
-        runBlocking { c.updater.check() }
+        rule.activity.getSharedPreferences("updates", android.content.Context.MODE_PRIVATE).edit().clear().commit()
+        fun open() { c.updater.lastAuto = 0; runBlocking { c.updater.check() } }
+        // No signal: nothing shows; the next opening asks again.
+        var asked = 0
+        c.updater.latest = { asked++; null }
+        open()
         assertTrue(c.updater.state.value is Updater.State.Idle)
-        assertEquals(0L, prefs.getLong("last", 0))
-        // Signal again (the retry pause over): the new version pops up by itself.
-        prefs.edit().putLong("tried", 0).commit()
-        c.updater.latest = { newer }
-        runBlocking { c.updater.check() }
+        c.updater.latest = { asked++; newer }
+        open()
+        assertEquals(2, asked)
         waitFor { rule.onAllNodesWithTag("updateDialog").fetchSemanticsNodes().isNotEmpty() }
         rule.onNodeWithTag("updateLater").performClick()
         waitFor { rule.onAllNodesWithTag("updateDialog").fetchSemanticsNodes().isEmpty() }
-        // "Later": not again on the next opening of the app within hours.
+        // "Later", then the app is opened again: the offer comes back (GitHub's answer reused, not asked again).
+        open()
+        assertEquals(2, asked)
+        waitFor { rule.onAllNodesWithTag("updateDialog").fetchSemanticsNodes().isNotEmpty() }
+        // The screen turning or a dialog closing right after is not a new opening.
+        rule.onNodeWithTag("updateLater").performClick()
         runBlocking { c.updater.check() }
+        assertTrue(c.updater.state.value is Updater.State.Idle)
+        // A skipped version stays quiet.
+        c.updater.skip(newer)
+        open()
         assertTrue(c.updater.state.value is Updater.State.Idle)
     }
 }

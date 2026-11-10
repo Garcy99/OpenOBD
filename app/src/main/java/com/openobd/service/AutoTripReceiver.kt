@@ -30,7 +30,9 @@ class AutoTripReceiver : BroadcastReceiver() {
         CoroutineScope(Dispatchers.Default).launch {
             try {
                 val s = app.container.settings.readOnce()
-                if (s.autoTrips && s.autoTripDevice.equals(address, ignoreCase = true)) {
+                // While this phone lends its adapter to the car screen, the screen records the trip: the phone
+                // must not reach for the adapter too (two links to it make both drop).
+                if (s.autoTrips && s.autoTripDevice.equals(address, ignoreCase = true) && !app.container.bridge.running) {
                     if (action == ObdService.ACTION_AUTO_START) start(context, action)
                     // The drive is over: disconnecting saves the trip, and the service stops with the connection.
                     else if (app.container.session.state.value !is com.openobd.session.ConnectionState.Disconnected) app.container.session.disconnect()

@@ -77,6 +77,9 @@ class ObdClient(val elm: Elm327) {
         return result
     }
 
+    /** What [discover] found on an earlier connection to the same car, reused to come back quickly. */
+    fun restore(known: List<EcuInfo>) { ecus = known }
+
     suspend fun discover(): Set<Int> {
         val perEcu = supportedPids(1)
         // Sort so the ECU supporting the most PIDs (normally the engine) comes first.
