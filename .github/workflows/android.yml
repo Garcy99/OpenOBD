@@ -40,7 +40,7 @@ jobs:
         if: failure()
         with:
           name: screenshots
-          retention-days: 5
+          retention-days: 2
           path: app/build/screenshots
 
   # Drives the real driver (Wi-Fi transport, ELM327, OBD and module clients) against the independent
@@ -70,7 +70,7 @@ jobs:
         if: failure()
         with:
           name: elm-emulator-log
-          retention-days: 5
+          retention-days: 2
           path: |
             app/build/elm-emulator.log
             app/build/reports/tests/testDebugUnitTest

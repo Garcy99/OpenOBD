@@ -59,21 +59,21 @@ jobs:
           emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
           script: |
             adb shell rm -rf /sdcard/Android/data/com.openobd/files/video-frames || true
-            ./gradlew connectedDebugAndroidTest -Pandroid.injected.androidTest.leaveApksInstalledAfterRun=true || (adb pull /sdcard/Android/data/com.openobd/files/video-frames video-frames; exit 1)
+            ./gradlew connectedDebugAndroidTest -Pandroid.injected.androidTest.leaveApksInstalledAfterRun=true -Pandroid.testInstrumentationRunnerArguments.realVideo=${{ github.event_name == 'workflow_dispatch' && matrix.api-level == 34 }} || (adb pull /sdcard/Android/data/com.openobd/files/video-frames video-frames; exit 1)
             adb pull /sdcard/Android/data/com.openobd/files/video-frames video-frames || true
-      # A few frames of the 3D trip video, to look at (small JPEGs, kept briefly).
+      # A few frames of the 3D trip video, to look at (small JPEGs, kept one day): only when run by hand.
       - uses: actions/upload-artifact@v4
-        if: always()
+        if: github.event_name == 'workflow_dispatch'
         with:
           name: video-frames-api${{ matrix.api-level }}
-          retention-days: 3
+          retention-days: 1
           if-no-files-found: ignore
           path: video-frames
       - uses: actions/upload-artifact@v4
         if: failure()
         with:
           name: device-test-report-api${{ matrix.api-level }}
-          retention-days: 5
+          retention-days: 2
           path: |
             app/build/reports/androidTests/connected
             app/build/outputs/androidTest-results/connected

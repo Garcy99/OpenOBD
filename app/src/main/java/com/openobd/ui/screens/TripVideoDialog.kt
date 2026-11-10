@@ -40,7 +40,11 @@ import com.openobd.ui.appSettings
 import com.openobd.ui.components.ErrorText
 import com.openobd.ui.shareFile
 import com.openobd.ui.tr
+import com.openobd.core.trip.DroneScene
 import com.openobd.core.trip.DroneScript
+import com.openobd.core.trip.Imagery
+import com.openobd.core.trip.Overpass
+import com.openobd.core.trip.Terrarium
 import com.openobd.core.trip.Ground
 import com.openobd.core.trip.LocalFrame
 import com.openobd.core.trip.Terrain
@@ -64,6 +68,9 @@ import kotlin.math.cos
 
 /** Makes the video of a trip: the 3D scene (ground, photos, the drone's flight), the frames and the MP4. */
 object TripVideoMaker {
+    /** Photo tiles for the sharp squares near the car, at most (a few MB). */
+    private const val MAX_NEAR_TILES = 900
+
     /** How the last video was drawn: "3d", "3d-memory", "2d" or "2d-memory" (for tests and the debug log). */
     @Volatile var lastPath: String = ""
 
@@ -77,6 +84,8 @@ object TripVideoMaker {
         val detail: ((DroneScript.Window) -> Bitmap?)?,
         val shaded: Boolean,
         val credit: String,
+        /** Buildings, trees and water along the route (null: none could be had). */
+        val things: DroneScene? = null,
     )
 
     /**
@@ -95,19 +104,30 @@ object TripVideoMaker {
         val frame = LocalFrame(area)
         val script = withContext(Dispatchers.Default) { DroneScript(video, frame, Ground(frame, terrain), if (vertical) 9.0 / 16 else 16.0 / 9) }
         val (global, credit) = picture(app, area, terrain, ground, 2048, status)
-        val side = script.windowSide
         val pxSide = 2048.0
         val at = { w: DroneScript.Window -> { x: Double, y: Double -> frame.lat(w.y1 - y / pxSide * (w.y1 - w.y0)) to frame.lon(w.x0 + x / pxSide * (w.x1 - w.x0)) } }
+        // The sharp squares near the car: about a metre a pixel, or two on long routes, while the photo tiles stay
+        // within a sensible download; none on very long routes.
+        val nearMpp = if (ground != PosterGround.SATELLITE) null else listOf(1.0, 2.0).firstOrNull { mpp ->
+            val src = Imagery.sourceFor(frame.lat0, frame.lon0)
+            script.nearWindows.flatMap { w ->
+                val b = w.box(frame)
+                val z = Imagery.zoomFor(b[0], b[1], b[2], b[3], mpp, maxZoom = src.maxZoom)
+                Terrarium.tiles(b[0], b[1], b[2], b[3], z).map { Triple(z, it.first, it.second) }
+            }.toSet().size <= MAX_NEAR_TILES
+        }
+        val mpp = { w: DroneScript.Window -> if (w.level == DroneScript.NEAR) nearMpp else w.side / 1600 }
         val detail: ((DroneScript.Window) -> Bitmap?)? = when {
             ground == PosterGround.SATELLITE && global != null -> {
                 // Fetched now (they stay in the cache folder), put together while drawing.
-                for ((i, w) in script.windows.withIndex()) {
+                val all = script.windows + (if (nearMpp != null) script.nearWindows else emptyList())
+                for ((i, w) in all.withIndex()) {
                     coroutineContext.ensureActive()
-                    status(tr("Downloading aerial photos… %1\$s of %2\$s", i + 1, script.windows.size))
-                    runCatching { app.imagery(frame.box(w.x0, w.y0, w.x1, w.y1), side / 1600) { _, _ -> } }
+                    status(tr("Downloading aerial photos… %1\$s of %2\$s", i + 1, all.size))
+                    runCatching { app.imagery(w.box(frame), mpp(w)!!) { _, _ -> } }
                 }
                 { w ->
-                    runBlocking { app.imagery(frame.box(w.x0, w.y0, w.x1, w.y1), side / 1600) { _, _ -> } }
+                    mpp(w)?.let { m -> runBlocking { app.imagery(w.box(frame), m) { _, _ -> } } }
                         ?.let { im -> RoutePoster.photo(im, pxSide, pxSide, 1.0, at(w)) }?.let { (pw, ph, px) -> Bitmap.createBitmap(px, pw, ph, Bitmap.Config.ARGB_8888) }
                 }
             }
@@ -116,8 +136,16 @@ object TripVideoMaker {
             }
             else -> null
         }
-        val credits = listOfNotNull(credit.takeIf { it.isNotBlank() }, terrain?.attribution?.let { tr(it) }).distinct().joinToString(" · ")
-        return Scene(area, script, global, detail, ground == PosterGround.RELIEF, credits)
+        // Buildings, woods and water in the same squares as the sharp photos.
+        coroutineContext.ensureActive()
+        status(tr("Downloading buildings and trees…"))
+        val features = runCatching {
+            app.scene(script.nearWindows.map { it.box(frame) }) { i, n -> status(tr("Downloading buildings and trees… %1\$s of %2\$s", i, n)) }
+        }.getOrNull()?.takeIf { !it.isEmpty }
+        val things = features?.let { f -> withContext(Dispatchers.Default) { runCatching { DroneScene(f, script.ground, script) }.getOrNull() } }
+        val credits = listOfNotNull(credit.takeIf { it.isNotBlank() }, terrain?.attribution?.let { tr(it) }, things?.let { tr(Overpass.ATTRIBUTION) })
+            .distinct().joinToString(" · ")
+        return Scene(area, script, global, detail, ground == PosterGround.RELIEF, credits, things)
     }
 
     /** The relief or aerial photo of an area as a bitmap (null for none or when it cannot be had), and its credit. */
@@ -185,7 +213,7 @@ object TripVideoMaker {
         var ok = false
         try {
             egl = EglCore(if (direct) writer.inputSurface else null, writer.width, writer.height)
-            r = DroneRenderer(scene.script, writer.width, writer.height, scene.global, scene.detail, scene.shaded, hud(writer.width, writer.height))
+            r = DroneRenderer(scene.script, writer.width, writer.height, scene.global, scene.detail, scene.shaded, hud(writer.width, writer.height), scene.things)
             val px = if (direct) null else IntArray(writer.width * writer.height)
             for (f in 0 until video.frames) {
                 coroutineContext.ensureActive()

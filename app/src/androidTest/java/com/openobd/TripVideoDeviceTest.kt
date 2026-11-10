@@ -103,7 +103,21 @@ class TripVideoDeviceTest {
             }, w, h, Bitmap.Config.ARGB_8888)
         }
         val ground = patches(1024, 1024, 2)
-        val scene = TripVideoMaker.Scene(area, script, ground, { w -> patches(512, 512, w.index) }, false, "Test credit")
+        // A town along the road, a wood and a lake.
+        fun sq(cx: Double, cy: Double, side: Double) = listOf(cx to cy, cx + side to cy, cx + side to cy + side, cx to cy + side)
+            .map { (x, y) -> com.openobd.core.trip.LatLon(frame.lat(y), frame.lon(x)) }
+        val bx = script.routeX[40]; val by = script.routeY[40]
+        val town = (0 until 12).flatMap { i -> (0 until 12).map { j ->
+            com.openobd.core.trip.MapBuilding(sq(bx - 300 + i * 50.0 + 25, by - 300 + j * 50.0 + 25, 18.0 + (i * j) % 9), 6.0 + (i + j) % 5 * 3)
+        } }
+        val features = com.openobd.core.trip.SceneFeatures.NONE.copy(
+            buildings = town,
+            vegetation = listOf(com.openobd.core.trip.SceneFeatures.Vegetation(sq(script.routeX[80] + 60, script.routeY[80] - 300, 600.0), com.openobd.core.trip.SceneFeatures.VegetationKind.FOREST)),
+            water = listOf(sq(script.routeX[110] - 500, script.routeY[110] + 80, 350.0)),
+        )
+        val things = com.openobd.core.trip.DroneScene(features, script.ground, script)
+        assertTrue("buildings ${things.buildingCount}, trees ${things.treeCount}", things.buildingCount > 50 && things.treeCount > 1000)
+        val scene = TripVideoMaker.Scene(area, script, ground, { w -> patches(512, 512, w.key) }, false, "Test credit", things)
         val file = File(context.cacheDir, "test-drone.mp4").apply { delete() }
         TripVideoMaker.encode(file, scene, { w, h -> TripVideoRenderer(video, ground, area, w, h, "Drone", "Demo", Units(), { it }, "") },
             { w, h -> TripVideoHud(video, w, h, "Drone", "Demo", Units(), "") }, true, video) { }
@@ -129,5 +143,42 @@ class TripVideoDeviceTest {
         }
         mmr.release()
         ground.recycle()
+    }
+
+    /**
+     * A real drive through Segovia with real data (aerial photos, elevation, OpenStreetMap), only when asked for
+     * (instrumentation argument realVideo=true): it downloads, so it is not part of every run. Frames are kept in
+     * files/video-frames to look at.
+     */
+    @Test
+    fun realDriveThroughSegovia() = runBlocking {
+        val args = InstrumentationRegistry.getArguments()
+        org.junit.Assume.assumeTrue(args.getString("realVideo") == "true")
+        val context = InstrumentationRegistry.getInstrumentation().targetContext
+        val app = (context.applicationContext as OpenObdApp).container
+        // From the Aqueduct south-east along the city's avenues, then out on the road towards La Granja.
+        val path = listOf(40.9479 to -4.1178, 40.9455 to -4.1150, 40.9431 to -4.1120, 40.9410 to -4.1085, 40.9392 to -4.1046,
+            40.9370 to -4.1000, 40.9338 to -4.0950, 40.9300 to -4.0890, 40.9262 to -4.0830)
+        val pts = ArrayList<TrackPoint>()
+        for (k in 0 until path.size - 1) for (s in 0 until 20) {
+            val t = s / 20.0
+            pts += TrackPoint(1_700_000_000_000L + pts.size * 2000L, path[k].first + (path[k + 1].first - path[k].first) * t,
+                path[k].second + (path[k + 1].second - path[k].second) * t, 45f, rpm = 1700f, alt = 1000f)
+        }
+        val video = TripVideo(pts, seconds = 8.0, fps = 30)
+        val scene = TripVideoMaker.prepare(app, pts, com.openobd.ui.screens.PosterGround.SATELLITE, video, true) { println("realVideo: $it") }
+        println("realVideo: buildings ${scene.things?.buildingCount} trees ${scene.things?.treeCount} credit ${scene.credit}")
+        val file = File(context.cacheDir, "test-segovia.mp4").apply { delete() }
+        TripVideoMaker.encode(file, scene, { w, h -> TripVideoRenderer(video, scene.global, scene.area, w, h, "Segovia", "Real data", Units(), { it }, scene.credit) },
+            { w, h -> TripVideoHud(video, w, h, "Segovia", "Real data", Units(), scene.credit) }, true, video) { }
+        val out = File(context.getExternalFilesDir(null), "video-frames").apply { mkdirs() }
+        val mmr = android.media.MediaMetadataRetriever().apply { setDataSource(file.path) }
+        for (t in listOf(1_500_000L, 3_000_000L, 4_500_000L, 6_000_000L)) {
+            val bmp = mmr.getFrameAtTime(t, android.media.MediaMetadataRetriever.OPTION_CLOSEST) ?: continue
+            File(out, "segovia-${TripVideoMaker.lastPath}-${t / 1000}ms.jpg").outputStream().use { bmp.compress(Bitmap.CompressFormat.JPEG, 88, it) }
+        }
+        mmr.release()
+        scene.global?.recycle()
+        assertTrue(TripVideoMaker.lastPath.startsWith("3d"))
     }
 }

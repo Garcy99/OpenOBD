@@ -88,7 +88,13 @@ class DroneScript(val video: TripVideo, val frame: LocalFrame, val ground: Groun
     )
 
     /** A square of detailed ground (photo or relief) along the route, centred [along] metres from the start. */
-    data class Window(val index: Int, val along: Double, val x0: Double, val y0: Double, val x1: Double, val y1: Double)
+    data class Window(val index: Int, val along: Double, val x0: Double, val y0: Double, val x1: Double, val y1: Double, val level: Int = MID) {
+        val side: Double get() = x1 - x0
+        /** Minimum latitude / longitude box of the window in [f]'s coordinates. */
+        fun box(f: LocalFrame) = f.box(x0, y0, x1, y1)
+        /** A key unique across levels. */
+        val key: Int get() = level * 100_000 + index
+    }
 
     val routeX = DoubleArray(video.points.size) { frame.x(video.points[it].lon) }
     val routeY = DoubleArray(video.points.size) { frame.y(video.points[it].lat) }
@@ -103,11 +109,21 @@ class DroneScript(val video: TripVideo, val frame: LocalFrame, val ground: Groun
     /** Spacing of the detail windows along the route and their side (m): at most about 30 of them. */
     val windowStep = max(2000.0, totalMetres / 30)
     val windowSide = windowStep * 3
-    val windows: List<Window> = (0..ceil(totalMetres / windowStep).toInt()).map { k ->
-        val m = min(k * windowStep, totalMetres)
+    val windows: List<Window> = windowsAlong(windowStep, windowSide, MID)
+
+    /**
+     * Sharper squares close to the car (2 km, a new one every kilometre): where the drone looks closest. At most
+     * about 60 of them, further apart on long routes.
+     */
+    val nearStep = max(1000.0, totalMetres / 60)
+    val nearSide = 2000.0
+    val nearWindows: List<Window> = windowsAlong(nearStep, nearSide, NEAR)
+
+    private fun windowsAlong(step: Double, side: Double, level: Int): List<Window> = (0..ceil(totalMetres / step).toInt()).map { k ->
+        val m = min(k * step, totalMetres)
         val (x, y) = pointAt(m)
-        val h = windowSide / 2
-        Window(k, m, x - h, y - h, x + h, y + h)
+        val h = side / 2
+        Window(k, m, x - h, y - h, x + h, y + h, level)
     }
 
     private val cameras: List<Camera>
@@ -181,12 +197,56 @@ class DroneScript(val video: TripVideo, val frame: LocalFrame, val ground: Groun
 
     fun camera(frame: Int): Camera = cameras[frame.coerceIn(0, cameras.size - 1)]
 
-    /** The detail windows to draw at a frame, most important first (the one the car is in, then the next). */
-    fun windowsAt(frame: Int): List<Window> {
+    /**
+     * The detail windows to draw at a frame, most important first: the sharp ones around the car (when [near]), then
+     * the wider ones (each time the one the car is in, the next and the previous).
+     */
+    fun windowsAt(frame: Int, near: Boolean = true): List<Window> {
         val c = camera(frame)
         if (c.shot.close < 0.05 || windows.isEmpty()) return emptyList()
-        val k = (c.doneMetres / windowStep).let { kotlin.math.round(it).toInt() }.coerceIn(0, windows.size - 1)
-        return listOfNotNull(windows[k], windows.getOrNull(k + 1), windows.getOrNull(k - 1))
+        fun around(list: List<Window>, step: Double): List<Window> {
+            if (list.isEmpty()) return emptyList()
+            val k = (c.doneMetres / step).let { kotlin.math.round(it).toInt() }.coerceIn(0, list.size - 1)
+            return listOfNotNull(list[k], list.getOrNull(k + 1), list.getOrNull(k - 1))
+        }
+        return (if (near && c.shot.close > 0.5) around(nearWindows, nearStep) else emptyList()) + around(windows, windowStep)
+    }
+
+    /** Distance (m) from every cell of a 100 m grid over the area to the route (chamfer distance transform). */
+    private val routeDistance: FloatArray by lazy {
+        val nx = cellsX; val ny = cellsY
+        val d = FloatArray(nx * ny) { Float.MAX_VALUE }
+        for (i in 0 until routeX.size - 1) {
+            val steps = max(1, ceil(hypot(routeX[i + 1] - routeX[i], routeY[i + 1] - routeY[i]) / (CELL / 2)).toInt())
+            for (k in 0..steps) {
+                val x = routeX[i] + (routeX[i + 1] - routeX[i]) * k / steps; val y = routeY[i] + (routeY[i + 1] - routeY[i]) * k / steps
+                val cx = ((x - frame.minX) / CELL).toInt(); val cy = ((y - frame.minY) / CELL).toInt()
+                if (cx in 0 until nx && cy in 0 until ny) d[cy * nx + cx] = 0f
+            }
+        }
+        val a = CELL.toFloat(); val b = (CELL * 1.4142).toFloat()
+        for (y in 0 until ny) for (x in 0 until nx) {
+            var v = d[y * nx + x]
+            if (x > 0) v = min(v, d[y * nx + x - 1] + a)
+            if (y > 0) { v = min(v, d[(y - 1) * nx + x] + a); if (x > 0) v = min(v, d[(y - 1) * nx + x - 1] + b); if (x < nx - 1) v = min(v, d[(y - 1) * nx + x + 1] + b) }
+            d[y * nx + x] = v
+        }
+        for (y in ny - 1 downTo 0) for (x in nx - 1 downTo 0) {
+            var v = d[y * nx + x]
+            if (x < nx - 1) v = min(v, d[y * nx + x + 1] + a)
+            if (y < ny - 1) { v = min(v, d[(y + 1) * nx + x] + a); if (x < nx - 1) v = min(v, d[(y + 1) * nx + x + 1] + b); if (x > 0) v = min(v, d[(y + 1) * nx + x - 1] + b) }
+            d[y * nx + x] = v
+        }
+        d
+    }
+    private val cellsX get() = max(1, ceil((frame.maxX - frame.minX) / CELL).toInt())
+    private val cellsY get() = max(1, ceil((frame.maxY - frame.minY) / CELL).toInt())
+
+    /** About how far (m) a point is from the route (within 100 m; far outside the area: very far). */
+    fun distanceToRoute(x: Double, y: Double): Double {
+        val cx = ((x - frame.minX) / CELL).toInt(); val cy = ((y - frame.minY) / CELL).toInt()
+        if (cx !in 0 until cellsX || cy !in 0 until cellsY) return Double.MAX_VALUE
+        return routeDistance[cy * cellsX + cx].toDouble()
     }
 
     /** Point [m] metres along the route. */
@@ -235,5 +295,8 @@ class DroneScript(val video: TripVideo, val frame: LocalFrame, val ground: Groun
         fun headingOf(dx: Double, dy: Double) = (Math.toDegrees(atan2(dx, dy)) + 360) % 360
 
         const val RAD = PI / 180
+        private const val CELL = 100.0
+        const val NEAR = 0
+        const val MID = 1
     }
 }

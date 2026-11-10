@@ -3,6 +3,7 @@ package com.openobd.data
 import android.content.Context
 import com.openobd.core.trip.MapFeatures
 import com.openobd.core.trip.Overpass
+import com.openobd.core.trip.SceneFeatures
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import java.io.File
@@ -12,8 +13,8 @@ import java.net.URLEncoder
 
 /**
  * Downloads water, main roads and (for small areas) buildings around a route from OpenStreetMap through the
- * Overpass API, keeping the answer in the cache folder. Only the rectangle of the area is sent: no route, car or
- * personal data.
+ * Overpass API, keeping the answer in the cache folder. Only rectangles of the area are sent: no car or personal
+ * data.
  */
 class MapDataDownloader(context: Context, private val userAgent: String) {
     private val dir = File(context.cacheDir, "osm").apply { mkdirs() }
@@ -25,6 +26,30 @@ class MapDataDownloader(context: Context, private val userAgent: String) {
     /** Lakes, reservoirs and riverbanks only (for the poster's relief). */
     suspend fun water(area: DoubleArray): List<List<com.openobd.core.trip.LatLon>>? =
         get(Overpass.waterQuery(area[0], area[1], area[2], area[3]))?.water
+
+    /**
+     * Buildings, woods, trees and water in squares along a route (minLat, minLon, maxLat, maxLon each), a few squares
+     * per request; null when none could be had. The squares are the ones the aerial photos are fetched for.
+     */
+    suspend fun scene(boxes: List<DoubleArray>, progress: (Int, Int) -> Unit = { _, _ -> }): SceneFeatures? = withContext(Dispatchers.IO) {
+        val chunks = boxes.chunked(6)
+        var out: SceneFeatures? = null
+        for ((i, chunk) in chunks.withIndex()) {
+            progress(i, chunks.size)
+            val q = SceneFeatures.query(chunk)
+            val text = cached(q) ?: Overpass.endpoints.firstNotNullOfOrNull { e -> runCatching { post(e, q) }.getOrNull()?.takeIf { it.trimStart().startsWith("{") } }
+                ?: continue
+            val parsed = runCatching { SceneFeatures.parse(text) }.getOrNull() ?: continue
+            store(q, text)
+            out = out?.plus(parsed) ?: parsed
+        }
+        progress(chunks.size, chunks.size)
+        out
+    }
+
+    private fun cacheFile(query: String) = File(dir, Integer.toHexString(query.hashCode()) + "-" + query.length + ".json")
+    private fun cached(query: String): String? = cacheFile(query).takeIf { it.exists() && it.length() > 20 }?.let { runCatching { it.readText() }.getOrNull() }
+    private fun store(query: String, text: String) { runCatching { cacheFile(query).writeText(text) } }
 
     private suspend fun get(query: String): MapFeatures? = withContext(Dispatchers.IO) {
         val file = File(dir, Integer.toHexString(query.hashCode()) + ".json")

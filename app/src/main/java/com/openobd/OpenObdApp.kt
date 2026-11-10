@@ -42,6 +42,10 @@ class AppContainer(private val app: Application) {
     var water: suspend (DoubleArray) -> List<List<com.openobd.core.trip.LatLon>>? = { area ->
         com.openobd.data.MapDataDownloader(app, "OpenOBD/${com.openobd.BuildConfig.VERSION_NAME} (Android; open source)").water(area)
     }
+    /** Buildings, woods, trees and water from OpenStreetMap in squares along a route (for the drone video); replaceable in tests. */
+    var scene: suspend (List<DoubleArray>, (Int, Int) -> Unit) -> com.openobd.core.trip.SceneFeatures? = { boxes, progress ->
+        com.openobd.data.MapDataDownloader(app, "OpenOBD/${com.openobd.BuildConfig.VERSION_NAME} (Android; open source)").scene(boxes, progress)
+    }
     /** Water, roads and buildings from OpenStreetMap for an area (minLat, minLon, maxLat, maxLon); replaceable in tests. */
     var mapFeatures: suspend (DoubleArray, Boolean) -> com.openobd.core.trip.MapFeatures? = { area, buildings ->
         com.openobd.data.MapDataDownloader(app, "OpenOBD/${com.openobd.BuildConfig.VERSION_NAME} (Android; open source)").around(area, buildings)
