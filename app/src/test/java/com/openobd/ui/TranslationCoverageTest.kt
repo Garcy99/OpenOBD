@@ -97,7 +97,7 @@ class TranslationCoverageTest {
         keys += listOf("Applied", "Undone", "Not changed", "Restored", "Needs restore", "Interrupted", "Started", "Failed", "Identifier explorer", "Typed in")
         keys += com.openobd.data.GoogleSync.texts + com.openobd.ui.screens.Tours.texts + com.openobd.ui.screens.bridgeTexts +
             com.openobd.service.BridgeService.texts + com.openobd.data.PhoneBridge.texts + com.openobd.core.transport.ObdBridge.texts +
-            listOf(com.openobd.session.PHONE_NOT_FOUND, com.openobd.session.PHONE_BRIDGE_BUSY, "Looking for your phone") +
+            listOf(com.openobd.session.PHONE_NOT_FOUND, com.openobd.session.PHONE_BRIDGE_BUSY, com.openobd.session.CAR_SILENT, "Looking for your phone") +
             com.openobd.data.Updater.texts + com.openobd.ui.updateTexts
         keys += com.openobd.core.specs.CrossCheck.texts
         keys += com.openobd.core.voice.VoiceWatch.texts

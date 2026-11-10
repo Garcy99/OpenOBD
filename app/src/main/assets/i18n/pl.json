@@ -2397,6 +2397,7 @@
  "The VIN model year is %1$s, but the saved year is %2$s.": "Rok modelowy z VIN to %1$s, a zapisany rok to %2$s.",
  "The VIN read from the car (%1$s) is not the one saved for this car (%2$s). Is the right car selected in the garage?": "VIN odczytany z auta (%1$s) nie jest tym zapisanym dla tego auta (%2$s). Czy w garażu wybrano właściwe auto?",
  "The VIN suggests model year %1$s and the saved year is %2$s. Not every European maker codes the year in the VIN: check the registration certificate.": "VIN wskazuje na rok modelowy %1$s, a zapisany rok to %2$s. Nie każdy europejski producent koduje rok w VIN: sprawdź dowód rejestracyjny.",
+ "The adapter answers but the car does not (engine off?).": "Adapter odpowiada, ale samochód nie (silnik wyłączony?).",
  "The adapter could not talk to the car. Is the ignition on?": "Adapter nie mógł porozumieć się z autem. Czy zapłon jest włączony?",
  "The adapter does not report the battery voltage.": "Adapter nie podaje napięcia akumulatora.",
  "The adapter does not understand this command.": "Adapter nie rozumie tego polecenia.",

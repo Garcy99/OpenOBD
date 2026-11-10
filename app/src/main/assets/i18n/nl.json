@@ -2397,6 +2397,7 @@
  "The VIN model year is %1$s, but the saved year is %2$s.": "Het modeljaar uit het VIN is %1$s, maar het opgeslagen jaar is %2$s.",
  "The VIN read from the car (%1$s) is not the one saved for this car (%2$s). Is the right car selected in the garage?": "Het uit de auto gelezen VIN (%1$s) is niet het VIN dat voor deze auto is opgeslagen (%2$s). Is de juiste auto geselecteerd in de garage?",
  "The VIN suggests model year %1$s and the saved year is %2$s. Not every European maker codes the year in the VIN: check the registration certificate.": "Het VIN wijst op modeljaar %1$s en het opgeslagen jaar is %2$s. Niet elke Europese fabrikant codeert het jaar in het VIN: controleer het kentekenbewijs.",
+ "The adapter answers but the car does not (engine off?).": "De adapter antwoordt, maar de auto niet (motor uit?).",
  "The adapter could not talk to the car. Is the ignition on?": "De adapter kon niet met de auto communiceren. Staat het contact aan?",
  "The adapter does not report the battery voltage.": "De adapter meldt geen accuspanning.",
  "The adapter does not understand this command.": "De adapter begrijpt deze opdracht niet.",

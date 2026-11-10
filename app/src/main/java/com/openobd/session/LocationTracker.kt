@@ -20,10 +20,14 @@ class LocationTracker(private val context: Context) {
 
     fun hasPermission(): Boolean = ContextCompat.checkSelfPermission(context, Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED
 
+    /** True while the GPS is recording. */
+    val isRecording: Boolean get() = listener != null
+
+    /** Starts recording; [keepPoints] keeps the route recorded so far (the same trip going on after a lost link). */
     @SuppressLint("MissingPermission")
-    fun start(): Boolean {
+    fun start(keepPoints: Boolean = false): Boolean {
         stop()
-        synchronized(points) { points.clear() }
+        if (!keepPoints) synchronized(points) { points.clear() }
         if (!hasPermission()) return false
         val lm = context.getSystemService(LocationManager::class.java) ?: return false
         if (!lm.isProviderEnabled(LocationManager.GPS_PROVIDER)) return false

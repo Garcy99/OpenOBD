@@ -1,0 +1,4 @@
+• Fixed: trips were not saved when the engine was switched off while the adapter stayed powered (the app waited for the car forever). They are now saved at once
+• The GPS route is no longer wiped when the link drops and comes back mid-trip
+• A trip's end time is when the link was lost, not 5 minutes later
+• The app stays active in the background until the trip is saved

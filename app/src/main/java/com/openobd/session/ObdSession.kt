@@ -9,6 +9,8 @@ import com.openobd.core.dtc.DtcDatabase
 import com.openobd.core.dtc.DtcDescription
 import com.openobd.core.elm.Elm327
 import com.openobd.core.elm.ElmConfig
+import com.openobd.core.elm.ElmError
+import com.openobd.core.elm.ElmException
 import com.openobd.core.elm.ElmInfo
 import com.openobd.core.obd.DerivedSensors
 import com.openobd.core.obd.Dtc
@@ -111,6 +113,12 @@ class ObdSession(
     /** True while the app is getting a lost link back by itself (the trip goes on meanwhile). */
     @Volatile var reconnecting = false
         private set
+    /** Set when, on getting a lost link back, the adapter answered but the car did not (engine off). */
+    @Volatile private var carSilent = false
+    /** When the link was lost with a trip kept waiting: the trip ends there if the link does not come back. */
+    @Volatile private var lostAt: Long? = null
+    /** A trip waiting for a lost link to come back (kept alive meanwhile, saved when it does not). */
+    val tripPending: Boolean get() = tripEnd?.isActive == true
     private val _state = MutableStateFlow<ConnectionState>(ConnectionState.Disconnected)
     val state: StateFlow<ConnectionState> = _state
 
@@ -256,7 +264,7 @@ class ObdSession(
      * to the car screen.
      */
     suspend fun createTransport(s: AppSettings): ObdTransport = when (s.connectionType) {
-        ConnectionType.DEMO -> DemoTransport(latencyMs = if (s.demoProtocol.isCan) 35 else 90, protocol = s.demoProtocol).let {
+        ConnectionType.DEMO -> DemoTransport(latencyMs = if (s.demoProtocol.isCan) 35 else 90, protocol = s.demoProtocol).also { it.carAnswers = !demoCarOff }.let {
             if (s.demoFaults) FaultyTransport(it, FaultPlan.NASTY.copy(jitterMs = 3), kotlin.random.Random(System.nanoTime())) else it
         }
         ConnectionType.WIFI -> WifiTransport(s.wifiHost, s.wifiPort)
@@ -281,15 +289,30 @@ class ObdSession(
         t.onDisconnected = { err -> scope.launch { linkLost(err?.message ?: "Connection lost") } }
         val e = Elm327(t) { dir, text -> logConsole(dir, text) }
         elm = e
-        val info = e.initialize(
-            ElmConfig(protocol = s.protocol, adaptiveTiming = s.adaptiveTiming, timeoutMs = s.elmTimeoutMs.takeIf { it > 0 }),
-        ) { step -> _state.value = ConnectionState.Connecting(step) }
+        val info = try {
+            e.initialize(
+                ElmConfig(protocol = s.protocol, adaptiveTiming = s.adaptiveTiming, timeoutMs = s.elmTimeoutMs.takeIf { it > 0 }),
+            ) { step -> _state.value = ConnectionState.Connecting(step) }
+        } catch (x: ElmException) {
+            // The adapter answers but finds no car on the bus while a trip waits: the engine was switched off.
+            if (tripEnd?.isActive == true && x.error in CAR_SILENT_ERRORS) { carSilent = true; throw IllegalStateException(CAR_SILENT) }
+            throw x
+        }
         val c = ObdClient(e).apply {
             batchingEnabled = s.batching
             fastResponses = s.fastMode
             stn = info.isStn
         }
         client = c
+        // Coming back while a trip waits: the adapter answering is not enough (most stay powered with the engine off).
+        // If the car itself is silent, the drive is over: the trip is saved now instead of waiting on and on.
+        if (tripEnd?.isActive == true) {
+            val alive = (1..3).any { n ->
+                if (n > 1) delay(700)
+                runCatching { c.readPids(listOf(0x0C)).isNotEmpty() }.getOrDefault(false)
+            }
+            if (!alive) { carSilent = true; throw IllegalStateException(CAR_SILENT) }
+        }
         // Back after a lost link to the same car: what it supports is already known, so the gauges return at once.
         val again = known?.takeIf { it.type == s.connectionType && tripEnd?.isActive == true }
         val supported: Set<Int>
@@ -328,6 +351,7 @@ class ObdSession(
         val resumed = tripEnd?.isActive == true && tripActive
         tripEnd?.cancel(); tripEnd = null
         reconnecting = false
+        lostAt = null
         if (resumed) {
             // The same trip goes on: a lost link no longer cuts a drive in pieces.
             debug.event("Link back: the trip goes on")
@@ -339,7 +363,8 @@ class ObdSession(
             tripFuelPrice.value = null
             if (s.connectionType != ConnectionType.DEMO) scope.launch { tripFuelPrice.value = runCatching { fuelPriceAt(null, null) }.getOrNull() }
         }
-        if (s.tripGps && s.connectionType != ConnectionType.DEMO) location.start()
+        // The same trip going on keeps the route recorded so far (the GPS kept recording through the gap).
+        if (s.tripGps && s.connectionType != ConnectionType.DEMO) { if (!resumed || !location.isRecording) location.start(keepPoints = resumed) }
         // Values stored with each point of the GPS track (shown when the map is tapped)
         if (s.tripGps || s.connectionType == ConnectionType.DEMO) live.subscribe("track", com.openobd.core.garage.TrackPoint.KEYS)
         startVoltageMonitor()
@@ -442,19 +467,24 @@ class ObdSession(
         tankPrefs.edit().putFloat("${car.id}:l", l.toFloat()).putLong("${car.id}:at", System.currentTimeMillis()).apply()
     }
 
+    /** For tests: the demo car is switched off (its adapter keeps answering, as real ones do). */
+    @Volatile internal var demoCarOff = false
+    internal fun switchOffDemoCarForTest() { demoCarOff = true; (transport as? DemoTransport)?.carAnswers = false }
+
     /** For tests: the link drops as if the adapter or the Wi-Fi went away. */
     internal fun dropLinkForTest() { transport?.let { t -> t.onDisconnected?.invoke(null) } }
 
     private suspend fun linkLost(message: String) {
         if (userDisconnect || state.value !is ConnectionState.Connected) return
-        voice.onLinkLost()
-        diesel.onLinkLost(System.currentTimeMillis())
+        runCatching { voice.onLinkLost() }
+        runCatching { diesel.onLinkLost(System.currentTimeMillis()) }
         // The trip is kept for a while: if the link comes back (a Bluetooth or Wi-Fi hiccup), it simply goes on.
         val keepTrip = tripActive && settingsRepo.settings.value.autoConnect
         cleanup(keepTrip = keepTrip)
         _state.value = ConnectionState.Failed(message)
         if (!settingsRepo.settings.value.autoConnect) return
         if (keepTrip) {
+            if (lostAt == null) lostAt = System.currentTimeMillis()
             tripEnd?.cancel()
             tripEnd = scope.launch {
                 delay(TRIP_GRACE_MS)
@@ -464,21 +494,30 @@ class ObdSession(
         }
         // Tries again and again while the trip waits (or once, without a trip).
         reconnecting = true
+        carSilent = false
         val until = System.currentTimeMillis() + if (keepTrip) TRIP_GRACE_MS else 0
         do {
             delay(if (settingsRepo.settings.value.connectionType.let { it == ConnectionType.PHONE || it == ConnectionType.WIFI }) 1500 else 3000)
             if (userDisconnect || newestSession !== this || state.value is ConnectionState.Connected) break
             if (state.value !is ConnectionState.Connecting) connect()
             withTimeoutOrNull(45_000) { state.first { it is ConnectionState.Connected || it is ConnectionState.Failed } }
+            // The adapter is there but the car is not: the engine was switched off. The drive ends here.
+            if (carSilent) {
+                debug.event("Car silent after a lost link: the trip is saved")
+                tripEnd?.cancel(); tripEnd = null
+                finishTrip()
+                break
+            }
         } while (!userDisconnect && newestSession === this && state.value !is ConnectionState.Connected && System.currentTimeMillis() < until)
         if (state.value !is ConnectionState.Connected) reconnecting = false
     }
 
     private suspend fun cleanup(keepTrip: Boolean = false) {
-        saveTank()
+        // Nothing secondary may keep the trip from being saved.
+        runCatching { saveTank() }.onFailure { debug.error("Tank estimate not saved", it) }
         compressionIgnition = null
-        health.finish()
-        if (!keepTrip) finishTrip()
+        runCatching { health.finish() }.onFailure { debug.error("Health snapshot not saved", it) }
+        if (!keepTrip) try { finishTrip() } catch (e: CancellationException) { throw e } catch (e: Exception) { debug.error("Trip not saved", e) }
         live.stop()
         voltageJob?.cancel()
         if (logs.isRecording) stopRecording()
@@ -607,6 +646,8 @@ class ObdSession(
     private suspend fun finishTrip() {
         if (!tripActive) return
         tripActive = false
+        val endAt = lostAt ?: System.currentTimeMillis()
+        lostAt = null
         location.stop()
         val st = trip.stats.value
         val track = location.takePoints()
@@ -619,7 +660,7 @@ class ObdSession(
         val tripId = garage.newId()
         garage.saveTrip(
             com.openobd.core.garage.TripRecord(
-                id = tripId, vehicleId = vehicle.id, start = tripStart, end = System.currentTimeMillis(),
+                id = tripId, vehicleId = vehicle.id, start = tripStart, end = maxOf(endAt, tripStart),
                 distanceKm = st.distanceKm, fuelL = fuel, maxSpeed = st.maxSpeed, avgSpeed = st.avgSpeed, movingS = st.movingS,
                 idleS = st.idleS, maxRpm = st.maxRpm, cost = fuel?.let { f -> if (price > 0) f * price else null }, trackPoints = track.size,
                 harshAccel = st.eco.harshAccel, harshBrake = st.eco.harshBrake, highRpmS = st.eco.highRpmS, longIdleS = st.eco.longIdleS,
@@ -750,6 +791,8 @@ class ObdSession(
 /** Messages about the phone bridge (English keys, translated by the app). */
 /** How long a trip waits for a lost link to come back before it is saved (and a new one starts). */
 const val TRIP_GRACE_MS = 5 * 60_000L
+const val CAR_SILENT = "The adapter answers but the car does not (engine off?)."
+private val CAR_SILENT_ERRORS = setOf(ElmError.UNABLE_TO_CONNECT, ElmError.NO_DATA, ElmError.CAN_ERROR, ElmError.BUS_INIT_ERROR, ElmError.BUS_ERROR)
 
 const val PHONE_NOT_FOUND = "No phone with the OpenOBD bridge found. On the phone, open More → Car screen and start the bridge; connect this screen to the phone's Wi-Fi hotspot (or the same Wi-Fi)."
 const val PHONE_BRIDGE_BUSY = "This phone is lending its adapter to the car screen. Stop the bridge (More → Car screen) to connect here."

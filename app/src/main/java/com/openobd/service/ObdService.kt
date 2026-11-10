@@ -78,7 +78,7 @@ class ObdService : LifecycleService() {
             while (true) {
                 val s = session.state.value
                 if (s !is ConnectionState.Connected) {
-                    if (autoJob?.isActive == true || s is ConnectionState.Connecting || session.reconnecting) { delay(1000); continue }
+                    if (autoJob?.isActive == true || s is ConnectionState.Connecting || session.reconnecting || session.tripPending) { delay(1000); continue }
                     awake.release()
                     stopSelf(); break
                 }

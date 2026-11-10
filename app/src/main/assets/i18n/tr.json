@@ -2397,6 +2397,7 @@
  "The VIN model year is %1$s, but the saved year is %2$s.": "VIN'deki model yılı %1$s, ancak kayıtlı yıl %2$s.",
  "The VIN read from the car (%1$s) is not the one saved for this car (%2$s). Is the right car selected in the garage?": "Araçtan okunan VIN (%1$s) bu araç için kaydedilen VIN (%2$s) değil. Garajda doğru araç seçili mi?",
  "The VIN suggests model year %1$s and the saved year is %2$s. Not every European maker codes the year in the VIN: check the registration certificate.": "VIN model yılı olarak %1$s gösteriyor, kayıtlı yıl ise %2$s. Her Avrupalı üretici yılı VIN'e kodlamaz: ruhsatı kontrol edin.",
+ "The adapter answers but the car does not (engine off?).": "Adaptör yanıt veriyor ama araç vermiyor (motor kapalı mı?).",
  "The adapter could not talk to the car. Is the ignition on?": "Adaptör araçla iletişim kuramadı. Kontak açık mı?",
  "The adapter does not report the battery voltage.": "Adaptör akü voltajını bildirmiyor.",
  "The adapter does not understand this command.": "Adaptör bu komutu anlamıyor.",

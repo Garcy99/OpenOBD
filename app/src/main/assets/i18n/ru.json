@@ -2397,6 +2397,7 @@
  "The VIN model year is %1$s, but the saved year is %2$s.": "Модельный год по VIN — %1$s, а сохранённый год — %2$s.",
  "The VIN read from the car (%1$s) is not the one saved for this car (%2$s). Is the right car selected in the garage?": "VIN, прочитанный из автомобиля (%1$s), не совпадает с сохранённым для этой машины (%2$s). В гараже выбрана правильная машина?",
  "The VIN suggests model year %1$s and the saved year is %2$s. Not every European maker codes the year in the VIN: check the registration certificate.": "VIN указывает на модельный год %1$s, а сохранённый год — %2$s. Не все европейские производители кодируют год в VIN: проверьте свидетельство о регистрации.",
+ "The adapter answers but the car does not (engine off?).": "Адаптер отвечает, а автомобиль нет (двигатель выключен?).",
  "The adapter could not talk to the car. Is the ignition on?": "Адаптер не смог связаться с автомобилем. Зажигание включено?",
  "The adapter does not report the battery voltage.": "Адаптер не сообщает напряжение аккумулятора.",
  "The adapter does not understand this command.": "Адаптер не понимает эту команду.",

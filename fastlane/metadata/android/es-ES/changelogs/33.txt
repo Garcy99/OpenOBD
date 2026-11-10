@@ -1,0 +1,4 @@
+• Corregido: los viajes no se guardaban al apagar el motor si el adaptador seguía encendido (la app esperaba al coche sin fin). Ahora se guardan al momento
+• La ruta GPS ya no se borra cuando la conexión se corta y vuelve a mitad de viaje
+• La hora de fin del viaje es la del corte, no 5 minutos después
+• La app sigue activa en segundo plano hasta guardar el viaje

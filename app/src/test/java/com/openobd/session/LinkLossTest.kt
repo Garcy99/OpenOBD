@@ -48,4 +48,36 @@ class LinkLossTest {
         // Settings live on between tests: leave reconnecting off for the others.
         runBlocking { c.settings.update { it.copy(autoConnect = false) } }
     }
+
+    /**
+     * The engine switched off: most adapters stay powered and keep answering, but the car does not. The trip must be
+     * saved at once (it used to wait for the car forever, so no trip was ever recorded).
+     */
+    @Test fun theEngineOffSavesTheTrip() {
+        val c = ApplicationProvider.getApplicationContext<OpenObdApp>().container
+        runBlocking { c.settings.update { it.copy(connectionType = ConnectionType.DEMO, autoConnect = true, tripGps = false, onboarded = true, language = "en") } }
+        waitFor { c.garage.loaded && c.settings.settings.value.connectionType == ConnectionType.DEMO }
+        val tripsBefore = c.garage.data.value.trips.size
+        c.session.connect()
+        try {
+            waitFor { c.session.state.value is ConnectionState.Connected }
+            // Long enough to be worth saving.
+            waitFor(60_000) { c.session.trip.stats.value.let { it.distanceKm >= 0.2 || it.movingS >= 60 } }
+
+            c.session.switchOffDemoCarForTest()
+            c.session.dropLinkForTest()
+            waitFor { c.session.state.value !is ConnectionState.Connected }
+            val off = System.currentTimeMillis()
+            waitFor(30_000) { c.garage.data.value.trips.size > tripsBefore }
+            assertTrue("saved after ${System.currentTimeMillis() - off} ms", System.currentTimeMillis() - off < 30_000)
+            // And it stops trying: nothing keeps the trip (or the app) waiting.
+            waitFor(10_000) { !c.session.reconnecting && !c.session.tripPending }
+            assertTrue(c.session.state.value !is ConnectionState.Connected)
+        } finally {
+            c.session.demoCarOff = false
+            c.session.disconnect()
+            waitFor { c.session.state.value is ConnectionState.Disconnected }
+            runBlocking { c.settings.update { it.copy(autoConnect = false) } }
+        }
+    }
 }
