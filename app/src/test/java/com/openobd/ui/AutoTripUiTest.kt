@@ -58,7 +58,7 @@ class AutoTripUiTest {
         shadowOf(adapter).setBondedDevices(setOf(radio, obd))
         runBlocking {
             c.settings.update { it.copy(connectionType = ConnectionType.BLUETOOTH, deviceAddress = obd.address, deviceName = "OBDII", language = "en",
-                onboarded = true, tourSeen = true, tripGps = false, fuelPrices = false) }
+                onboarded = true, tourSeen = true, tripGps = false, fuelPrices = false, autoConnect = false) }
         }
         waitFor { c.garage.loaded && I18n.language == "en" }
         // Home offers it; the screen sets it up.

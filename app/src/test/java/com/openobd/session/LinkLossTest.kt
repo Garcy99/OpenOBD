@@ -45,5 +45,7 @@ class LinkLossTest {
         assertTrue(c.session.trip.stats.value.distanceKm >= before.distanceKm)
         c.session.disconnect()
         waitFor { c.session.state.value is ConnectionState.Disconnected }
+        // Settings live on between tests: leave reconnecting off for the others.
+        runBlocking { c.settings.update { it.copy(autoConnect = false) } }
     }
 }
