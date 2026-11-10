@@ -830,6 +830,8 @@
  "Doors": "Двери",
  "Downloaded. Android will ask you to confirm the installation; your data stays as it is.": "Загружено. Android попросит подтвердить установку; ваши данные останутся как есть.",
  "Downloading aerial photos… %1$s of %2$s": "Загрузка аэрофотоснимков… %1$s из %2$s",
+ "Downloading buildings and trees…": "Загрузка зданий и деревьев…",
+ "Downloading buildings and trees… %1$s of %2$s": "Загрузка зданий и деревьев… %1$s из %2$s",
  "Downloading map data…": "Загрузка данных карты…",
  "Downloading terrain…": "Загрузка рельефа…",
  "Downloading terrain… %1$s of %2$s": "Загрузка рельефа… %1$s из %2$s",

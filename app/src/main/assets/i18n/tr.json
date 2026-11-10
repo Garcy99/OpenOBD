@@ -830,6 +830,8 @@
  "Doors": "Kapılar",
  "Downloaded. Android will ask you to confirm the installation; your data stays as it is.": "İndirildi. Android kurulumu onaylamanızı isteyecek; verileriniz olduğu gibi kalır.",
  "Downloading aerial photos… %1$s of %2$s": "Hava fotoğrafları indiriliyor… %1$s / %2$s",
+ "Downloading buildings and trees…": "Binalar ve ağaçlar indiriliyor…",
+ "Downloading buildings and trees… %1$s of %2$s": "Binalar ve ağaçlar indiriliyor… %1$s / %2$s",
  "Downloading map data…": "Harita verileri indiriliyor…",
  "Downloading terrain…": "Arazi indiriliyor…",
  "Downloading terrain… %1$s of %2$s": "Arazi indiriliyor… %1$s / %2$s",

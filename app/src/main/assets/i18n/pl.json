@@ -830,6 +830,8 @@
  "Doors": "Drzwi",
  "Downloaded. Android will ask you to confirm the installation; your data stays as it is.": "Pobrano. Android poprosi o potwierdzenie instalacji; Twoje dane pozostaną bez zmian.",
  "Downloading aerial photos… %1$s of %2$s": "Pobieranie zdjęć lotniczych… %1$s z %2$s",
+ "Downloading buildings and trees…": "Pobieranie budynków i drzew…",
+ "Downloading buildings and trees… %1$s of %2$s": "Pobieranie budynków i drzew… %1$s z %2$s",
  "Downloading map data…": "Pobieranie danych mapy…",
  "Downloading terrain…": "Pobieranie terenu…",
  "Downloading terrain… %1$s of %2$s": "Pobieranie terenu… %1$s z %2$s",

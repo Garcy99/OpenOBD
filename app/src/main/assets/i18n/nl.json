@@ -830,6 +830,8 @@
  "Doors": "Portieren",
  "Downloaded. Android will ask you to confirm the installation; your data stays as it is.": "Gedownload. Android vraagt je de installatie te bevestigen; je gegevens blijven zoals ze zijn.",
  "Downloading aerial photos… %1$s of %2$s": "Luchtfoto's downloaden… %1$s van %2$s",
+ "Downloading buildings and trees…": "Gebouwen en bomen downloaden…",
+ "Downloading buildings and trees… %1$s of %2$s": "Gebouwen en bomen downloaden… %1$s van %2$s",
  "Downloading map data…": "Kaartgegevens downloaden…",
  "Downloading terrain…": "Terrein downloaden…",
  "Downloading terrain… %1$s of %2$s": "Terrein downloaden… %1$s van %2$s",

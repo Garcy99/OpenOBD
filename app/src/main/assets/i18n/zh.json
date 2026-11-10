@@ -830,6 +830,8 @@
  "Doors": "车门",
  "Downloaded. Android will ask you to confirm the installation; your data stays as it is.": "已下载。Android 会请你确认安装；你的数据保持不变。",
  "Downloading aerial photos… %1$s of %2$s": "正在下载航拍照片… %1$s / %2$s",
+ "Downloading buildings and trees…": "正在下载建筑和树木…",
+ "Downloading buildings and trees… %1$s of %2$s": "正在下载建筑和树木… 第 %1$s 个，共 %2$s 个",
  "Downloading map data…": "正在下载地图数据…",
  "Downloading terrain…": "正在下载地形…",
  "Downloading terrain… %1$s of %2$s": "正在下载地形… %1$s / %2$s",
