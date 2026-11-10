@@ -4,6 +4,7 @@ import com.openobd.ui.tr
 import com.openobd.ui.shareFile
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.ui.platform.testTag
+import androidx.compose.foundation.horizontalScroll
 import com.openobd.ui.components.ErrorText
 
 import androidx.compose.foundation.clickable
@@ -81,6 +82,14 @@ fun SettingsScreen(onBack: () -> Unit) {
                 Chips(ThemeMode.entries, s.theme, { if (it == ThemeMode.AMOLED) tr("Black") else tr(it.name.lowercase().replaceFirstChar(Char::uppercase)) }) { m -> update { it.copy(theme = m) } }
                 SwitchRow(tr("Keep screen on while connected"), s.keepScreenOn) { v -> update { it.copy(keepScreenOn = v) } }
                 NumberField(tr("Shift light RPM (0 = off)"), s.shiftLightRpm.toString()) { v -> v.toIntOrNull()?.let { n -> update { it.copy(shiftLightRpm = n) } } }
+                // Some car screens draw their climate controls over the apps without telling Android.
+                Label(tr("Room for the car's own controls"))
+                Text(tr("If the car's climate or shortcut bar covers part of OpenOBD, leave that space free."),
+                    style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Text(tr("Bottom"), style = MaterialTheme.typography.labelMedium)
+                Chips(MARGINS, s.marginBottomDp, { if (it == 0) tr("None") else "$it dp" }, Modifier.testTag("marginBottom")) { m -> update { it.copy(marginBottomDp = m) } }
+                Text(tr("Left"), style = MaterialTheme.typography.labelMedium)
+                Chips(MARGINS, s.marginLeftDp, { if (it == 0) tr("None") else "$it dp" }) { m -> update { it.copy(marginLeftDp = m) } }
             }
             SectionCard(title = tr("Connection")) {
                 SwitchRow(tr("Auto-connect on start and reconnect when lost"), s.autoConnect) { v -> update { it.copy(autoConnect = v) } }
@@ -207,9 +216,9 @@ private fun Label(text: String) {
 }
 
 @Composable
-private fun <T> Chips(options: List<T>, selected: T, label: (T) -> String, onSelect: (T) -> Unit) {
-    Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-        options.forEach { o -> FilterChip(o == selected, { onSelect(o) }, label = { Text(label(o)) }) }
+private fun <T> Chips(options: List<T>, selected: T, label: (T) -> String, modifier: Modifier = Modifier, onSelect: (T) -> Unit) {
+    Row(modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+        options.forEachIndexed { i, o -> FilterChip(o == selected, { onSelect(o) }, label = { Text(label(o)) }, modifier = Modifier.testTag("chip$i")) }
     }
 }
 
@@ -450,3 +459,6 @@ private fun SpeedTest() {
         )
     }
 }
+
+/** Room for the car's own controls, in dp. */
+private val MARGINS = listOf(0, 40, 60, 80, 100, 130)

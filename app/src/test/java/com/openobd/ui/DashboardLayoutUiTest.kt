@@ -5,6 +5,8 @@ import androidx.compose.ui.test.isSelectable
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.onAllNodesWithTag
 import androidx.compose.ui.test.onAllNodesWithText
+import androidx.compose.ui.test.onNodeWithTag
+import androidx.compose.ui.test.onRoot
 import androidx.compose.ui.test.performClick
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.openobd.MainActivity
@@ -13,6 +15,7 @@ import com.openobd.data.ConnectionType
 import com.openobd.session.ConnectionState
 import kotlinx.coroutines.runBlocking
 import org.junit.After
+import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
@@ -45,5 +48,18 @@ class DashboardLayoutUiTest {
         // The demo car reports PID 5C: the oil temperature gauge reads it.
         waitFor { rule.onAllNodesWithText("Oil temp").fetchSemanticsNodes().isNotEmpty() }
         waitFor { c.session.live.latestValue("015C") != null }
+    }
+
+    /** A car screen whose climate bar covers the bottom: the space set aside in Settings stays free of the app. */
+    @Test fun roomForTheCarsOwnControls() {
+        runBlocking { c.settings.update { it.copy(language = "en", onboarded = true, tourSeen = true, marginBottomDp = 100, marginLeftDp = 0) } }
+        waitFor { c.settings.settings.value.marginBottomDp == 100 && I18n.language == "en" }
+        val root = rule.onRoot().fetchSemanticsNode().boundsInRoot
+        val content = rule.onNodeWithTag("appContent").fetchSemanticsNode().boundsInRoot
+        val density = rule.activity.resources.displayMetrics.density
+        assertEquals(root.bottom - 100 * density, content.bottom, 1f)
+        // The tab rail and the screens all fit above it.
+        rule.onAllNodesWithText("Home").fetchSemanticsNodes().forEach { assertTrue(it.boundsInRoot.bottom <= content.bottom + 0.5f) }
+        runBlocking { c.settings.update { it.copy(marginBottomDp = 0) } }
     }
 }

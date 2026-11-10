@@ -75,6 +75,9 @@ data class AppSettings(
     val dashboardTheme: String = "neon",
     val alerts: List<AlertRule> = emptyList(),
     val shiftLightRpm: Int = 0,
+    /** Room (dp) left free at the bottom / left of the screen for the car's own controls (climate bars). */
+    val marginBottomDp: Int = 0,
+    val marginLeftDp: Int = 0,
     val fuelPricePerL: Float = 0f,
     /** Manually chosen brand id; null = auto-detect from the VIN. */
     val brandId: String? = null,
@@ -154,6 +157,8 @@ class SettingsRepository(private val context: Context, scope: CoroutineScope) {
         val dashboardTheme = stringPreferencesKey("dashboard_theme")
         val alerts = stringPreferencesKey("alerts")
         val shiftLight = intPreferencesKey("shift_light")
+        val marginBottom = intPreferencesKey("margin_bottom")
+        val marginLeft = intPreferencesKey("margin_left")
         val fuelPrice = floatPreferencesKey("fuel_price")
         val brand = stringPreferencesKey("brand")
         val customPids = stringPreferencesKey("custom_pids")
@@ -207,6 +212,8 @@ class SettingsRepository(private val context: Context, scope: CoroutineScope) {
             dashboardTheme = p[K.dashboardTheme] ?: d.dashboardTheme,
             alerts = p[K.alerts]?.let { runCatching { json.decodeFromString<List<AlertRule>>(it) }.getOrNull() } ?: d.alerts,
             shiftLightRpm = p[K.shiftLight] ?: d.shiftLightRpm,
+            marginBottomDp = p[K.marginBottom] ?: d.marginBottomDp,
+            marginLeftDp = p[K.marginLeft] ?: d.marginLeftDp,
             fuelPricePerL = p[K.fuelPrice] ?: d.fuelPricePerL,
             brandId = p[K.brand],
             customPids = p[K.customPids]?.let { runCatching { json.decodeFromString<List<CustomPid>>(it) }.getOrNull() } ?: d.customPids,
@@ -263,6 +270,8 @@ class SettingsRepository(private val context: Context, scope: CoroutineScope) {
             p[K.dashboardTheme] = s.dashboardTheme
             p[K.alerts] = json.encodeToString(s.alerts)
             p[K.shiftLight] = s.shiftLightRpm
+            p[K.marginBottom] = s.marginBottomDp
+            p[K.marginLeft] = s.marginLeftDp
             p[K.fuelPrice] = s.fuelPricePerL
             s.brandId?.let { p[K.brand] = it } ?: p.remove(K.brand)
             p[K.customPids] = json.encodeToString(s.customPids)

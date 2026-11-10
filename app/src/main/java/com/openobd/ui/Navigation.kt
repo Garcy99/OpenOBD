@@ -10,6 +10,13 @@ import androidx.compose.animation.slideInHorizontally
 import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.WindowInsetsSides
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.only
+import androidx.compose.foundation.layout.safeDrawing
+import androidx.compose.foundation.layout.windowInsetsPadding
+import androidx.compose.foundation.background
+import androidx.compose.ui.platform.testTag
 import androidx.compose.material.icons.filled.Garage
 import androidx.compose.material.icons.filled.GridView
 import androidx.compose.material.icons.filled.Home
@@ -173,6 +180,10 @@ fun OpenObdNavHost() {
 
     // Tablets and landscape phones get a side rail instead of the bottom bar.
     val wide = androidx.compose.ui.platform.LocalConfiguration.current.screenWidthDp >= 600
+    val settings = appSettings()
+    // Room the car's own controls take (climate bars drawn over the apps), set by hand in Settings.
+    Box(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)
+        .padding(start = settings.marginLeftDp.dp, bottom = settings.marginBottomDp.dp).testTag("appContent")) {
     Scaffold(
         snackbarHost = { SnackbarHost(snackbar) },
         bottomBar = {
@@ -203,7 +214,11 @@ fun OpenObdNavHost() {
     ) { pad ->
         val back: () -> Unit = { nav.popBackStack() }
         val toHome: () -> Unit = { nav.goTab(Routes.HOME) }
-        androidx.compose.foundation.layout.Row(Modifier.fillMaxSize()) {
+        // Bars and cut-outs the system reports are kept clear: at the bottom by the tab bar (narrow screens),
+        // otherwise here (car screens, tablets, the head-up display).
+        val bottomBarShown = current != Routes.HUD && !wide
+        val safe = WindowInsets.safeDrawing.only(if (bottomBarShown) WindowInsetsSides.Horizontal else WindowInsetsSides.Horizontal + WindowInsetsSides.Bottom)
+        androidx.compose.foundation.layout.Row(Modifier.fillMaxSize().windowInsetsPadding(safe)) {
             if (wide && current != Routes.HUD) androidx.compose.material3.NavigationRail(containerColor = MaterialTheme.colorScheme.surfaceContainerLow) {
                 tabs.forEach { t ->
                     androidx.compose.material3.NavigationRailItem(
@@ -299,5 +314,6 @@ fun OpenObdNavHost() {
                 composable(Routes.MODULE) { e -> ModuleScreen(e.arguments?.getString("id").orEmpty(), onBack = back, onConnect = toHome) }
             }
         }
+    }
     }
 }
