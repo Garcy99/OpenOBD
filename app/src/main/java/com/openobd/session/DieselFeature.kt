@@ -41,11 +41,14 @@ class DieselFeature internal constructor(private val s: ObdSession) {
     /** Regenerations starting, ending and being cut short (the app notifies them). */
     val regenEvents: SharedFlow<RegenWatch.Event> = _regenEvents
 
-    /** At each connection: watches the filter when the car tells about it (standard PIDs 8B or 7C). */
-    internal fun onConnected(supported: Set<Int>) {
-        if (0x8B !in supported && 0x7C !in supported) { watch = null; _regen.value = null; s.live.unsubscribe("regenwatch"); return }
+    /**
+     * At each connection: watches the filter when the car tells about it (standard PIDs 8B or 7C, or [makerKeys]: the
+     * engine computer's own values on GM / Opel diesels).
+     */
+    internal fun onConnected(supported: Set<Int>, makerKeys: List<String> = emptyList()) {
+        if (0x8B !in supported && 0x7C !in supported && makerKeys.isEmpty()) { watch = null; _regen.value = null; s.live.unsubscribe("regenwatch"); return }
         if (watch == null) watch = RegenWatch()
-        s.live.subscribe("regenwatch", RegenWatch.keys.filter { k -> com.openobd.core.obd.Pids.sensors[k]?.pid?.let { it in supported } == true })
+        s.live.subscribe("regenwatch", RegenWatch.keys.filter { k -> com.openobd.core.obd.Pids.sensors[k]?.pid?.let { it in supported } == true } + makerKeys)
     }
 
     internal fun onLinkLost(now: Long) {

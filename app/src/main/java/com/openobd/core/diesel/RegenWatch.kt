@@ -6,8 +6,9 @@ package com.openobd.core.diesel
  * asked to keep the engine running.
  *
  * Only reliable sources are used: the regeneration status the car reports (standard PID 8B), else the filter's
- * inlet temperature (PID 7C), which rises well above normal during a regeneration. Cars that report neither are not
- * guessed at.
+ * inlet temperature (PID 7C, or the engine computer's own on GM / Opel diesels), which rises well above normal during
+ * a regeneration. Cars that report neither are not guessed at. The soot load comes from PID 8B or, on GM / Opel, from
+ * the engine computer, with the distance since the last regeneration and how many it has run.
  */
 class RegenWatch {
     enum class Source { STATUS, TEMPERATURE }
@@ -19,7 +20,11 @@ class RegenWatch {
     }
 
     /** What the car tells about its filter now: null while it tells nothing. */
-    data class State(val source: Source?, val active: Boolean, val since: Long?, val loadPct: Double?, val tempC: Double?)
+    data class State(
+        val source: Source?, val active: Boolean, val since: Long?, val loadPct: Double?, val tempC: Double?,
+        /** Km since the last regeneration and regenerations run, as the engine computer counts them (GM / Opel). */
+        val kmSinceRegen: Double? = null, val regenCount: Int? = null,
+    )
 
     var state = State(null, false, null, null, null)
         private set
@@ -29,8 +34,10 @@ class RegenWatch {
 
     fun onCycle(v: Map<String, Double>, now: Long): Event? {
         val status = v[STATUS]
-        val temp = v[INLET_TEMP]
-        val load = v[LOAD]
+        val temp = v[INLET_TEMP] ?: v[GM_INLET_TEMP]?.takeIf { it in -40.0..1000.0 }
+        val load = v[LOAD] ?: (v[GM_SOOT] ?: v[GM_SOOT_B])?.takeIf { it in 0.0..150.0 }
+        val km = v[GM_KM]?.takeIf { it in 0.0..5000.0 }
+        val count = v[GM_REGENS]?.takeIf { it in 0.0..60000.0 }?.toInt()
         val rpm = v[RPM]
         val wasActive = state.active
         val source = when { status != null -> Source.STATUS; temp != null -> Source.TEMPERATURE; else -> null }
@@ -52,7 +59,7 @@ class RegenWatch {
         // The engine stopping while it regenerates cuts it short.
         if (wasActive && rpm != null && rpm < 300) {
             val secs = (now - (state.since ?: now)) / 1000
-            state = State(source, false, null, load, temp)
+            state = State(source, false, null, load, temp, km, count)
             return Event.Interrupted(secs)
         }
         val event = when {
@@ -60,7 +67,7 @@ class RegenWatch {
             !active && wasActive -> Event.Ended((now - (state.since ?: now)) / 1000)
             else -> null
         }
-        state = State(source, active, if (active) state.since ?: now else null, load, temp)
+        state = State(source, active, if (active) state.since ?: now else null, load ?: state.loadPct, temp, km ?: state.kmSinceRegen, count ?: state.regenCount)
         return event
     }
 
@@ -80,6 +87,13 @@ class RegenWatch {
         const val RPM = "010C"
         const val HOT_C = 500.0
         const val COOL_C = 400.0
+        /** The same, from GM / Opel diesel engine computers (built-in maker values). */
+        const val GM_SOOT = "X_gm_dpf_soot"
+        const val GM_SOOT_B = "X_gm_dpf_soot_b"
+        const val GM_INLET_TEMP = "X_gm_dpf_inlet_t"
+        const val GM_KM = "X_gm_dpf_km"
+        const val GM_REGENS = "X_gm_dpf_regens"
+        val makerKeys = listOf(GM_SOOT, GM_SOOT_B, GM_INLET_TEMP, GM_KM, GM_REGENS)
         /** What the app says and shows about regenerations (notifications, voice), for translation. */
         val texts = listOf(
             "Particulate filter", "Filter regenerating", "Keep the engine running and, if you can, drive on at a steady pace until it ends.",
@@ -87,6 +101,8 @@ class RegenWatch {
             "The engine stopped after %1\$s. Plan a steady 15-20 minute drive soon so the filter can finish cleaning itself.",
             "The particulate filter is regenerating. Keep the engine running until it ends.", "Filter regeneration finished.",
             "Filter regeneration interrupted.", "Monthly summary", "Your %1\$s", "Yes", "No",
+            "Distance since the last regeneration: %1\$s km", "Regenerations run by the engine: %1\$s", "Filter load: %1\$s %%",
+            "Filter inlet temperature: %1\$s °C",
         )
 
         /** Live values the watch needs (only the supported ones are asked for). */

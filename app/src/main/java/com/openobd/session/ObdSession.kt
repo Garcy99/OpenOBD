@@ -340,7 +340,10 @@ class ObdSession(
         _state.value = ConnectionState.Connected(snapshot)
         updateBrand()
         live.params = fuelParams(s, snapshot)
-        diesel.onConnected(supported)
+        // GM / Opel diesels keep the filter's soot load and temperatures in the engine computer's own identifiers.
+        val dpfKeys = _brand.value?.family?.builtinPids.orEmpty().filter { it in com.openobd.core.brand.GM_DPF_PIDS }.map { it.key }
+            .takeIf { live.params.diesel || diesel.isDiesel || compressionIgnition == true }.orEmpty()
+        diesel.onConnected(supported, dpfKeys)
         setUpTank(supported)
         live.timeoutsBeforeLost = if (s.connectionType == ConnectionType.PHONE || s.connectionType == ConnectionType.WIFI) 12 else 4
         live.start(c, supported)

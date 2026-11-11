@@ -1,0 +1,2 @@
+• Particulate filter on Opel / Vauxhall and GM diesels (Astra J, Insignia, Zafira C, Cruze...): the app reads the soot load, the filter temperature, the km since the last regeneration and how many there have been from the engine computer, with nothing to add
+• With them, the filter card on Home and the regeneration alerts also work on these cars

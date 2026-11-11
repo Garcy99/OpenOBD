@@ -16,8 +16,8 @@ android {
         // Android 6.0+: many car head units (MTK, Rockchip PX3/PX5, Allwinner T3) still run Android 6-8.
         minSdk = 23
         targetSdk = 35
-        versionCode = 33
-        versionName = "1.23.1"
+        versionCode = 34
+        versionName = "1.23.2"
         vectorDrawables { useSupportLibrary = true }
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         // Optional donation page (gradle.properties: openobd.donateUrl). Builds for Google Play pass -Pplay,

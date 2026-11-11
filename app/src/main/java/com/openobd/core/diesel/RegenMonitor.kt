@@ -27,7 +27,7 @@ data class RegenStatus(
 class RegenMonitor(private val targetSeconds: Double = 20 * 60.0, private val toleranceSeconds: Double = 60.0) {
     companion object {
         /** Live data keys the monitor needs (only the supported ones are polled). */
-        val keys = listOf("0105", "010D", "010C", "017C_I", "0178_1", "017A_D")
+        val keys = listOf("0105", "010D", "010C", "017C_I", "0178_1", "017A_D", RegenWatch.GM_INLET_TEMP)
     }
 
     private var lastTime: Long? = null
@@ -48,7 +48,7 @@ class RegenMonitor(private val targetSeconds: Double = 20 * 60.0, private val to
             outOfConditions += dt
             if (outOfConditions > toleranceSeconds) inConditions = 0.0
         }
-        val temp = v["017C_I"] ?: v["0178_1"]
+        val temp = v["017C_I"] ?: v["0178_1"] ?: v[RegenWatch.GM_INLET_TEMP]?.takeIf { it in -40.0..1000.0 }
         if (temp != null) {
             if (!active && temp > 450) { active = true; regens++ }
             else if (active && temp < 380) active = false

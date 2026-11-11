@@ -65,7 +65,13 @@ fun DieselScreen(onBack: () -> Unit, onConnect: () -> Unit, onGuides: () -> Unit
     val app = LocalApp.current
     val session = app.session
     val garage by app.garage.data.collectAsStateWithLifecycle()
-    val dpfPids = remember(garage.active?.customPids) { garage.active?.customPids.orEmpty().filter { com.openobd.core.brand.Obdb.isDpf(it) }.take(24) }
+    val brand by session.brand.collectAsStateWithLifecycle()
+    // The car's own DPF values: the ones added from community data, and the ones built in for its make (GM / Opel).
+    val dpfPids = remember(garage.active?.customPids, brand) {
+        (garage.active?.customPids.orEmpty().filter { com.openobd.core.brand.Obdb.isDpf(it) } +
+            brand?.family?.builtinPids.orEmpty().filter { it in com.openobd.core.brand.GM_DPF_PIDS })
+            .distinctBy { it.header.uppercase() + it.request.uppercase() + it.equation }.take(24)
+    }
     val dpfValues = remember { mutableStateMapOf<String, Double?>() }
     val vehicle = connectedVehicle()
     val status by session.diesel.status.collectAsStateWithLifecycle()
@@ -106,6 +112,13 @@ fun DieselScreen(onBack: () -> Unit, onConnect: () -> Unit, onGuides: () -> Unit
                     false -> Text(tr("No regeneration running right now."))
                 }
                 s?.dpfTempC?.let { Text(tr("Exhaust / filter temperature: %1\$s °C", "%.0f".format(it))) }
+                // What the engine computer itself counts (GM / Opel diesels).
+                if (w != null && w.source != com.openobd.core.diesel.RegenWatch.Source.STATUS) {
+                    w.loadPct?.let { Text(tr("Filter load: %1\$s %%", "%.0f".format(it)), fontWeight = FontWeight.SemiBold) }
+                    if (s?.dpfTempC == null) w.tempC?.let { Text(tr("Filter inlet temperature: %1\$s °C", "%.0f".format(it))) }
+                }
+                w?.kmSinceRegen?.let { Text(tr("Distance since the last regeneration: %1\$s km", "%.0f".format(it))) }
+                w?.regenCount?.let { Text(tr("Regenerations run by the engine: %1\$s", it)) }
                 s?.dpfDeltaKpa?.let { Text(tr("Filter pressure difference: %1\$s kPa (rises as the filter fills)", "%.2f".format(it))) }
                 if ((s?.regensSeen ?: 0) > 0) Text(tr("Regenerations seen this drive: %1\$s", s!!.regensSeen))
             }

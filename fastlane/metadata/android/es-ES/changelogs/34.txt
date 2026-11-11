@@ -1,0 +1,2 @@
+• Filtro de partículas en diésel Opel / Vauxhall y GM (Astra J, Insignia, Zafira C, Cruze...): la app lee del calculador del motor la carga de hollín, la temperatura del filtro, los km desde la última regeneración y cuántas lleva, sin tener que añadir nada
+• Con esos datos, la tarjeta del filtro en Inicio y los avisos de regeneración funcionan también en estos coches

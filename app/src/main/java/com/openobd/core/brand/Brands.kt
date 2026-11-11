@@ -141,6 +141,21 @@ val GM_SERVICE_PIDS = listOf(
     CustomPid("gm_air_filter", "Air filter life remaining (GM)", "Air filter", "2236A7", "A", 0.0, 100.0, "%", "7E0", source = "GM ECM, OBDb (CC BY-SA 4.0)"),
 )
 
+/**
+ * The particulate filter as GM diesel engine computers count it (Opel / Vauxhall Astra J, Insignia, Zafira C, Cruze ...):
+ * soot load, the filter's inlet temperature, the distance since the last regeneration and how many there have been
+ * (OBDb). Engines that keep them elsewhere simply do not answer.
+ */
+val GM_DPF_PIDS = listOf(
+    CustomPid("gm_dpf_soot", "Particulate filter soot load (GM)", "DPF soot", "2218E4", "(A*256+B)*763/50000", 0.0, 100.0, "%", "7E0", source = GM_SRC),
+    CustomPid("gm_dpf_soot_b", "Particulate filter soot load, second reading (GM)", "DPF soot", "22508D", "(A*256+B)/650", 0.0, 100.0, "%", "7E0", source = GM_SRC),
+    CustomPid("gm_dpf_inlet_t", "Particulate filter inlet temperature (GM)", "DPF temp", "2218DE", "(A*256+B)*0.019608-40", -40.0, 900.0, "°C", "7E0", source = GM_SRC),
+    CustomPid("gm_dpf_km", "Distance since the last filter regeneration (GM)", "Since regen", "223807", "(A*65536+B*256+C)/10", 0.0, 3000.0, "km", "7E0", source = GM_SRC),
+    CustomPid("gm_dpf_regens", "Filter regenerations started (GM)", "Regens", "2218E7", "A*256+B", 0.0, 10000.0, "", "7E0", source = GM_SRC),
+)
+
+private const val GM_SRC = "GM ECM, OBDb (CC BY-SA 4.0)"
+
 data class Brand(val id: String, val name: String, val family: BrandFamily, val wmis: List<String>)
 
 private fun m(name: String, short: String, tx: Int, rx: Int, cat: ModuleCategory, secondary: Boolean = false) =
@@ -329,7 +344,7 @@ object Families {
         "GMLAN physical addressing. Modules that do not speak UDS are read with the GMLAN service (\$A9) and cleared with \$04. " +
             "Global B vehicles (2020+) may block access through the gateway.",
         discoveryRanges = listOf(0x240..0x25F to "6XX", 0x700..0x7F7 to "7XX"),
-        builtinPids = GM_OIL_PIDS + GM_TYRE_PIDS + GM_SERVICE_PIDS,
+        builtinPids = GM_OIL_PIDS + GM_TYRE_PIDS + GM_SERVICE_PIDS + GM_DPF_PIDS,
     )
 
     /** Opel / Vauxhall on GM's Global A architecture (Astra H/J/K, Insignia A, Corsa D/E, Zafira B/C, Meriva B, Mokka). */
@@ -350,7 +365,7 @@ object Families {
             "reachable with an HS/MS-CAN switch adapter; some body modules use single-wire CAN (pin 1), which ELM327 adapters cannot reach.",
         secondaryBus = OPEL_MS,
         discoveryRanges = listOf(0x240..0x25F to "6XX", 0x700..0x7F7 to "7XX"),
-        builtinPids = GM_OIL_PIDS + GM_TYRE_PIDS + GM_SERVICE_PIDS,
+        builtinPids = GM_OIL_PIDS + GM_TYRE_PIDS + GM_SERVICE_PIDS + GM_DPF_PIDS,
     )
 
     val STELLANTIS = BrandFamily("stellantis", "Stellantis / FCA / PSA", obdBase,
