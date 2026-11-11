@@ -22,7 +22,8 @@ class DieselFeature internal constructor(private val s: ObdSession) {
 
     fun start() {
         if (monitor == null) monitor = RegenMonitor()
-        s.live.subscribe("regen", RegenMonitor.keys)
+        // Plus the engine computer's own filter temperature on GM / Opel diesels.
+        s.live.subscribe("regen", RegenMonitor.keys + makerKeys.filter { it == RegenWatch.GM_INLET_TEMP })
     }
 
     fun stop() {
@@ -34,6 +35,8 @@ class DieselFeature internal constructor(private val s: ObdSession) {
     // ------------------------------------------------------------------ every drive: regenerations as they happen
 
     @Volatile private var watch: RegenWatch? = null
+    /** The maker's filter values this car is asked for (GM / Opel diesels). */
+    @Volatile private var makerKeys: List<String> = emptyList()
     private val _regen = MutableStateFlow<RegenWatch.State?>(null)
     /** The filter's state on this drive (null when the car does not tell, or is not a diesel). */
     val regen: StateFlow<RegenWatch.State?> = _regen
@@ -46,6 +49,8 @@ class DieselFeature internal constructor(private val s: ObdSession) {
      * engine computer's own values on GM / Opel diesels).
      */
     internal fun onConnected(supported: Set<Int>, makerKeys: List<String> = emptyList()) {
+        this.makerKeys = makerKeys
+        if (monitor != null) start()
         if (0x8B !in supported && 0x7C !in supported && makerKeys.isEmpty()) { watch = null; _regen.value = null; s.live.unsubscribe("regenwatch"); return }
         if (watch == null) watch = RegenWatch()
         s.live.subscribe("regenwatch", RegenWatch.keys.filter { k -> com.openobd.core.obd.Pids.sensors[k]?.pid?.let { it in supported } == true } + makerKeys)

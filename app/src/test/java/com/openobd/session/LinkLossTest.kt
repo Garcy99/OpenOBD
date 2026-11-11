@@ -26,27 +26,30 @@ class LinkLossTest {
         waitFor { c.garage.loaded && c.settings.settings.value.connectionType == ConnectionType.DEMO }
         val tripsBefore = c.garage.data.value.trips.size
         c.session.connect()
-        waitFor { c.session.state.value is ConnectionState.Connected }
-        waitFor { c.session.trip.stats.value.distanceKm > 0.0 || c.session.trip.stats.value.movingS > 0 }
-        val before = c.session.trip.stats.value
+        try {
+            waitFor { c.session.state.value is ConnectionState.Connected }
+            waitFor { c.session.trip.stats.value.distanceKm > 0.0 || c.session.trip.stats.value.movingS > 0 }
+            val before = c.session.trip.stats.value
 
-        c.session.dropLinkForTest()
-        waitFor { c.session.state.value !is ConnectionState.Connected }
-        assertTrue(c.session.reconnecting)
-        // Back by itself within seconds, without reading the car's sensors and VIN all over again.
-        val dropped = System.currentTimeMillis()
-        waitFor(15_000) { c.session.state.value is ConnectionState.Connected }
-        assertTrue("back in ${System.currentTimeMillis() - dropped} ms", System.currentTimeMillis() - dropped < 10_000)
-        assertTrue(!c.session.reconnecting)
-        waitFor { c.session.live.readings.value.containsKey("010C") }
-        // The same trip: nothing saved in between, and its figures go on from where they were.
-        assertEquals(tripsBefore, c.garage.data.value.trips.size)
-        assertTrue(c.session.trip.stats.value.movingS >= before.movingS)
-        assertTrue(c.session.trip.stats.value.distanceKm >= before.distanceKm)
-        c.session.disconnect()
-        waitFor { c.session.state.value is ConnectionState.Disconnected }
-        // Settings live on between tests: leave reconnecting off for the others.
-        runBlocking { c.settings.update { it.copy(autoConnect = false) } }
+            c.session.dropLinkForTest()
+            waitFor { c.session.state.value !is ConnectionState.Connected }
+            assertTrue(c.session.reconnecting)
+            // Back by itself within seconds, without reading the car's sensors and VIN all over again.
+            val dropped = System.currentTimeMillis()
+            waitFor(15_000) { c.session.state.value is ConnectionState.Connected }
+            assertTrue("back in ${System.currentTimeMillis() - dropped} ms", System.currentTimeMillis() - dropped < 10_000)
+            assertTrue(!c.session.reconnecting)
+            waitFor { c.session.live.readings.value.containsKey("010C") }
+            // The same trip: nothing saved in between, and its figures go on from where they were.
+            assertEquals(tripsBefore, c.garage.data.value.trips.size)
+            assertTrue(c.session.trip.stats.value.movingS >= before.movingS)
+            assertTrue(c.session.trip.stats.value.distanceKm >= before.distanceKm)
+        } finally {
+            c.session.disconnect()
+            waitFor { c.session.state.value is ConnectionState.Disconnected }
+            // Settings live on between tests: leave reconnecting off for the others.
+            runBlocking { c.settings.update { it.copy(autoConnect = false) } }
+        }
     }
 
     /**

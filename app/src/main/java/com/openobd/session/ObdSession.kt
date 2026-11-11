@@ -483,21 +483,26 @@ class ObdSession(
         runCatching { diesel.onLinkLost(System.currentTimeMillis()) }
         // The trip is kept for a while: if the link comes back (a Bluetooth or Wi-Fi hiccup), it simply goes on.
         val keepTrip = tripActive && settingsRepo.settings.value.autoConnect
+        val autoConnect = settingsRepo.settings.value.autoConnect
         cleanup(keepTrip = keepTrip)
-        _state.value = ConnectionState.Failed(message)
-        if (!settingsRepo.settings.value.autoConnect) return
-        if (keepTrip) {
-            if (lostAt == null) lostAt = System.currentTimeMillis()
-            tripEnd?.cancel()
-            tripEnd = scope.launch {
-                delay(TRIP_GRACE_MS)
-                reconnecting = false
-                if (state.value !is ConnectionState.Connected) finishTrip()
+        // Marked as reconnecting (and the trip as waiting) before the state changes, so nothing watching the state
+        // (the background service) takes the link for gone for good in between.
+        if (autoConnect) {
+            reconnecting = true
+            carSilent = false
+            if (keepTrip) {
+                if (lostAt == null) lostAt = System.currentTimeMillis()
+                tripEnd?.cancel()
+                tripEnd = scope.launch {
+                    delay(TRIP_GRACE_MS)
+                    reconnecting = false
+                    if (state.value !is ConnectionState.Connected) finishTrip()
+                }
             }
         }
+        _state.value = ConnectionState.Failed(message)
+        if (!autoConnect) return
         // Tries again and again while the trip waits (or once, without a trip).
-        reconnecting = true
-        carSilent = false
         val until = System.currentTimeMillis() + if (keepTrip) TRIP_GRACE_MS else 0
         do {
             delay(if (settingsRepo.settings.value.connectionType.let { it == ConnectionType.PHONE || it == ConnectionType.WIFI }) 1500 else 3000)

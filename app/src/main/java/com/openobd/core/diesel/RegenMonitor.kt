@@ -27,7 +27,7 @@ data class RegenStatus(
 class RegenMonitor(private val targetSeconds: Double = 20 * 60.0, private val toleranceSeconds: Double = 60.0) {
     companion object {
         /** Live data keys the monitor needs (only the supported ones are polled). */
-        val keys = listOf("0105", "010D", "010C", "017C_I", "0178_1", "017A_D", RegenWatch.GM_INLET_TEMP)
+        val keys = listOf("0105", "010D", "010C", "017C_I", "0178_1", "017A_D")
     }
 
     private var lastTime: Long? = null
