@@ -1,0 +1,2 @@
+• Fixed: with "reconnect when lost" on, switching the engine off and pulling the adapter out left the trip waiting 5 minutes for the link, and if Android closed the app meanwhile it was lost. Now, with the engine off, the trip is saved at once
+• The app no longer stops in the background while a trip waits to be saved

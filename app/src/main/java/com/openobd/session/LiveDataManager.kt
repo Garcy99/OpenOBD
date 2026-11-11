@@ -77,6 +77,13 @@ class LiveDataManager(private val scope: CoroutineScope) {
      */
     @Volatile var timeoutsBeforeLost = 4
 
+    /**
+     * Since when the adapter answers but the car does not (NO DATA, CAN ERROR ...): the engine was switched off.
+     * Null while the car answers.
+     */
+    @Volatile var carSilentSince: Long? = null
+        private set
+
     /** The fuel tank estimate of this connection (set by the session with the car's tank and consumption). */
     @Volatile var tank: com.openobd.core.obd.FuelTankEstimator? = null
 
@@ -129,6 +136,7 @@ class LiveDataManager(private val scope: CoroutineScope) {
         stop()
         pauseCount.set(0) // a pause left over from a previous connection must not freeze this one
         latest.clear()
+        carSilentSince = null
         _readings.value = emptyMap()
         histories.clear()
         job = scope.launch { loop(client, supported) }
@@ -193,6 +201,8 @@ class LiveDataManager(private val scope: CoroutineScope) {
             val data = if (toRead.isEmpty()) emptyMap() else try {
                 client.readPids(toRead)
             } catch (e: ElmException) {
+                // The adapter answering with a bus error: it is there, the car is not.
+                if (e.error != ElmError.TIMEOUT && e.error != ElmError.LINK_LOST && carSilentSince == null) carSilentSince = System.currentTimeMillis()
                 if (e.error == ElmError.TIMEOUT && ++failures >= timeoutsBeforeLost) { onAdapterLost?.invoke(); return }
                 delay(200); continue
             } catch (e: Exception) {
@@ -205,8 +215,10 @@ class LiveDataManager(private val scope: CoroutineScope) {
                 if (customData[p.key] != null) { answered += p.key; unanswered.remove(p.key); firstMiss.remove(p.key) }
                 else if (p.key !in answered) { unanswered[p.key] = (unanswered[p.key] ?: 0) + 1; firstMiss.getOrPut(p.key) { System.currentTimeMillis() } }
             }
+            // Asked for standard values and none came back, without the adapter failing: the car has gone quiet.
+            if (toRead.isNotEmpty() && data.isEmpty() && customData.isEmpty() && carSilentSince == null) carSilentSince = System.currentTimeMillis()
             if (data.isEmpty() && customData.isEmpty() && ++failures >= timeoutsBeforeLost * 6) { onAdapterLost?.invoke(); return }
-            if (data.isNotEmpty() || customData.isNotEmpty()) failures = 0
+            if (data.isNotEmpty() || customData.isNotEmpty()) { failures = 0; carSilentSince = null }
 
             val now = System.currentTimeMillis()
             val fresh = HashSet<String>()

@@ -156,7 +156,9 @@ class OpenObdApp : Application() {
             container.session.state.collect { s ->
                 val connected = s is ConnectionState.Connected
                 if (connected && !wasConnected) startService()
-                if (!connected && wasConnected) stopService(Intent(this@OpenObdApp, ObdService::class.java))
+                // Not stopped here when the link goes: the service stops itself once nothing is left to do, and keeps the
+                // app alive meanwhile while it reconnects or a trip waits to be saved (else Android may close the app
+                // with the phone locked and the trip is lost).
                 wasConnected = connected
             }
         }

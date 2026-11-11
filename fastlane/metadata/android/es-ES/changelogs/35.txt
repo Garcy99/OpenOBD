@@ -1,0 +1,2 @@
+• Corregido: con "reconectar al perderse" activado, apagar el motor y quitar el adaptador dejaba el viaje esperando 5 minutos a que volviera la conexión, y si Android cerraba la app mientras tanto, se perdía. Ahora, si el motor estaba apagado, el viaje se guarda al momento
+• La app ya no se detiene en segundo plano mientras un viaje espera a guardarse

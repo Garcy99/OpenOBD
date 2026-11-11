@@ -264,7 +264,7 @@ class ObdSession(
      * to the car screen.
      */
     suspend fun createTransport(s: AppSettings): ObdTransport = when (s.connectionType) {
-        ConnectionType.DEMO -> DemoTransport(latencyMs = if (s.demoProtocol.isCan) 35 else 90, protocol = s.demoProtocol).also { it.carAnswers = !demoCarOff }.let {
+        ConnectionType.DEMO -> if (demoUnplugged) throw java.io.IOException("Adapter not found") else DemoTransport(latencyMs = if (s.demoProtocol.isCan) 35 else 90, protocol = s.demoProtocol).also { it.carAnswers = !demoCarOff }.let {
             if (s.demoFaults) FaultyTransport(it, FaultPlan.NASTY.copy(jitterMs = 3), kotlin.random.Random(System.nanoTime())) else it
         }
         ConnectionType.WIFI -> WifiTransport(s.wifiHost, s.wifiPort)
@@ -477,12 +477,21 @@ class ObdSession(
     /** For tests: the link drops as if the adapter or the Wi-Fi went away. */
     internal fun dropLinkForTest() { transport?.let { t -> t.onDisconnected?.invoke(null) } }
 
+    /** For tests: the demo adapter is pulled out (the link drops and it cannot be found again). */
+    @Volatile internal var demoUnplugged = false
+    internal fun unplugDemoForTest() { demoUnplugged = true; dropLinkForTest() }
+
     private suspend fun linkLost(message: String) {
         if (userDisconnect || state.value !is ConnectionState.Connected) return
         runCatching { voice.onLinkLost() }
         runCatching { diesel.onLinkLost(System.currentTimeMillis()) }
         // The trip is kept for a while: if the link comes back (a Bluetooth or Wi-Fi hiccup), it simply goes on.
-        val keepTrip = tripActive && settingsRepo.settings.value.autoConnect
+        // Not when the engine had been switched off just before (the car stopped answering, or stood with the engine
+        // stopped): then the adapter being pulled out or switched off ends the drive, and the trip is saved at once.
+        val engineOff = live.carSilentSince != null ||
+            (live.latestValue("010C")?.let { it < 300 } == true && (live.latestValue("010D") ?: 0.0) < 2)
+        if (engineOff) debug.event("Link lost with the engine off: the trip ends here")
+        val keepTrip = tripActive && settingsRepo.settings.value.autoConnect && !engineOff
         val autoConnect = settingsRepo.settings.value.autoConnect
         cleanup(keepTrip = keepTrip)
         // Marked as reconnecting (and the trip as waiting) before the state changes, so nothing watching the state
