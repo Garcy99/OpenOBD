@@ -163,6 +163,8 @@ class ObdSession(
     val battery = BatteryTestFeature(this)
     val health = HealthFeature(this)
     val diesel = DieselFeature(this)
+    /** Finds where the engine computer keeps a value seen in another app (the particulate filter's, above all). */
+    val finder = ValueFinderFeature(this)
     val reports = SessionReports(this)
 
     private val _brand = MutableStateFlow<Brand?>(null)
@@ -352,9 +354,7 @@ class ObdSession(
         updateBrand()
         live.params = fuelParams(s, snapshot)
         // GM / Opel diesels keep the filter's soot load and temperatures in the engine computer's own identifiers.
-        val dpfKeys = _brand.value?.family?.builtinPids.orEmpty().filter { it in com.openobd.core.brand.GM_DPF_PIDS }.map { it.key }
-            .takeIf { live.params.diesel || diesel.isDiesel || compressionIgnition == true }.orEmpty()
-        diesel.onConnected(supported, dpfKeys)
+        diesel.onConnected(supported, dpfKeys())
         // The alerts know by now whether this is a diesel (it changes what counts as revving a cold engine hard).
         voice.configure(settingsRepo.settings.value)
         // The battery as the car stood: a warning when it is low (it might not start next time, above all in the cold).
@@ -374,6 +374,7 @@ class ObdSession(
             // The same trip goes on: a lost link no longer cuts a drive in pieces.
             debug.event("Link back: the trip goes on")
         } else {
+            finder.reset()
             // A trip the app could not save last time (closed mid-drive) is kept before this one starts.
             runCatching { recoverTrip() }
             trip.reset()
@@ -495,6 +496,24 @@ class ObdSession(
         val car = garage.data.value.active ?: return
         val l = live.tank?.litres ?: return
         tankPrefs.edit().putFloat("${car.id}:l", l.toFloat()).putLong("${car.id}:at", System.currentTimeMillis()).apply()
+    }
+
+    /**
+     * The filter values to watch on this car: GM's built-in ones (GM / Opel diesels), and the ones found on the car
+     * itself with the value finder (any make).
+     */
+    private fun dpfKeys(): List<String> {
+        val ids = com.openobd.core.brand.GM_DPF_PIDS.map { it.id }.toSet()
+        val own = garage.data.value.active?.customPids.orEmpty().filter { it.id in ids }.map { it.key }
+        val builtin = _brand.value?.family?.builtinPids.orEmpty().filter { it in com.openobd.core.brand.GM_DPF_PIDS }.map { it.key }
+            .takeIf { live.params.diesel || diesel.isDiesel || compressionIgnition == true }.orEmpty()
+        return (own + builtin).distinct()
+    }
+
+    /** After a filter value was found and saved: watched from now on, without reconnecting. */
+    internal fun refreshDpfWatch() {
+        val v = vehicle ?: return
+        if (state.value is ConnectionState.Connected) diesel.onConnected(v.supportedPids, dpfKeys())
     }
 
     private fun warnLowBattery(volts: Double) {

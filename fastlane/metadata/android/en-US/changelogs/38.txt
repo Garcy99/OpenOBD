@@ -1,0 +1,2 @@
+• Find the particulate filter values: if your car does not show the load, temperature or km since the last regeneration, look them up in another app (ScanMyOpel, for example), type them in and OpenOBD finds where your engine keeps them. From then on the filter card, alerts and gauges use them
+• Works for any other engine value too

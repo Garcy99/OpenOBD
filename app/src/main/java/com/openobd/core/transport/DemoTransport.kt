@@ -563,6 +563,8 @@ class DemoTransport(
                         val raw = (120 + t() * 2).roundToInt().coerceIn(0, 65535)
                         listOf(0x62, 0x0D, 0x10, raw shr 8, raw and 0xFF)
                     } else neg(0x31)
+                    // Demo-only particulate filter load (hundredths of a percent), somewhere only the value finder knows.
+                    0x1902 -> if (tx == 0x7E0) listOf(0x62, 0x19, 0x02, 0x0E, 0x9C, 0x00, 0x2A) else neg(0x31)
                     0x1E1C -> if (tx in 0x7E0..0x7E1) {
                         val raw = ((62 + noise(1.5) + t() / 30.0) * 16).roundToInt().coerceIn(0, 65535)
                         listOf(0x62, 0x1E, 0x1C, raw shr 8, raw and 0xFF)

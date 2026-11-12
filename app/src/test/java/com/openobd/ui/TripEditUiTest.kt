@@ -7,6 +7,7 @@ import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.performTouchInput
+import androidx.compose.ui.test.performTextInput
 import androidx.compose.ui.test.longClick
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.openobd.MainActivity
@@ -156,6 +157,30 @@ class TripEditUiTest {
             c.refuelSuggestions.clear()
             runBlocking { c.garage.update { it.copy(fuel = it.fuel.filter { f -> f.vehicleId != "vEdit" }) } }
             runBlocking { c.settings.update { it.copy(fuelPricePerL = 0f) } }
+            tearDown(before)
+        }
+    }
+
+    @Test fun theFilterValuesAreFoundFromAnotherAppsFigures() {
+        val before = setUp()
+        try {
+            c.session.connect()
+            waitFor(30_000) { c.session.state.value is ConnectionState.Connected }
+            c.session.finder.rangesForTest = listOf(com.openobd.core.brand.IdKind.UDS to 0x1900..0x190F)
+            c.openRequest.value = Routes.VALUE_FINDER
+            waitFor { rule.onAllNodesWithTag("finderValue").fetchSemanticsNodes().isNotEmpty() }
+            rule.onNodeWithTag("finderValue").performTextInput("37,4")
+            rule.onNodeWithTag("finderSearch").performClick()
+            waitFor(60_000) { c.session.finder.state.value.let { !it.scanning && it.candidates.isNotEmpty() } }
+            val best = c.session.finder.state.value.candidates.first()
+            rule.onNodeWithTag("cand_${best.key}").performScrollTo().performClick()
+            waitFor { rule.onAllNodesWithText("It reads now: 37.4", substring = true).fetchSemanticsNodes().isNotEmpty() }
+            rule.onNodeWithTag("finderSave").performScrollTo().performClick()
+            waitFor { c.garage.data.value.active!!.customPids.any { it.id == "gm_dpf_soot" } }
+        } finally {
+            c.session.finder.rangesForTest = null
+            c.session.disconnect()
+            waitFor { c.session.state.value is ConnectionState.Disconnected }
             tearDown(before)
         }
     }

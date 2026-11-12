@@ -125,6 +125,7 @@ object Routes {
     const val LOG = "log/{name}"
     fun log(name: String) = "log/" + android.net.Uri.encode(name)
     const val DIESEL = "diesel"
+    const val VALUE_FINDER = "value_finder"
     const val GUIDES = "guides"
     const val EXPLORER = "explorer"
     const val CODINGS = "codings"
@@ -262,7 +263,9 @@ fun OpenObdNavHost() {
                 composable(Routes.ASSISTANT) { e ->
                     com.openobd.ui.screens.AssistantScreen(e.arguments?.getString("code").orEmpty(), onBack = back, onSettings = { nav.navigate(Routes.SETTINGS) })
                 }
-                composable(Routes.DIESEL) { com.openobd.ui.screens.DieselScreen(onBack = back, onConnect = toHome, onGuides = { nav.navigate(Routes.GUIDES) }, onPacks = { nav.navigate(Routes.PACKS) }) }
+                composable(Routes.DIESEL) { com.openobd.ui.screens.DieselScreen(onBack = back, onConnect = toHome, onGuides = { nav.navigate(Routes.GUIDES) }, onPacks = { nav.navigate(Routes.PACKS) },
+                    onFinder = { nav.navigate(Routes.VALUE_FINDER) }) }
+                composable(Routes.VALUE_FINDER) { com.openobd.ui.screens.ValueFinderScreen(onBack = back, onConnect = toHome) }
                 composable(Routes.GUIDES) { com.openobd.ui.screens.ServiceGuidesScreen(onBack = back, onDieselHelper = { nav.navigate(Routes.DIESEL) }) }
                 composable(Routes.CODINGS) { com.openobd.ui.screens.CodingsScreen(onBack = back, onConnect = toHome) }
                 composable(Routes.EXPLORER) { com.openobd.ui.screens.IdExplorerScreen(onBack = back, onConnect = toHome) }

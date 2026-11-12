@@ -38,6 +38,7 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -61,7 +62,7 @@ import kotlinx.coroutines.launch
 // ------------------------------------------------------------------ DPF regeneration helper
 
 @Composable
-fun DieselScreen(onBack: () -> Unit, onConnect: () -> Unit, onGuides: () -> Unit, onPacks: () -> Unit = {}) {
+fun DieselScreen(onBack: () -> Unit, onConnect: () -> Unit, onGuides: () -> Unit, onPacks: () -> Unit = {}, onFinder: () -> Unit = {}) {
     val app = LocalApp.current
     val session = app.session
     val garage by app.garage.data.collectAsStateWithLifecycle()
@@ -133,6 +134,14 @@ fun DieselScreen(onBack: () -> Unit, onConnect: () -> Unit, onGuides: () -> Unit
                 }
                 if (history.lastInterrupted) Text(tr("The last one was cut short: a steady 15-20 minute drive lets the filter finish cleaning itself."),
                     color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
+            }
+            // The car's own figures (soot load, temperature ...) do not answer? Find them from another app's figures.
+            val found = dpfValues.values.any { it != null } || watch?.loadPct != null
+            SectionCard(title = tr("Find the filter values"), modifier = androidx.compose.ui.Modifier.testTag("finderCard")) {
+                Text(if (found) tr("Some values do not show? Look them up in another app (ScanMyOpel, for example) and OpenOBD finds where your engine keeps them.")
+                    else tr("Your car does not show the filter's load or temperature yet. Look them up in another app (ScanMyOpel, for example) and OpenOBD finds where your engine keeps them."),
+                    style = MaterialTheme.typography.bodySmall)
+                Button(onClick = onFinder, modifier = Modifier.padding(top = 6.dp).testTag("openFinder")) { Text(tr("Find them")) }
             }
             SectionCard(title = tr("Manufacturer DPF values")) {
                 if (dpfPids.isEmpty()) {

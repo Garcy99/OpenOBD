@@ -67,6 +67,8 @@ class LiveDataManager(private val scope: CoroutineScope) {
         const val RETRY_CYCLES = 60L
         /** The brands' built-in values (a guess per car); the ones the user added are always asked for. */
         val BUILTIN_IDS: Set<String> by lazy { com.openobd.core.brand.Families.all.flatMap { it.builtinPids }.map { it.id }.toSet() }
+        /** The built-in definitions themselves: one the user found on the car under the same id is theirs, always asked for. */
+        val BUILTIN_PIDS: Set<com.openobd.core.brand.CustomPid> by lazy { com.openobd.core.brand.Families.all.flatMap { it.builtinPids }.toSet() }
         /** ... and only after this long without an answer. */
         const val GIVE_UP_MS = 20_000L
     }
@@ -177,7 +179,7 @@ class LiveDataManager(private val scope: CoroutineScope) {
             if (customKeys != lastCustomKeys) { (customKeys - lastCustomKeys).forEach { unanswered.remove(it); firstMiss.remove(it) }; lastCustomKeys = customKeys }
             val nowMs = System.currentTimeMillis()
             val customs = customKeys.mapNotNull { CustomSensors.pid(it) }.filter { p ->
-                p.id !in BUILTIN_IDS || p.key in answered || (unanswered[p.key] ?: 0) < MAX_UNANSWERED || nowMs - (firstMiss[p.key] ?: nowMs) < GIVE_UP_MS ||
+                p !in BUILTIN_PIDS || p.key in answered || (unanswered[p.key] ?: 0) < MAX_UNANSWERED || nowMs - (firstMiss[p.key] ?: nowMs) < GIVE_UP_MS ||
                     cycle % RETRY_CYCLES == 0L
             }
             if (pids.isEmpty() && customs.isEmpty()) { delay(250); continue }
@@ -189,7 +191,7 @@ class LiveDataManager(private val scope: CoroutineScope) {
             val askedCustom = customs.isNotEmpty() && (cycle % 2 == 1L || pids.isEmpty())
             // The brand's built-in values (often for modules a car may not have) get their own turns, so a module that
             // makes the adapter wait never holds up the values the user added.
-            val (builtin, own) = customs.partition { it.id in BUILTIN_IDS }
+            val (builtin, own) = customs.partition { it in BUILTIN_PIDS }
             customTurn++
             val asked = when {
                 own.isEmpty() -> builtin

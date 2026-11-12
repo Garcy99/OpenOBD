@@ -1,0 +1,2 @@
+• Buscar los valores del filtro de partículas: si tu coche no muestra la carga, la temperatura o los km desde la última regeneración, míralos en otra app (ScanMyOpel, por ejemplo), escríbelos y OpenOBD encuentra dónde los guarda tu motor. Desde entonces los usan la tarjeta del filtro, los avisos y los relojes
+• También sirve para cualquier otro valor del motor
