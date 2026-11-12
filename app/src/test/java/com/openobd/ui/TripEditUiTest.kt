@@ -112,4 +112,22 @@ class TripEditUiTest {
             tearDown(before)
         }
     }
+
+    @Test fun homeShowsTheBatteryAsTheCarStood() {
+        val before = setUp()
+        try {
+            val now = System.currentTimeMillis()
+            runBlocking {
+                c.garage.saveTrip(TripRecord(id = "b0", vehicleId = "vEdit", start = now - 3 * 86_400_000L - 3600_000, end = now - 3 * 86_400_000L, distanceKm = 12.0), emptyList())
+                c.garage.addHealthSample(com.openobd.core.health.HealthSample("vEdit", now - 600_000, restingV = 11.9, chargingV = 14.1))
+            }
+            c.openRequest.value = Routes.HOME
+            waitFor { rule.onAllNodesWithTag("batteryCard").fetchSemanticsNodes().isNotEmpty() }
+            assertTrue(rule.onAllNodesWithText("Battery · Low", substring = true).fetchSemanticsNodes().isNotEmpty())
+            assertTrue(rule.onAllNodesWithText("11.9 V after 3 days parked", substring = true).fetchSemanticsNodes().isNotEmpty())
+        } finally {
+            runBlocking { c.garage.update { it.copy(health = it.health.filter { h -> h.vehicleId != "vEdit" }) } }
+            tearDown(before)
+        }
+    }
 }

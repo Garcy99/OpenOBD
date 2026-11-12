@@ -70,11 +70,27 @@ class DieselFeature internal constructor(private val s: ObdSession) {
         })
     }
 
+    @Volatile private var stoppedSince: Long? = null
+    @Volatile private var stoppedWarnedAt = 0L
+
     internal fun onCycle(values: Map<String, Double>, now: Long) {
         monitor?.let { _status.value = it.onCycle(values, now) }
         watch?.let { w ->
             w.onCycle(values, now)?.let { emit(it) }
             if (_regen.value != w.state) _regen.value = w.state
+            // Stopped (parking, at home) while the filter still cleans itself: a reminder not to switch off yet.
+            val stopped = (values["010D"] ?: 99.0) < 2 && (values["010C"] ?: 0.0) > 300
+            if (w.state.active && stopped) {
+                val since = stoppedSince ?: now.also { stoppedSince = it }
+                if (now - since >= STOPPED_WARN_MS && now - stoppedWarnedAt > 10 * 60_000L) {
+                    stoppedWarnedAt = now
+                    s.voice.warn(Announcement("The particulate filter is still cleaning itself: if you can, do not switch the engine off yet."))
+                }
+            } else stoppedSince = null
         }
+    }
+
+    private companion object {
+        const val STOPPED_WARN_MS = 20_000L
     }
 }

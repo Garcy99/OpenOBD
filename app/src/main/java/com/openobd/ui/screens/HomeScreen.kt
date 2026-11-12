@@ -189,6 +189,7 @@ fun HomeScreen(onNavigate: (String) -> Unit, onTab: (String) -> Unit, onLive: (I
         ScreenColumn {
             CarHero(state, onConnect = ::connect, onAdapter = { showAdapter = true }, onNavigate = onNavigate)
             DpfCard(onOpen = { onNavigate(Routes.DIESEL) })
+            BatteryCard(onOpen = { onNavigate(Routes.BATTERY) })
             if (state !is ConnectionState.Connected) ParkedCard()
             CarScoreCard(onDiagnose = { onTab(Routes.DIAGNOSTICS) })
             FuelNearbyCard(onOpen = { onNavigate(Routes.FUEL_PRICES) })
@@ -549,6 +550,46 @@ private fun DpfCard(onOpen: () -> Unit) {
                 if (!active && load != null) LinearProgressIndicator({ (load / 100).toFloat().coerceIn(0f, 1f) }, Modifier.fillMaxWidth().padding(top = 6.dp),
                     color = if (load >= 80) Orange else Good)
                 if (!active && load != null && history.lastInterrupted) Text(tr("The last regeneration was cut short."), style = MaterialTheme.typography.labelSmall, color = Orange)
+            }
+            Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, null, tint = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
+    }
+}
+
+/**
+ * The 12 V battery as the car stands: the voltage read when the app last connected with the engine off, the charge it
+ * means, and whether it drains fast while parked or the alternator charges little. Shown once there is a reading.
+ */
+@Composable
+private fun BatteryCard(onOpen: () -> Unit) {
+    val app = LocalApp.current
+    val garage by app.garage.data.collectAsStateWithLifecycle()
+    val car = garage.active ?: return
+    val a = remember(garage.health, garage.trips, car.id) {
+        com.openobd.core.battery.BatteryHealth.assess(garage.health.filter { it.vehicleId == car.id }, garage.trips.filter { it.vehicleId == car.id })
+    } ?: return
+    val color = when (a.level) { com.openobd.core.battery.BatteryHealth.Level.GOOD -> Good; com.openobd.core.battery.BatteryHealth.Level.FAIR -> Orange; com.openobd.core.battery.BatteryHealth.Level.LOW -> com.openobd.ui.theme.Bad }
+    SectionCard(Modifier.clickable(onClick = onOpen).testTag("batteryCard")) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            IconBadge(Icons.Default.BatteryChargingFull, color, 40.dp)
+            Spacer(Modifier.width(12.dp))
+            Column(Modifier.weight(1f)) {
+                Text(tr("Battery") + " · " + when (a.level) { com.openobd.core.battery.BatteryHealth.Level.GOOD -> tr("Good"); com.openobd.core.battery.BatteryHealth.Level.FAIR -> tr("Could do with a charge"); com.openobd.core.battery.BatteryHealth.Level.LOW -> tr("Low") },
+                    style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold)
+                val v = "%.1f".format(a.latest.restV)
+                val h = a.latest.parkedHours
+                Text(when {
+                    h == null -> tr("%1\$s V · about %2\$s %%", v, a.chargePct)
+                    h < 36 -> tr("%1\$s V after %2\$s hours parked · about %3\$s %%", v, "%.0f".format(h), a.chargePct)
+                    else -> tr("%1\$s V after %2\$s days parked · about %3\$s %%", v, "%.0f".format(h / 24), a.chargePct)
+                }, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.testTag("batteryLine"))
+                LinearProgressIndicator({ a.chargePct / 100f }, Modifier.fillMaxWidth().padding(top = 6.dp), color = color)
+                if (a.drainsFast) Text(tr("It loses charge fast while parked (%1\$s V a day): something may be left drawing current.", "%.2f".format(a.dropPerDay!!)),
+                    style = MaterialTheme.typography.labelSmall, color = Orange)
+                if (a.alternatorWeak) Text(tr("The alternator charges little (%1\$s V): have it checked.", "%.1f".format(a.chargingV!!)),
+                    style = MaterialTheme.typography.labelSmall, color = Orange)
+                Text(tr("Read when the app connects with the engine off: an estimate."), style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
             Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, null, tint = MaterialTheme.colorScheme.onSurfaceVariant)
         }

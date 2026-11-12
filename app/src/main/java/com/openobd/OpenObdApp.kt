@@ -312,12 +312,32 @@ class OpenObdApp : Application() {
         val speaker = com.openobd.data.Speaker(this)
         container.scope.launch {
             container.session.voice.announcements.collect { a ->
-                speaker.language = com.openobd.ui.I18n.language
-                speaker.speak(com.openobd.ui.tr(a.text, *a.args.map { com.openobd.ui.tr(it) }.toTypedArray()))
+                val text = com.openobd.ui.tr(a.text, *a.args.map { com.openobd.ui.tr(it) }.toTypedArray())
+                if (container.settings.settings.value.voiceAlerts) {
+                    speaker.language = com.openobd.ui.I18n.language
+                    speaker.speak(text)
+                }
+                if (a.notify) notifyDriveAlert(a.text, text)
             }
         }
         container.scope.launch {
             container.settings.settings.collect { if (!it.voiceAlerts) speaker.shutdown() }
+        }
+    }
+
+    /** An important warning while driving (overheating, not charging, low fuel ...), as a heads-up notification. */
+    private fun notifyDriveAlert(key: String, text: String) {
+        val nm = getSystemService(android.app.NotificationManager::class.java) ?: return
+        if (android.os.Build.VERSION.SDK_INT >= 26) nm.createNotificationChannel(
+            android.app.NotificationChannel("drive_alerts", com.openobd.ui.tr("Alerts while driving"), android.app.NotificationManager.IMPORTANCE_HIGH))
+        val open = android.app.PendingIntent.getActivity(this, 3, Intent(this, MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP),
+            android.app.PendingIntent.FLAG_IMMUTABLE)
+        runCatching {
+            // One notification per kind of warning: a repeat replaces the previous one.
+            nm.notify(DRIVE_ALERT + (key.hashCode() and 0xFF), androidx.core.app.NotificationCompat.Builder(this, "drive_alerts").setSmallIcon(R.drawable.ic_stat_car)
+                .setContentTitle(com.openobd.ui.tr("Alerts while driving")).setContentText(text)
+                .setStyle(androidx.core.app.NotificationCompat.BigTextStyle().bigText(text))
+                .setPriority(androidx.core.app.NotificationCompat.PRIORITY_HIGH).setContentIntent(open).setAutoCancel(true).build())
         }
     }
 
@@ -328,5 +348,6 @@ class OpenObdApp : Application() {
 
     companion object {
         private const val REGEN_NOTIFICATION = 77
+        private const val DRIVE_ALERT = 2000
     }
 }
