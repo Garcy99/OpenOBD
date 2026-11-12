@@ -1,5 +1,9 @@
 package com.openobd.ui.screens
 
+import androidx.compose.material.icons.automirrored.filled.List
+import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
+import androidx.compose.material.icons.automirrored.filled.KeyboardArrowLeft
+import androidx.compose.foundation.combinedClickable
 import com.openobd.ui.tr
 
 import androidx.compose.foundation.clickable
@@ -559,16 +563,26 @@ private fun FuelEditor(e: FuelEntry, isNew: Boolean, units: UnitSystem, defaultP
 
 // ---------------------------------------------------------------- Trips
 
+@OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class)
 @Composable
 fun TripsScreen(onBack: () -> Unit, onOpen: (String) -> Unit) {
     val app = LocalApp.current
+    val scope = rememberCoroutineScope()
     val settings = appSettings()
     val g by app.garage.data.collectAsStateWithLifecycle()
     val v = g.active
     val trips = g.trips.filter { it.vehicleId == v?.id }
     var poster by remember { mutableStateOf(false) }
+    var report by remember { mutableStateOf(false) }
+    // Trips picked to be joined (a long press starts picking).
+    var selected by remember { mutableStateOf(emptySet<String>()) }
+    var dismissed by remember { mutableStateOf(emptySet<String>()) }
+    val join: (Collection<String>) -> Unit = { ids -> scope.launch { app.garage.mergeTrips(ids); selected = emptySet() } }
     Column(Modifier.fillMaxSize()) {
-        ScreenTopBar(tr("Trip history"), onBack, actions = {
+        if (selected.isNotEmpty()) ScreenTopBar(tr("%1\$s selected", selected.size), { selected = emptySet() }, actions = {
+            TextButton(onClick = { join(selected) }, enabled = selected.size >= 2, modifier = Modifier.testTag("joinTrips")) { Text(tr("Join into one trip")) }
+        }) else ScreenTopBar(tr("Trip history"), onBack, actions = {
+            if (trips.isNotEmpty()) IconButton(onClick = { report = true }, modifier = Modifier.testTag("tripReport")) { Icon(Icons.AutoMirrored.Filled.List, tr("Kilometre report")) }
             if (trips.any { it.trackPoints > 1 }) IconButton(onClick = { poster = true }, modifier = Modifier.testTag("allTripsPoster")) { Icon(Icons.Default.Map, tr("Poster of all trips")) }
         })
         if (trips.isEmpty()) {
@@ -577,21 +591,43 @@ fun TripsScreen(onBack: () -> Unit, onOpen: (String) -> Unit) {
             return@Column
         }
         val totalKm = trips.sumOf { it.distanceKm }
+        // Drives cut in pieces (a lost link, a short stop): offered to be joined.
+        val suggestions = remember(trips, dismissed) {
+            com.openobd.core.trip.TripMerge.suggestions(trips).filter { r -> r.none { it.id in dismissed } }.take(3)
+        }
         LazyColumn(contentPadding = PaddingValues(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
             item {
                 Text(tr("%1\$s trips · %2\$s", trips.size, (fmtKm(totalKm, settings.units))), style = MaterialTheme.typography.titleMedium)
+                if (selected.isEmpty()) Text(tr("Long-press a trip to pick several and join them."),
+                    style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
-            if (trips.count { it.trackPoints > 1 } >= 2) item {
+            if (selected.isEmpty()) items(suggestions, key = { r -> "s" + r.first().id }) { r ->
+                SectionCard(Modifier.testTag("joinSuggestion")) {
+                    Text(tr("One drive in %1\$s pieces?", r.size), style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold)
+                    Text(tr("%1\$s to %2\$s · %3\$s", fmtDateTime(r.first().start), java.text.DateFormat.getTimeInstance(java.text.DateFormat.SHORT).format(java.util.Date(r.maxOf { it.end })),
+                        fmtKm(r.sumOf { it.distanceKm }, settings.units, 1)), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
+                        TextButton(onClick = { dismissed = dismissed + r.map { it.id } }) { Text(tr("Keep apart")) }
+                        androidx.compose.material3.Button(onClick = { join(r.map { it.id }) }, modifier = Modifier.testTag("joinSuggested")) { Text(tr("Join")) }
+                    }
+                }
+            }
+            if (selected.isEmpty() && trips.count { it.trackPoints > 1 } >= 2) item {
                 com.openobd.ui.components.NoticeCard(Icons.Default.Map, tr("Poster of all trips"),
                     tr("Every road you drove in a period on one A3 poster: the ones you drive most stand out."), com.openobd.ui.theme.Violet) { poster = true }
             }
             items(trips, key = { it.id }) { t ->
-                SectionCard(Modifier.clickable { onOpen(t.id) }) {
+                val picked = t.id in selected
+                SectionCard(Modifier.testTag("trip_" + t.id).combinedClickable(
+                    onClick = { if (selected.isNotEmpty()) selected = if (picked) selected - t.id else selected + t.id else onOpen(t.id) },
+                    onLongClick = { selected = if (picked) selected - t.id else selected + t.id },
+                )) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
+                        if (selected.isNotEmpty()) Checkbox(picked, { selected = if (picked) selected - t.id else selected + t.id })
                         Column(Modifier.weight(1f)) {
-                            Text(fmtDateTime(t.start), fontWeight = FontWeight.SemiBold)
+                            Text(t.name.takeIf { it.isNotBlank() }?.let { "$it · " + fmtDateTime(t.start) } ?: fmtDateTime(t.start), fontWeight = FontWeight.SemiBold)
                             Text("${fmtKm(t.distanceKm, settings.units, 1)} · ${formatDuration((t.end - t.start) / 1000.0)} · ${fmtL100(t.avgL100, settings.units)}" +
-                                (t.ecoScore?.let { " · " + tr("Eco %1\$s", it) } ?: ""),
+                                (t.ecoScore?.let { " · " + tr("Eco %1\$s", it) } ?: "") + purposeLabel(t.purpose)?.let { " · $it" }.orEmpty(),
                                 style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                         }
                         if (t.trackPoints > 1) Icon(Icons.Default.Map, tr("Has map"), tint = MaterialTheme.colorScheme.primary)
@@ -601,7 +637,128 @@ fun TripsScreen(onBack: () -> Unit, onOpen: (String) -> Unit) {
         }
     }
     if (poster) AllTripsPosterDialog(trips, v?.let { listOfNotNull(it.name, it.specs?.title?.takeIf { t -> t.isNotBlank() && t != it.name }).joinToString(" · ") }.orEmpty()) { poster = false }
+    if (report) TripReportDialog(trips, v?.name.orEmpty()) { report = false }
 }
+
+/** "Work" / "Personal" for a trip's purpose (null when not said). */
+@Composable
+fun purposeLabel(p: String): String? = when (p) {
+    com.openobd.core.garage.PURPOSE_WORK -> tr("Work")
+    com.openobd.core.garage.PURPOSE_PERSONAL -> tr("Personal")
+    else -> null
+}
+
+/** A month's kilometres and costs (all trips, work or personal ones), shared as a spreadsheet (CSV) or a PDF. */
+@Composable
+private fun TripReportDialog(trips: List<com.openobd.core.garage.TripRecord>, carName: String, onDismiss: () -> Unit) {
+    val context = androidx.compose.ui.platform.LocalContext.current
+    val settings = appSettings()
+    val now = remember { java.util.Calendar.getInstance() }
+    var year by remember { mutableStateOf(now.get(java.util.Calendar.YEAR)) }
+    var month by remember { mutableStateOf(now.get(java.util.Calendar.MONTH)) }
+    var filter by remember { mutableStateOf(com.openobd.core.trip.TripReport.Filter.ALL) }
+    val list = remember(trips, year, month, filter) { com.openobd.core.trip.TripReport.tripsOf(trips, year, month, filter) }
+    val tot = com.openobd.core.trip.TripReport.totals(list)
+    val monthName = remember(year, month) {
+        java.text.SimpleDateFormat("LLLL yyyy", java.util.Locale.getDefault()).format(java.util.Calendar.getInstance().apply { clear(); set(year, month, 1) }.time)
+            .replaceFirstChar { it.titlecase() }
+    }
+    val title = tr("Kilometre report")
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(title) },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    IconButton(onClick = { if (month == 0) { month = 11; year-- } else month-- }) { Icon(androidx.compose.material.icons.Icons.AutoMirrored.Filled.KeyboardArrowLeft, tr("Previous month")) }
+                    Text(monthName, Modifier.weight(1f), textAlign = androidx.compose.ui.text.style.TextAlign.Center, fontWeight = FontWeight.SemiBold)
+                    IconButton(onClick = { if (month == 11) { month = 0; year++ } else month++ }) { Icon(androidx.compose.material.icons.Icons.AutoMirrored.Filled.KeyboardArrowRight, tr("Next month")) }
+                }
+                Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    com.openobd.core.trip.TripReport.Filter.entries.forEach { f ->
+                        androidx.compose.material3.FilterChip(filter == f, { filter = f }, label = {
+                            Text(when (f) { com.openobd.core.trip.TripReport.Filter.ALL -> tr("All"); com.openobd.core.trip.TripReport.Filter.WORK -> tr("Work"); else -> tr("Personal") })
+                        })
+                    }
+                }
+                Text(tr("%1\$s trips · %2\$s", tot.trips, fmtKm(tot.km, settings.units, 1)) + (tot.cost?.let { " · " + fmtMoney(it) } ?: ""),
+                    modifier = Modifier.testTag("reportTotals"))
+                Text(tr("Mark each trip as work or personal in its details."), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+        },
+        confirmButton = {
+            Row {
+                TextButton(enabled = list.isNotEmpty(), onClick = {
+                    val labels = com.openobd.core.trip.TripReport.Labels(tr("Date"), tr("Start"), tr("End"), tr("Name"), tr("Purpose"), "km", tr("Minutes"),
+                        tr("Litres"), tr("Cost"), tr("Work"), tr("Personal"), tr("Total"))
+                    val f = java.io.File(context.cacheDir, "trips-%04d-%02d.csv".format(year, month + 1))
+                    f.writeText("\uFEFF" + com.openobd.core.trip.TripReport.csv(list, labels))
+                    com.openobd.ui.shareFile(context, f, "text/csv")
+                }) { Text("CSV") }
+                TextButton(enabled = list.isNotEmpty(), onClick = {
+                    com.openobd.ui.shareFile(context, writeTripReportPdf(context, list, "$title · $monthName", carName, settings.units), "application/pdf")
+                }, modifier = Modifier.testTag("reportPdf")) { Text("PDF") }
+            }
+        },
+        dismissButton = { TextButton(onClick = onDismiss) { Text(tr("Close")) } },
+    )
+}
+
+/** The month's trips as a printable table, with totals. */
+fun writeTripReportPdf(context: android.content.Context, trips: List<com.openobd.core.garage.TripRecord>, title: String, carName: String,
+                       units: UnitSystem): java.io.File {
+    val doc = android.graphics.pdf.PdfDocument()
+    val w = 595; val h = 842; val margin = 40f
+    val text = android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG).apply { textSize = 9f; color = 0xFF111827.toInt() }
+    val bold = android.graphics.Paint(text).apply { isFakeBoldText = true }
+    val big = android.graphics.Paint(bold).apply { textSize = 16f }
+    val grey = android.graphics.Paint(text).apply { color = 0xFF6B7280.toInt() }
+    val cols = floatArrayOf(0f, 62f, 120f, 270f, 330f, 380f, 430f, 470f)
+    val heads = listOf(tr("Date"), tr("Time"), tr("Name"), tr("Purpose"), distUnitOf(units), tr("Minutes"), tr("Litres"), tr("Cost"))
+    val date = java.text.DateFormat.getDateInstance(java.text.DateFormat.SHORT)
+    val time = java.text.DateFormat.getTimeInstance(java.text.DateFormat.SHORT)
+    var pageNo = 0
+    var page: android.graphics.pdf.PdfDocument.Page? = null
+    var y = 0f
+    fun header() {
+        page?.let { doc.finishPage(it) }
+        page = doc.startPage(android.graphics.pdf.PdfDocument.PageInfo.Builder(w, h, ++pageNo).create())
+        val c = page!!.canvas
+        y = margin + 14
+        if (pageNo == 1) {
+            c.drawText(title, margin, y, big); y += 16
+            c.drawText(carName, margin, y, grey); y += 20
+        }
+        heads.forEachIndexed { i, s -> c.drawText(s, margin + cols[i], y, bold) }
+        y += 14
+    }
+    header()
+    for (t in trips) {
+        if (y > h - margin - 30) header()
+        val c = page!!.canvas
+        val row = listOf(date.format(java.util.Date(t.start)), time.format(java.util.Date(t.start)) + "-" + time.format(java.util.Date(t.end)),
+            t.name.take(28), purposeText(t.purpose), "%.1f".format(fromKmOf(t.distanceKm, units)), "%.0f".format((t.end - t.start) / 60_000.0),
+            t.fuelL?.let { "%.2f".format(it) } ?: "", t.cost?.let { "%.2f".format(it) } ?: "")
+        row.forEachIndexed { i, s -> c.drawText(s, margin + cols[i], y, text) }
+        y += 13
+    }
+    val tot = com.openobd.core.trip.TripReport.totals(trips)
+    if (y > h - margin - 30) header()
+    val c = page!!.canvas
+    c.drawLine(margin, y - 8, w - margin, y - 8, grey)
+    y += 4
+    listOf(tr("Total"), "", "${tot.trips}", "", "%.1f".format(fromKmOf(tot.km, units)), "%.0f".format(tot.seconds / 60),
+        tot.fuelL?.let { "%.2f".format(it) } ?: "", tot.cost?.let { "%.2f".format(it) } ?: "").forEachIndexed { i, s -> c.drawText(s, margin + cols[i], y, bold) }
+    doc.finishPage(page)
+    val f = java.io.File(context.cacheDir, "trips-report.pdf")
+    f.outputStream().use { doc.writeTo(it) }
+    doc.close()
+    return f
+}
+
+private fun purposeText(p: String) = when (p) { com.openobd.core.garage.PURPOSE_WORK -> tr("Work"); com.openobd.core.garage.PURPOSE_PERSONAL -> tr("Personal"); else -> "" }
+private fun distUnitOf(units: UnitSystem) = if (units == UnitSystem.IMPERIAL) "mi" else "km"
+private fun fromKmOf(v: Double, units: UnitSystem) = if (units == UnitSystem.IMPERIAL) v * 0.621371 else v
 
 /** What the car was doing at one point of a trip's route. */
 @Composable
@@ -648,6 +805,13 @@ fun TripDetailScreen(tripId: String, onBack: () -> Unit, onModel3d: () -> Unit =
                 keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(imeAction = androidx.compose.ui.text.input.ImeAction.Done),
                 keyboardActions = androidx.compose.foundation.text.KeyboardActions(onDone = { saveName() }),
                 modifier = Modifier.fillMaxWidth().testTag("tripName"))
+            // Work or personal (for the kilometre report).
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+                listOf(com.openobd.core.garage.PURPOSE_WORK to tr("Work"), com.openobd.core.garage.PURPOSE_PERSONAL to tr("Personal")).forEach { (p, label) ->
+                    androidx.compose.material3.FilterChip(t.purpose == p, { scope.launch { app.garage.setTripPurpose(t.id, if (t.purpose == p) "" else p) } },
+                        label = { Text(label) }, modifier = Modifier.testTag("purpose_$p"))
+                }
+            }
             if (pts.size >= 2) {
                 // Colour by speed, or by consumption to see where this drive spent most.
                 val limits = remember(pts) { com.openobd.core.trip.TrackColoring.consumptionLimits(pts) }

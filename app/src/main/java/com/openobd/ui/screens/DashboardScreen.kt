@@ -1,5 +1,8 @@
 package com.openobd.ui.screens
 
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.background
+import androidx.compose.ui.draw.clip
 import androidx.compose.foundation.layout.size
 
 import androidx.compose.foundation.layout.fillMaxHeight
@@ -92,6 +95,7 @@ fun DashboardScreen(onConnect: () -> Unit, onHud: () -> Unit, topBar: TopBarSlot
             }
             IconButton(onClick = { editing = !editing }) { Icon(if (editing) Icons.Default.Close else Icons.Default.Edit, tr("Edit")) }
         })
+        TripStatusBar()
         if (vehicle == null && !editing) {
             NotConnected(onConnect)
             return@Column
@@ -226,7 +230,9 @@ fun DashboardScreen(onConnect: () -> Unit, onHud: () -> Unit, topBar: TopBarSlot
         pickFor?.let { slot ->
             SensorPickerDialog(
                 // Oil temperature, oil pressure and tyre pressures first: they read whichever source the car has.
-                sensors = com.openobd.core.obd.VirtualSensors.all + (if (vehicle == null) SensorCatalog.available((0..0xFF).toSet()) else available),
+                // Connected, only the ones this car can feed (the diesel ones mean nothing on a petrol car).
+                sensors = com.openobd.core.obd.VirtualSensors.all.filter { vehicle == null || com.openobd.core.obd.VirtualSensors.resolve(it.key, supported) != null } +
+                    (if (vehicle == null) SensorCatalog.available((0..0xFF).toSet()) else available),
                 title = if (slot < 0) tr("Add gauge") else tr("Change gauge"),
                 onDismiss = { pickFor = null },
                 onPick = { def ->
@@ -246,11 +252,53 @@ fun DashboardScreen(onConnect: () -> Unit, onHud: () -> Unit, topBar: TopBarSlot
     }
 }
 
+/**
+ * Whether this drive is being recorded: distance and time while connected, and while a lost link is awaited, that the
+ * trip is kept (with a button to save it now).
+ */
+@Composable
+fun TripStatusBar() {
+    val app = LocalApp.current
+    val state by app.session.state.collectAsStateWithLifecycle()
+    val stats by app.session.trip.stats.collectAsStateWithLifecycle()
+    val units = appSettings().units
+    // The trip's own state is not a flow: looked at again every second.
+    var tick by remember { mutableStateOf(0) }
+    androidx.compose.runtime.LaunchedEffect(Unit) { while (true) { kotlinx.coroutines.delay(1000); tick++ } }
+    @Suppress("UNUSED_EXPRESSION") tick
+    val recording = app.session.tripInProgress
+    val pending = app.session.tripPending && state !is com.openobd.session.ConnectionState.Connected
+    if (!recording) return
+    val km = stats.distanceKm
+    val dist = if (units == com.openobd.core.obd.UnitSystem.IMPERIAL) "%.1f mi".format(km * 0.621371) else "%.1f km".format(km)
+    val time = com.openobd.ui.components.formatDuration(stats.durationS)
+    androidx.compose.material3.Surface(
+        color = if (pending) com.openobd.ui.theme.Orange.copy(alpha = 0.16f) else MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.55f),
+        modifier = Modifier.fillMaxWidth().testTag("tripStatus"),
+    ) {
+        Row(Modifier.padding(horizontal = 16.dp, vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
+            Box(Modifier.size(8.dp).clip(androidx.compose.foundation.shape.CircleShape)
+                .background(if (pending) com.openobd.ui.theme.Orange else com.openobd.ui.theme.Bad))
+            androidx.compose.foundation.layout.Spacer(Modifier.width(8.dp))
+            Text(
+                if (pending) tr("Link lost: the trip is kept until it comes back (%1\$s)", dist)
+                else tr("Recording trip · %1\$s · %2\$s", dist, time),
+                style = MaterialTheme.typography.labelLarge, modifier = Modifier.weight(1f),
+            )
+            if (pending) androidx.compose.material3.TextButton(onClick = { app.session.disconnect() }, modifier = Modifier.testTag("saveTripNow")) {
+                Text(tr("Save now"))
+            }
+        }
+    }
+}
+
 /** Ready-made dashboard layouts. */
 object DashboardPresets {
     val all = listOf(
         "Everyday" to AppSettings.DEFAULT_DASHBOARD,
         "Diesel" to listOf("010C", "CALC_BOOST@d", "0105", "OIL_TEMP", "OIL_PRESS", "0123", "012C", "017A_D", "0178_1", "CALC_FUEL"),
+        // Like ScanMyOpel's: boost asked for against measured, rail pressure, EGR, the filter (standard or GM's own values).
+        "Diesel (Opel / GM)" to listOf("010C", "BOOST_ACTUAL", "BOOST_TARGET", "0123", "012C", "DPF_SOOT@d", "DPF_TEMP", "DPF_KM", "0105", "CALC_FUEL"),
         "Economy" to listOf("CALC_FUEL@d", "CALC_CONS@d", "010D", "010C", "0104", "CALC_PEDAL"),
         "Performance" to listOf("010C", "010D", "CALC_POWER", "CALC_TORQUE", "CALC_BOOST", "CALC_PEDAL", "010F", "0105"),
         "Temperatures" to listOf("0105@d", "OIL_TEMP@d", "010F", "0146", "013C", "OIL_PRESS"),

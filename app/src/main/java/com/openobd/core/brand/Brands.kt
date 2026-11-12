@@ -156,6 +156,12 @@ val GM_DPF_PIDS = listOf(
 
 private const val GM_SRC = "GM ECM, OBDb (CC BY-SA 4.0)"
 
+/** GM diesel engine computers' boost pressure, asked for and measured (Cruze / Astra J CDTI ...; OBDb), in kPa absolute. */
+val GM_DIESEL_PIDS = listOf(
+    CustomPid("gm_boost_target", "Boost pressure asked for (GM)", "Boost target", "22328A", "(A*256+B)/100", 0.0, 300.0, "kPa", "7E0", source = GM_SRC),
+    CustomPid("gm_boost_actual", "Boost pressure measured (GM)", "Boost actual", "2220E3", "(A*256+B)/100", 0.0, 300.0, "kPa", "7E0", source = GM_SRC),
+)
+
 data class Brand(val id: String, val name: String, val family: BrandFamily, val wmis: List<String>)
 
 private fun m(name: String, short: String, tx: Int, rx: Int, cat: ModuleCategory, secondary: Boolean = false) =
@@ -344,7 +350,7 @@ object Families {
         "GMLAN physical addressing. Modules that do not speak UDS are read with the GMLAN service (\$A9) and cleared with \$04. " +
             "Global B vehicles (2020+) may block access through the gateway.",
         discoveryRanges = listOf(0x240..0x25F to "6XX", 0x700..0x7F7 to "7XX"),
-        builtinPids = GM_OIL_PIDS + GM_TYRE_PIDS + GM_SERVICE_PIDS + GM_DPF_PIDS,
+        builtinPids = GM_OIL_PIDS + GM_TYRE_PIDS + GM_SERVICE_PIDS + GM_DPF_PIDS + GM_DIESEL_PIDS,
     )
 
     /** Opel / Vauxhall on GM's Global A architecture (Astra H/J/K, Insignia A, Corsa D/E, Zafira B/C, Meriva B, Mokka). */
@@ -365,7 +371,7 @@ object Families {
             "reachable with an HS/MS-CAN switch adapter; some body modules use single-wire CAN (pin 1), which ELM327 adapters cannot reach.",
         secondaryBus = OPEL_MS,
         discoveryRanges = listOf(0x240..0x25F to "6XX", 0x700..0x7F7 to "7XX"),
-        builtinPids = GM_OIL_PIDS + GM_TYRE_PIDS + GM_SERVICE_PIDS + GM_DPF_PIDS,
+        builtinPids = GM_OIL_PIDS + GM_TYRE_PIDS + GM_SERVICE_PIDS + GM_DPF_PIDS + GM_DIESEL_PIDS,
     )
 
     val STELLANTIS = BrandFamily("stellantis", "Stellantis / FCA / PSA", obdBase,

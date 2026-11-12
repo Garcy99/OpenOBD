@@ -25,4 +25,16 @@ class MonthlyPdfDeviceTest {
         val head = f.readBytes().take(5).toByteArray().toString(Charsets.US_ASCII)
         assertTrue("$head ${f.length()}", head == "%PDF-" && f.length() > 1000)
     }
+
+    @Test
+    fun writesTheKilometreReport() {
+        val context = InstrumentationRegistry.getInstrumentation().targetContext
+        val now = System.currentTimeMillis()
+        // Enough trips for a second page.
+        val trips = (0 until 80).map { TripRecord(id = "r$it", vehicleId = "c", start = now - it * 3600_000L, end = now - it * 3600_000L + 1800_000,
+            distanceKm = 12.0 + it, fuelL = 0.8, cost = 1.2, name = if (it % 3 == 0) "Office" else "", purpose = if (it % 2 == 0) "work" else "personal") }
+        val f = com.openobd.ui.screens.writeTripReportPdf(context, trips, "Kilometre report", "Opel Astra", UnitSystem.METRIC)
+        val head = f.readBytes().take(5).toByteArray().toString(Charsets.US_ASCII)
+        assertTrue("$head ${f.length()}", head == "%PDF-" && f.length() > 1000)
+    }
 }

@@ -1,0 +1,4 @@
+• Viajes a prueba de cierres: el viaje en curso se guarda cada minuto y, si la app se cierra, se recupera al abrirla
+• En Directo se ve si está grabando (km y tiempo) y aviso "Viaje guardado" al terminar
+• Unir viajes cortados a trozos (sugerencias automáticas o eligiendo varios), marcar trabajo/personal e informe mensual de km en CSV o PDF
+• Relojes "Diésel (Opel / GM)": turbo pedido y real, raíl, EGR y filtro de partículas

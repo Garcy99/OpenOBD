@@ -144,6 +144,11 @@ class OpenObdApp : Application() {
             container.sync.syncIfConnected(force = true)
         }
         keepWidgetUpdated()
+        // A trip left behind when the app was closed mid-drive is saved as it was at its last checkpoint.
+        container.scope.launch {
+            while (!container.garage.loaded) kotlinx.coroutines.delay(100)
+            runCatching { container.session.recoverTrip() }
+        }
         notifySavedTrips()
         notifyRegenerations()
         rememberParking()
@@ -168,8 +173,7 @@ class OpenObdApp : Application() {
     private fun notifySavedTrips() {
         container.scope.launch {
             container.session.savedTrips.collect { t ->
-                val st = container.settings.settings.value
-                if (!st.autoTrips) return@collect
+                // Every saved trip is told (automatic or not), so it is clear it was not lost.
                 val nm = getSystemService(android.app.NotificationManager::class.java) ?: return@collect
                 if (android.os.Build.VERSION.SDK_INT >= 26) nm.createNotificationChannel(
                     android.app.NotificationChannel("trips", com.openobd.ui.tr("Trip saved"), android.app.NotificationManager.IMPORTANCE_DEFAULT))

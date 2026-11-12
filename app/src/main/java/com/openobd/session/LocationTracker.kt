@@ -57,6 +57,9 @@ class LocationTracker(private val context: Context) {
 
     fun takePoints(): List<TrackPoint> = synchronized(points) { points.toList().also { points.clear() } }
 
+    /** The route so far, without taking it (for the trip checkpoint). */
+    fun peekPoints(): List<TrackPoint> = synchronized(points) { points.toList() }
+
     /** Used by demo mode so trips have a route to show. */
     fun addSynthetic(p: TrackPoint) = synchronized(points) { points += p }
 }

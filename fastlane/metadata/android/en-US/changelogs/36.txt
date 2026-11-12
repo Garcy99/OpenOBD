@@ -1,0 +1,4 @@
+• Crash-proof trips: the trip in progress is saved every minute and recovered if the app is closed
+• Live shows when a trip is being recorded (km and time), and a "Trip saved" notice at the end
+• Join trips cut in pieces (suggested, or pick several), mark work/personal, monthly km report as CSV or PDF
+• "Diesel (Opel / GM)" gauges: boost asked for and measured, rail pressure, EGR and particulate filter

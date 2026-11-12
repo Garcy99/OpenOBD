@@ -66,6 +66,29 @@ class GmDpfTest {
         assertNull(other.state.tempC)
     }
 
+    @Test fun `the diesel gauges take the standard PIDs first and GM's own values otherwise`() {
+        val gm = (GM_DPF_PIDS + com.openobd.core.brand.GM_DIESEL_PIDS).map { it.toSensor() }
+        val v = com.openobd.core.obd.VirtualSensors
+        // An Astra J that reports neither the boost control PID nor the filter PIDs.
+        val astra = setOf(0x0B, 0x0C, 0x0D, 0x23, 0x2C)
+        assertEquals("X_gm_boost_target", v.resolve("BOOST_TARGET", astra, gm))
+        assertEquals("X_gm_boost_actual", v.resolve("BOOST_ACTUAL", astra, gm))
+        assertEquals("X_gm_dpf_soot", v.resolve("DPF_SOOT", astra, gm))
+        assertEquals("X_gm_dpf_inlet_t", v.resolve("DPF_TEMP", astra, gm))
+        assertEquals("X_gm_dpf_km", v.resolve("DPF_KM", astra, gm))
+        // A car with the standard PIDs uses them.
+        val modern = astra + setOf(0x70, 0x8B, 0x7C)
+        assertEquals("0170_AC", v.resolve("BOOST_TARGET", modern, gm))
+        assertEquals("0170_AS", v.resolve("BOOST_ACTUAL", modern, gm))
+        assertEquals("018B_T", v.resolve("DPF_SOOT", modern, gm))
+        assertEquals("017C_I", v.resolve("DPF_TEMP", modern, gm))
+        // Another make without either: the boost from the manifold pressure, no filter values.
+        assertEquals("010B", v.resolve("BOOST_ACTUAL", astra, emptyList()))
+        assertNull(v.resolve("DPF_SOOT", astra, emptyList()))
+        // Boost in hundredths of a kPa: 0x4E20 = 20000 -> 200 kPa.
+        assertEquals(200.0, Equation(com.openobd.core.brand.GM_DIESEL_PIDS[0].equation).evaluate(intArrayOf(0x4E, 0x20))!!, 1e-9)
+    }
+
     @Test fun `the helper sees the regeneration from the engine's temperature`() {
         val m = RegenMonitor()
         val s = m.onCycle(mapOf(RegenWatch.GM_INLET_TEMP to 610.0), 0)

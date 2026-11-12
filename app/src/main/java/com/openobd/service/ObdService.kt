@@ -78,6 +78,11 @@ class ObdService : LifecycleService() {
             while (true) {
                 val s = session.state.value
                 if (s !is ConnectionState.Connected) {
+                    // While the trip waits for a lost link, the notification says so (and that it is not lost).
+                    if (session.tripPending && session.tripInProgress) {
+                        val km = session.trip.stats.value.distanceKm
+                        runCatching { nm.notify(NOTIFICATION_ID, build(com.openobd.ui.tr("Link lost: the trip is kept until it comes back (%1\$s)", "%.1f km".format(km)))) }
+                    }
                     if (autoJob?.isActive == true || s is ConnectionState.Connecting || session.reconnecting || session.tripPending) { delay(1000); continue }
                     awake.release()
                     stopSelf(); break
@@ -92,6 +97,8 @@ class ObdService : LifecycleService() {
                     speed?.let { "%.0f km/h".format(it) },
                     s.vehicle.voltage?.let { "%.1f V".format(it) },
                     if (session.recording.value) "● recording" else null,
+                    // The drive being recorded as a trip, and how far it has gone.
+                    if (session.tripInProgress) com.openobd.ui.tr("Trip %1\$s", "%.1f km".format(session.trip.stats.value.distanceKm)) else null,
                 )
                 nm.notify(NOTIFICATION_ID, build(parts.joinToString(" · ").ifEmpty { s.vehicle.elm.protocol.label }))
                 delay(3000)

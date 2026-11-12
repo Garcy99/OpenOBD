@@ -157,6 +157,25 @@ class GarageRepository(context: Context) {
 
     suspend fun updateTrip(id: String, transform: (TripRecord) -> TripRecord) = update { d -> d.copy(trips = d.trips.map { if (it.id == id) transform(it) else it }) }
 
+    /**
+     * Joins [ids] (trips of one car) into one trip with their routes one after the other; the pieces are removed.
+     * Returns the joined trip, or null when fewer than two of them exist.
+     */
+    suspend fun mergeTrips(ids: Collection<String>): TripRecord? {
+        val pieces = data.value.trips.filter { it.id in ids }
+        if (pieces.size < 2 || pieces.map { it.vehicleId }.distinct().size != 1) return null
+        val tracks = pieces.map { loadTrack(it.id) }
+        val merged = com.openobd.core.trip.TripMerge.merge(pieces, newId())
+        val track = com.openobd.core.trip.TripMerge.mergeTracks(tracks)
+        withContext(Dispatchers.IO) { if (track.isNotEmpty()) trackFile(merged.id).writeText(json.encodeToString(track)) }
+        val gone = pieces.map { it.id }.toSet()
+        update { d -> d.copy(trips = (listOf(merged.copy(trackPoints = track.size)) + d.trips.filter { it.id !in gone }).sortedByDescending { it.start }) }
+        withContext(Dispatchers.IO) { gone.forEach { trackFile(it).delete() } }
+        return data.value.trips.firstOrNull { it.id == merged.id }
+    }
+
+    suspend fun setTripPurpose(id: String, purpose: String) = updateTrip(id) { it.copy(purpose = purpose) }
+
     suspend fun deleteTrip(id: String) {
         update { d -> d.copy(trips = d.trips.filter { it.id != id }) }
         withContext(Dispatchers.IO) { trackFile(id).delete() }

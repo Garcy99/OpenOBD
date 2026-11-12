@@ -27,4 +27,6 @@ class EngineOffDetector(private val offMs: Long = 3 * 60_000L, private val never
 val autoTripTexts = listOf(
     "Automatic trip", "Waiting for the car…", "Connecting to the car…", "Could not connect to the adapter. The trip was not recorded.",
     "Trip saved", "Automatic trips",
+    // The trip being recorded, in the notification.
+    "Link lost: the trip is kept until it comes back (%1\$s)", "Trip %1\$s",
 )

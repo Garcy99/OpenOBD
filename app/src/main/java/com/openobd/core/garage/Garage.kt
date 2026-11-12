@@ -306,10 +306,15 @@ data class TripRecord(
     /** Pump price (per litre) [cost] was worked out with; [fuelPriceLocal]: from the stations where the trip was. */
     val fuelPrice: Double? = null,
     val fuelPriceLocal: Boolean = false,
+    /** What the drive was for: [PURPOSE_WORK], [PURPOSE_PERSONAL] or blank (not said). */
+    val purpose: String = "",
 ) {
     val eco: com.openobd.core.trip.EcoStats get() = com.openobd.core.trip.EcoStats(harshAccel, harshBrake, highRpmS, longIdleS, movingS + idleS, distanceKm)
     val avgL100: Double? get() = if (fuelL != null && distanceKm > 0.5) fuelL / distanceKm * 100 else null
 }
+
+const val PURPOSE_WORK = "work"
+const val PURPOSE_PERSONAL = "personal"
 
 @Serializable
 data class GarageData(

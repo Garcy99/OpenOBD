@@ -41,7 +41,10 @@ import com.openobd.transport.BluetoothClassicTransport
 import com.openobd.transport.WifiTransport
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.withContext
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.withTimeoutOrNull
@@ -119,6 +122,8 @@ class ObdSession(
     @Volatile private var lostAt: Long? = null
     /** A trip waiting for a lost link to come back (kept alive meanwhile, saved when it does not). */
     val tripPending: Boolean get() = tripEnd?.isActive == true
+    /** A trip being recorded (connected, or waiting for a lost link). */
+    val tripInProgress: Boolean get() = tripActive
     private val _state = MutableStateFlow<ConnectionState>(ConnectionState.Disconnected)
     val state: StateFlow<ConnectionState> = _state
 
@@ -359,9 +364,12 @@ class ObdSession(
             // The same trip goes on: a lost link no longer cuts a drive in pieces.
             debug.event("Link back: the trip goes on")
         } else {
+            // A trip the app could not save last time (closed mid-drive) is kept before this one starts.
+            runCatching { recoverTrip() }
             trip.reset()
             tripStart = System.currentTimeMillis()
             tripActive = true
+            startCheckpoints()
             engineOff.reset(tripStart)
             tripFuelPrice.value = null
             if (s.connectionType != ConnectionType.DEMO) scope.launch { tripFuelPrice.value = runCatching { fuelPriceAt(null, null) }.getOrNull() }
@@ -476,6 +484,17 @@ class ObdSession(
 
     /** For tests: the link drops as if the adapter or the Wi-Fi went away. */
     internal fun dropLinkForTest() { transport?.let { t -> t.onDisconnected?.invoke(null) } }
+
+    /** For tests: the app dies mid-drive (nothing is saved, the checkpoint stays behind). */
+    internal suspend fun dieForTest() {
+        checkpointJob?.cancel(); checkpointJob = null
+        tripActive = false
+        live.stop()
+        runCatching { transport?.close() }
+        transport = null; client = null; elm = null
+        location.takePoints()
+        _state.value = ConnectionState.Disconnected
+    }
 
     /** For tests: the demo adapter is pulled out (the link drops and it cannot be found again). */
     @Volatile internal var demoUnplugged = false
@@ -660,44 +679,101 @@ class ObdSession(
         if (km > 0) garage.updateActive { it.copy(odometerKm = km, odometerUpdatedAt = System.currentTimeMillis(), odometerFromCar = true) }
     }
 
+    /** The trip so far as it would be saved (also written every minute, in case the app is closed mid-drive). */
+    private fun tripRecord(id: String, endAt: Long, trackPoints: Int): com.openobd.core.garage.TripRecord? {
+        val vehicle = garage.data.value.active ?: return null
+        val st = trip.stats.value
+        val price = settingsRepo.settings.value.fuelPricePerL
+        val fuel = if (st.hasFuelData) st.fuelL else null
+        val local = tripFuelPrice.value
+        return com.openobd.core.garage.TripRecord(
+            id = id, vehicleId = vehicle.id, start = tripStart, end = maxOf(endAt, tripStart),
+            distanceKm = st.distanceKm, fuelL = fuel, maxSpeed = st.maxSpeed, avgSpeed = st.avgSpeed, movingS = st.movingS,
+            idleS = st.idleS, maxRpm = st.maxRpm, cost = fuel?.let { f -> if (price > 0) f * price else null }, trackPoints = trackPoints,
+            harshAccel = st.eco.harshAccel, harshBrake = st.eco.harshBrake, highRpmS = st.eco.highRpmS, longIdleS = st.eco.longIdleS,
+            ecoScore = st.ecoScore,
+            fuelModel = DerivedSensors.FUEL_MODEL, fuelCalibration = live.params.calibration,
+            fuelMeasured = 0x5E in (this.vehicle?.supportedPids ?: emptySet()),
+            fuelPrice = local ?: price.toDouble().takeIf { it > 0 }, fuelPriceLocal = local != null,
+        ).let { t -> if (local != null && fuel != null) t.copy(cost = fuel * local) else t }
+    }
+
     private suspend fun finishTrip() {
         if (!tripActive) return
         tripActive = false
+        checkpointJob?.cancel(); checkpointJob = null
         val endAt = lostAt ?: System.currentTimeMillis()
         lostAt = null
         location.stop()
         val st = trip.stats.value
         val track = location.takePoints()
-        val vehicle = garage.data.value.active ?: return
-        if (st.distanceKm < 0.2 && st.movingS < 60) return
-        client?.takeIf { 0xA6 in (this.vehicle?.supportedPids ?: emptySet()) }?.let { runCatching { readOdometer(it) } }
-        val price = settingsRepo.settings.value.fuelPricePerL
-        val fuel = if (st.hasFuelData) st.fuelL else null
-        val local = tripFuelPrice.value
-        val tripId = garage.newId()
-        garage.saveTrip(
-            com.openobd.core.garage.TripRecord(
-                id = tripId, vehicleId = vehicle.id, start = tripStart, end = maxOf(endAt, tripStart),
-                distanceKm = st.distanceKm, fuelL = fuel, maxSpeed = st.maxSpeed, avgSpeed = st.avgSpeed, movingS = st.movingS,
-                idleS = st.idleS, maxRpm = st.maxRpm, cost = fuel?.let { f -> if (price > 0) f * price else null }, trackPoints = track.size,
-                harshAccel = st.eco.harshAccel, harshBrake = st.eco.harshBrake, highRpmS = st.eco.highRpmS, longIdleS = st.eco.longIdleS,
-                ecoScore = st.ecoScore,
-                fuelModel = DerivedSensors.FUEL_MODEL, fuelCalibration = live.params.calibration,
-                fuelMeasured = 0x5E in (this.vehicle?.supportedPids ?: emptySet()),
-                fuelPrice = local ?: price.toDouble().takeIf { it > 0 }, fuelPriceLocal = local != null,
-            ).let { t -> if (local != null && fuel != null) t.copy(cost = fuel * local) else t },
-            track,
-        )
-        garage.data.value.trips.firstOrNull { it.id == tripId }?.let { _savedTrips.tryEmit(it) }
-        // The price where the trip ended (from the stations there), when it can be had: the trip's real cost.
-        if (fuel != null) scope.launch {
-            val end = track.lastOrNull()
-            val p = runCatching { fuelPriceAt(end?.lat, end?.lon) }.getOrNull() ?: return@launch
-            garage.updateTrip(tripId) { it.copy(cost = fuel * p, fuelPrice = p, fuelPriceLocal = true) }
+        try {
+            if (garage.data.value.active == null || !worthSaving(st.distanceKm, st.movingS)) return
+            client?.takeIf { 0xA6 in (this.vehicle?.supportedPids ?: emptySet()) }?.let { runCatching { readOdometer(it) } }
+            val record = tripRecord(garage.newId(), endAt, track.size) ?: return
+            saveTripRecord(record, track)
+            // The price where the trip ended (from the stations there), when it can be had: the trip's real cost.
+            val fuel = record.fuelL
+            if (fuel != null) scope.launch {
+                val end = track.lastOrNull()
+                val p = runCatching { fuelPriceAt(end?.lat, end?.lon) }.getOrNull() ?: return@launch
+                garage.updateTrip(record.id) { it.copy(cost = fuel * p, fuelPrice = p, fuelPriceLocal = true) }
+            }
+        } finally {
+            // Saved (or not worth saving): nothing to recover any more.
+            withContext(Dispatchers.IO) { checkpoints.clear() }
         }
-        // Without an odometer PID, keep the vehicle's odometer roughly current from trip distance.
-        val v = garage.data.value.active
-        if (v != null && !v.odometerFromCar && v.odometerKm != null) garage.updateVehicle(v.id) { it.copy(odometerKm = it.odometerKm!! + st.distanceKm, odometerUpdatedAt = System.currentTimeMillis()) }
+    }
+
+    /** Stores a finished trip and keeps the car's odometer roughly current without an odometer PID. */
+    private suspend fun saveTripRecord(record: com.openobd.core.garage.TripRecord, track: List<com.openobd.core.garage.TrackPoint>) {
+        garage.saveTrip(record, track)
+        garage.data.value.trips.firstOrNull { it.id == record.id }?.let { _savedTrips.tryEmit(it) }
+        val v = garage.data.value.vehicles.firstOrNull { it.id == record.vehicleId }
+        if (v != null && !v.odometerFromCar && v.odometerKm != null) garage.updateVehicle(v.id) { it.copy(odometerKm = it.odometerKm!! + record.distanceKm, odometerUpdatedAt = System.currentTimeMillis()) }
+    }
+
+    private fun worthSaving(km: Double, movingS: Double) = km >= 0.2 || movingS >= 60
+
+    // ------------------------------------------------------------------ trips that survive the app being closed
+
+    private val checkpoints = com.openobd.data.TripCheckpoints(context)
+    @Volatile private var checkpointJob: Job? = null
+    private val recoverLock = kotlinx.coroutines.sync.Mutex()
+
+    /** Every minute while a trip is recorded (also while it waits for a lost link), the trip so far goes to storage. */
+    private fun startCheckpoints() {
+        checkpointJob?.cancel()
+        checkpointJob = scope.launch {
+            while (isActive) {
+                delay(CHECKPOINT_MS)
+                if (!tripActive) break
+                writeCheckpoint()
+            }
+        }
+    }
+
+    internal suspend fun writeCheckpoint() {
+        if (!tripActive) return
+        val track = location.peekPoints()
+        val record = tripRecord("checkpoint", lostAt ?: System.currentTimeMillis(), track.size) ?: return
+        withContext(Dispatchers.IO) { runCatching { checkpoints.write(record, track) }.onFailure { debug.error("Trip checkpoint not written", it) } }
+    }
+
+    /**
+     * A trip left behind when the app was closed mid-drive: saved now as it was at its last checkpoint. Called when the
+     * app starts and before a new trip begins (never while this session is recording one).
+     */
+    suspend fun recoverTrip(): com.openobd.core.garage.TripRecord? = recoverLock.withLock {
+        if (tripActive) return null
+        val cp = withContext(Dispatchers.IO) { checkpoints.read() } ?: run { withContext(Dispatchers.IO) { checkpoints.clear() }; return null }
+        withContext(Dispatchers.IO) { checkpoints.clear() }
+        val t = cp.trip
+        if (!worthSaving(t.distanceKm, t.movingS) || garage.data.value.vehicles.none { it.id == t.vehicleId }) return null
+        val record = t.copy(id = garage.newId(), trackPoints = cp.track.size)
+        debug.event("Recovered a trip left by a closed app: %.1f km".format(t.distanceKm))
+        saveTripRecord(record, cp.track)
+        record
     }
 
     /** Demo mode has no real GPS; drive a gentle loop so the trip map can be tried. */
@@ -808,6 +884,8 @@ class ObdSession(
 /** Messages about the phone bridge (English keys, translated by the app). */
 /** How long a trip waits for a lost link to come back before it is saved (and a new one starts). */
 const val TRIP_GRACE_MS = 5 * 60_000L
+/** How often the trip in progress is written to storage. */
+const val CHECKPOINT_MS = 60_000L
 const val CAR_SILENT = "The adapter answers but the car does not (engine off?)."
 private val CAR_SILENT_ERRORS = setOf(ElmError.UNABLE_TO_CONNECT, ElmError.NO_DATA, ElmError.CAN_ERROR, ElmError.BUS_INIT_ERROR, ElmError.BUS_ERROR)
 

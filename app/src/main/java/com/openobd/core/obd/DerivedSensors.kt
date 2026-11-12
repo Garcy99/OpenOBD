@@ -144,7 +144,16 @@ object VirtualSensors {
     val TYRE_RL = SensorDef("TYRE_RL", -3, "Tyre pressure rear left", "Tyre RL", ObdUnit.BAR, 0.0, 4.0, V, 2) { null }
     val TYRE_RR = SensorDef("TYRE_RR", -3, "Tyre pressure rear right", "Tyre RR", ObdUnit.BAR, 0.0, 4.0, V, 2) { null }
     val tyres = listOf(TYRE_FL, TYRE_FR, TYRE_RL, TYRE_RR)
-    val all = listOf(OIL_TEMP, OIL_PRESS) + tyres
+    // Diesel: the standard PIDs when the car has them, else the engine computer's own values (GM / Opel).
+    private val A = SensorCategory.AIR
+    val BOOST_TARGET = SensorDef("BOOST_TARGET", -3, "Boost pressure asked for (absolute)", "Boost target", ObdUnit.KPA, 0.0, 300.0, A, 0) { null }
+    val BOOST_ACTUAL = SensorDef("BOOST_ACTUAL", -3, "Boost pressure measured (absolute)", "Boost actual", ObdUnit.KPA, 0.0, 300.0, A, 0) { null }
+    private val E = SensorCategory.EMISSIONS
+    val DPF_SOOT = SensorDef("DPF_SOOT", -3, "Particulate filter soot load", "DPF load", ObdUnit.PERCENT, 0.0, 100.0, E, 0) { null }
+    val DPF_TEMP = SensorDef("DPF_TEMP", -3, "Particulate filter inlet temperature", "DPF temp", ObdUnit.CELSIUS, 0.0, 800.0, E, 0) { null }
+    val DPF_KM = SensorDef("DPF_KM", -3, "Distance since the last filter regeneration", "Since regen", ObdUnit.KM, 0.0, 1500.0, E, 0) { null }
+    val diesel = listOf(BOOST_TARGET, BOOST_ACTUAL, DPF_SOOT, DPF_TEMP, DPF_KM)
+    val all = listOf(OIL_TEMP, OIL_PRESS) + tyres + diesel
     val byKey = all.associateBy { it.key }
 
     private val tyre = Regex("tire|tyre|reifen|neum|pneu|gomm", RegexOption.IGNORE_CASE)
@@ -167,6 +176,8 @@ object VirtualSensors {
         return short.find(name.uppercase())?.value?.let { if (it == "LF" || it == "RF" || it == "LR") "${it[1]}${it[0]}" else it }
     }
 
+    private fun maker(key: String, custom: Collection<SensorDef>) = key.takeIf { k -> custom.any { it.key == k } }
+
     private fun tyreSensor(wheel: String, custom: Collection<SensorDef>) =
         custom.firstOrNull { tyre.containsMatchIn(it.name) && pressure.containsMatchIn(it.name) && !notTheWheel.containsMatchIn(it.name) && wheelOf(it.name) == wheel }?.key
 
@@ -181,6 +192,11 @@ object VirtualSensors {
         TYRE_FR.key -> tyreSensor("FR", custom)
         TYRE_RL.key -> tyreSensor("RL", custom)
         TYRE_RR.key -> tyreSensor("RR", custom)
+        BOOST_TARGET.key -> "0170_AC".takeIf { 0x70 in supported } ?: maker("X_gm_boost_target", custom)
+        BOOST_ACTUAL.key -> "0170_AS".takeIf { 0x70 in supported } ?: maker("X_gm_boost_actual", custom) ?: "010B".takeIf { 0x0B in supported }
+        DPF_SOOT.key -> "018B_T".takeIf { 0x8B in supported } ?: maker("X_gm_dpf_soot", custom)
+        DPF_TEMP.key -> "017C_I".takeIf { 0x7C in supported } ?: maker("X_gm_dpf_inlet_t", custom)
+        DPF_KM.key -> maker("X_gm_dpf_km", custom)
         else -> key
     }
 }
