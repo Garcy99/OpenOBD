@@ -136,6 +136,12 @@ class ObdSession(
     val engineOff = EngineOffDetector()
     /** True while connected for an automatic trip (started by the car's Bluetooth): ends when the engine stays off. */
     @Volatile var autoTrip = false
+    /** Refuels the tank gauge noticed (litres added, full or not), for the app to propose as fill-ups. */
+    data class RefuelDetected(val vehicleId: String, val at: Long, val litres: Double, val full: Boolean, val odometerKm: Double?)
+    private val _refuels = kotlinx.coroutines.flow.MutableSharedFlow<RefuelDetected>(extraBufferCapacity = 2)
+    val refuels: kotlinx.coroutines.flow.SharedFlow<RefuelDetected> = _refuels
+    internal fun refuelForTest(r: RefuelDetected) { _refuels.tryEmit(r) }
+
     private val _savedTrips = kotlinx.coroutines.flow.MutableSharedFlow<com.openobd.core.garage.TripRecord>(extraBufferCapacity = 4)
     /** Every trip as it is saved (for the "trip saved" notification). */
     val savedTrips: kotlinx.coroutines.flow.SharedFlow<com.openobd.core.garage.TripRecord> = _savedTrips
@@ -471,6 +477,15 @@ class ObdSession(
                 fills.filter { lastFull != null && it.date > lastFull.date }.sumOf { it.liters },
                 trips.filter { lastFull != null && it.start > lastFull.date }.sumOf { it.fuelL ?: 0.0 })
         live.tank = com.openobd.core.obd.FuelTankEstimator(cap, start, l100)
+        live.onRefuel = { r ->
+            if (r.litres >= com.openobd.data.RefuelSuggestions.MIN_LITRES) {
+                val v = garage.data.value.active
+                if (v != null) {
+                    debug.event("Refuel seen by the tank gauge: %.1f L%s".format(r.litres, if (r.full) " (full)" else ""))
+                    _refuels.tryEmit(RefuelDetected(v.id, System.currentTimeMillis(), r.litres, r.full, v.odometerKm))
+                }
+            }
+        }
         // Always followed while connected, so the estimate keeps up even when no gauge shows it.
         live.subscribe("tank", listOf(DerivedSensors.TANK.key))
     }

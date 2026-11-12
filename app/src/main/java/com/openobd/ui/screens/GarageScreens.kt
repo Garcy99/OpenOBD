@@ -443,6 +443,20 @@ fun FuelLogScreen(onBack: () -> Unit) {
     val g by app.garage.data.collectAsStateWithLifecycle()
     val v = g.active
     var editing by remember { mutableStateOf<FuelEntry?>(null) }
+    // A refuel the tank gauge noticed: proposed ready to confirm (opened once by itself).
+    val pending by app.refuelSuggestions.pending.collectAsStateWithLifecycle()
+    val suggestion = pending?.takeIf { it.vehicleId == v?.id }
+    var fromSuggestion by remember { mutableStateOf<com.openobd.data.RefuelSuggestions.Suggestion?>(null) }
+    var shownSuggestion by androidx.compose.runtime.saveable.rememberSaveable { mutableStateOf(0L) }
+    val proposeIt: (com.openobd.data.RefuelSuggestions.Suggestion) -> Unit = { sg ->
+        fromSuggestion = sg
+        editing = FuelEntry(app.garage.newId(), sg.vehicleId, sg.at, sg.odometerKm ?: v?.odometerKm ?: 0.0, Math.round(sg.litres * 10) / 10.0,
+            sg.pricePerL?.let { Math.round(sg.litres * it * 100) / 100.0 } ?: 0.0, sg.full)
+    }
+    LaunchedEffect(suggestion?.at) {
+        val sg = suggestion ?: return@LaunchedEffect
+        if (shownSuggestion != sg.at && editing == null) { shownSuggestion = sg.at; proposeIt(sg) }
+    }
     Scaffold(
         topBar = { ScreenTopBar(tr("Fuel log"), onBack) },
         floatingActionButton = {
@@ -475,6 +489,9 @@ fun FuelLogScreen(onBack: () -> Unit) {
                         style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
             }
+            suggestion?.let { sg ->
+                item { RefuelSuggestionCard(sg, settings.units, onLog = { proposeIt(sg) }, onDismiss = { app.refuelSuggestions.clear() }) }
+            }
             if (entries.isEmpty()) item { Text(tr("No fill-ups yet."), color = MaterialTheme.colorScheme.onSurfaceVariant) }
             items(entries, key = { it.id }) { e ->
                 SectionCard(Modifier.clickable { editing = e }) {
@@ -503,11 +520,37 @@ fun FuelLogScreen(onBack: () -> Unit) {
             ?: com.openobd.core.fuel.FuelPricesEs.localPrice(list.stations, here.latitude, here.longitude, pumpFuel)?.let { it to "" }
     }
     editing?.let { e ->
-        FuelEditor(e, isNew = g.fuel.none { it.id == e.id }, units = settings.units, defaultPrice = herePrice?.first ?: settings.fuelPricePerL.toDouble(),
-            priceSource = herePrice?.let { (p, brand) -> if (brand.isNotEmpty()) tr("%1\$s/L at %2\$s, where you are", euros(p), brand) else tr("%1\$s/L, the usual price around you", euros(p)) },
-            onDismiss = { editing = null },
-            onSave = { editing = null; scope.launch { app.garage.upsertFuel(it) } },
+        // From a detected refuel: the price where it happened (not where the phone is now).
+        val sg = fromSuggestion?.takeIf { it.at == e.date }
+        FuelEditor(e, isNew = g.fuel.none { it.id == e.id }, units = settings.units,
+            defaultPrice = sg?.pricePerL ?: herePrice?.first ?: settings.fuelPricePerL.toDouble(),
+            priceSource = if (sg?.pricePerL != null) (if (sg.station.isNotEmpty()) tr("%1\$s/L at %2\$s, where you refuelled", euros(sg.pricePerL), sg.station)
+                else tr("%1\$s/L, the usual price where you refuelled", euros(sg.pricePerL)))
+                else herePrice?.let { (p, brand) -> if (brand.isNotEmpty()) tr("%1\$s/L at %2\$s, where you are", euros(p), brand) else tr("%1\$s/L, the usual price around you", euros(p)) },
+            onDismiss = { editing = null; fromSuggestion = null },
+            onSave = { editing = null; if (sg != null) { app.refuelSuggestions.clear(); fromSuggestion = null }; scope.launch { app.garage.upsertFuel(it) } },
             onDelete = { editing = null; scope.launch { app.garage.deleteFuel(e.id) } })
+    }
+}
+
+/** A refuel the tank gauge noticed, to log as a fill-up with one tap (or dismiss). */
+@Composable
+fun RefuelSuggestionCard(s: com.openobd.data.RefuelSuggestions.Suggestion, units: UnitSystem, onLog: () -> Unit, onDismiss: () -> Unit) {
+    SectionCard(Modifier.testTag("refuelSuggestion")) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Icon(Icons.Default.LocalGasStation, null, tint = com.openobd.ui.theme.Good)
+            Spacer(Modifier.width(10.dp))
+            Column(Modifier.weight(1f)) {
+                Text(tr("Refuel detected"), style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold)
+                Text(fmtDateTime(s.at) + " · " + tr("about %1\$s", fmtLiters(s.litres, units)) + (if (s.full) " · " + tr("Full tank") else "") +
+                    (s.pricePerL?.let { " · " + euros(it) + "/L" } ?: "") + (if (s.station.isNotEmpty()) " · " + s.station else ""),
+                    style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+        }
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
+            TextButton(onClick = onDismiss, modifier = Modifier.testTag("refuelDismiss")) { Text(tr("Dismiss")) }
+            androidx.compose.material3.Button(onClick = onLog, modifier = Modifier.testTag("refuelLog")) { Text(tr("Log it")) }
+        }
     }
 }
 

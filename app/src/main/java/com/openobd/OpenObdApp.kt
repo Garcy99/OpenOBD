@@ -32,6 +32,8 @@ class AppContainer(private val app: Application) {
     var terrain: suspend (List<com.openobd.core.garage.TrackPoint>, Int, (Int, Int) -> Unit) -> com.openobd.core.trip.Terrain? = { pts, detail, progress ->
         com.openobd.data.TerrainDownloader(app, "OpenOBD/${com.openobd.BuildConfig.VERSION_NAME} (Android; open source)").around(pts, detail, progress)
     }
+    /** Refuels the tank gauge noticed, waiting to be confirmed in the fuel log. */
+    val refuelSuggestions = com.openobd.data.RefuelSuggestions(app)
     /** Pump prices around the car (Spain). */
     val fuelPrices = com.openobd.data.FuelPriceRepository(app, "OpenOBD/${com.openobd.BuildConfig.VERSION_NAME} (Android; open source)")
     /** Aerial photos of an area (minLat, minLon, maxLat, maxLon) at about the given metres per pixel; replaceable in tests. */
@@ -150,6 +152,7 @@ class OpenObdApp : Application() {
             runCatching { container.session.recoverTrip() }
         }
         notifySavedTrips()
+        proposeRefuels()
         notifyRegenerations()
         rememberParking()
         readServiceLife()
@@ -184,6 +187,45 @@ class OpenObdApp : Application() {
                 runCatching {
                     nm.notify(t.id.hashCode(), androidx.core.app.NotificationCompat.Builder(this@OpenObdApp, "trips").setSmallIcon(R.drawable.ic_stat_car)
                         .setContentTitle(com.openobd.ui.tr("Trip saved")).setContentText(text).setContentIntent(open).setAutoCancel(true).build())
+                }
+            }
+        }
+    }
+
+    /**
+     * A refuel the tank gauge noticed becomes a fill-up ready to confirm: the litres added, whether it was filled up,
+     * the odometer and the price at the station the car is at. A notification takes the driver to it.
+     */
+    private fun proposeRefuels() {
+        container.scope.launch {
+            container.session.refuels.collect { r ->
+                if (com.openobd.data.RefuelSuggestions.alreadyLogged(container.garage.data.value.fuel, r.vehicleId, r.at)) return@collect
+                val st = container.settings.settings.value
+                // The price where the car is (it is still at the pump): the station's, else the usual one around.
+                val price: Pair<Double, String>? = if (!st.fuelPrices) null else runCatching {
+                    val here = com.openobd.data.CurrentLocation.get(this@OpenObdApp, maxAgeMs = 5 * 60_000L, timeoutMs = 15_000L) ?: return@runCatching null
+                    val fuel = com.openobd.data.FuelPriceRepository.fuelFor(st, container.session.diesel.isDiesel)
+                    val list = container.fuelPrices.around(here.latitude, here.longitude, 5.0) ?: return@runCatching null
+                    com.openobd.core.fuel.FuelPricesEs.near(list.stations, here.latitude, here.longitude, fuel, 5.0).firstOrNull()?.takeIf { it.km < 0.3 }
+                        ?.let { s -> s.price(fuel)!! to s.station.brand }
+                        ?: com.openobd.core.fuel.FuelPricesEs.localPrice(list.stations, here.latitude, here.longitude, fuel)?.let { it to "" }
+                }.getOrNull()
+                val s = com.openobd.data.RefuelSuggestions.Suggestion(r.vehicleId, r.at, r.litres, r.full, r.odometerKm,
+                    price?.first ?: st.fuelPricePerL.toDouble().takeIf { it > 0 }, price?.second.orEmpty())
+                container.refuelSuggestions.set(s)
+                val nm = getSystemService(android.app.NotificationManager::class.java) ?: return@collect
+                if (android.os.Build.VERSION.SDK_INT >= 26) nm.createNotificationChannel(
+                    android.app.NotificationChannel("trips", com.openobd.ui.tr("Trip saved"), android.app.NotificationManager.IMPORTANCE_DEFAULT))
+                val open = android.app.PendingIntent.getActivity(this@OpenObdApp, 4,
+                    Intent(this@OpenObdApp, MainActivity::class.java).putExtra(MainActivity.EXTRA_OPEN, com.openobd.ui.Routes.FUEL)
+                        .addFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP or Intent.FLAG_ACTIVITY_NEW_TASK),
+                    android.app.PendingIntent.FLAG_IMMUTABLE or android.app.PendingIntent.FLAG_UPDATE_CURRENT)
+                val text = com.openobd.ui.tr(com.openobd.data.RefuelSuggestions.NOTICE, "%.0f".format(r.litres)) +
+                    (s.pricePerL?.let { " · " + "%.3f €/L".format(it) + if (s.station.isNotEmpty()) " (${s.station})" else "" } ?: "")
+                runCatching {
+                    nm.notify(REFUEL_NOTIFICATION, androidx.core.app.NotificationCompat.Builder(this@OpenObdApp, "trips").setSmallIcon(R.drawable.ic_stat_car)
+                        .setContentTitle(com.openobd.ui.tr("Refuel detected")).setContentText(text)
+                        .setStyle(androidx.core.app.NotificationCompat.BigTextStyle().bigText(text)).setContentIntent(open).setAutoCancel(true).build())
                 }
             }
         }
@@ -349,5 +391,6 @@ class OpenObdApp : Application() {
     companion object {
         private const val REGEN_NOTIFICATION = 77
         private const val DRIVE_ALERT = 2000
+        private const val REFUEL_NOTIFICATION = 78
     }
 }

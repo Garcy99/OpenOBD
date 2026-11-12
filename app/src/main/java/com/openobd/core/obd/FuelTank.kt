@@ -17,13 +17,20 @@ class FuelTankEstimator(
     /** Usual consumption in L/100 km, for the range. */
     private val l100: Double? = null,
 ) {
-    data class Estimate(val pct: Double?, val litres: Double?, val rangeKm: Double?, val fromSensor: Boolean)
+    data class Estimate(
+        val pct: Double?, val litres: Double?, val rangeKm: Double?, val fromSensor: Boolean,
+        /** Set on the cycle a refuel is recognised: litres added, and whether the tank was filled up. */
+        val refuel: Refuel? = null,
+    )
+
+    data class Refuel(val litres: Double, val full: Boolean)
 
     private var estimateL: Double? = startL?.takeIf { capacityL != null }?.coerceIn(0.0, capacityL!!)
     private var estimatePct: Double? = null
     private var lastT: Long? = null
     private val window = ArrayDeque<Pair<Long, Double>>()
     private var refuelSince: Long? = null
+    private var refuelFromL: Double? = null
     private var stillSince: Long? = null
 
     /** The settled sensor level: the median of the last half minute (sloshing cancels out). */
@@ -52,18 +59,23 @@ class FuelTankEstimator(
                 e = sensorL
             }
             e -= burnt
+            var refuel: Refuel? = null
             if (sensorL != null) {
                 // A refuel: the settled level well above the estimate while standing still for a while.
                 if (still && sensorL > e + cap * 0.08) {
-                    if (refuelSince == null) refuelSince = now
-                    if (now - refuelSince!! > 20_000) { e = sensorL; refuelSince = null }
+                    // What was in the tank before (the estimate is pulled towards the new level while it settles).
+                    if (refuelSince == null) { refuelSince = now; refuelFromL = e }
+                    if (now - refuelSince!! > 20_000) {
+                        refuel = Refuel(sensorL - (refuelFromL ?: e), sensorL >= cap * FULL_SHARE)
+                        e = sensorL; refuelSince = null
+                    }
                 } else refuelSince = null
                 val tau = if (still) TAU_STILL_S else TAU_MOVING_S
                 e += (sensorL - e) * (dt / tau).coerceAtMost(1.0)
             }
             e = e.coerceIn(0.0, cap)
             estimateL = e
-            return Estimate(e / cap * 100, e, l100?.takeIf { it > 0.5 }?.let { e / it * 100 }, sensorL != null)
+            return Estimate(e / cap * 100, e, l100?.takeIf { it > 0.5 }?.let { e / it * 100 }, sensorL != null, refuel)
         }
         // Without the capacity: the level alone, steadied.
         val s = sensor ?: return null
@@ -81,6 +93,8 @@ class FuelTankEstimator(
         /** How fast the estimate gives way to the settled sensor: quickly when stopped, slowly while driving. */
         private const val TAU_STILL_S = 60.0
         private const val TAU_MOVING_S = 600.0
+        /** A level this high after a refuel counts as a full tank (the gauge rarely reads 100 %). */
+        private const val FULL_SHARE = 0.93
 
         /**
          * Litres in the tank by the fuel log: a full tank at the last fill-up, minus what the trips since burnt

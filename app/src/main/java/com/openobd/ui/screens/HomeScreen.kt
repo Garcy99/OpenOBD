@@ -190,6 +190,11 @@ fun HomeScreen(onNavigate: (String) -> Unit, onTab: (String) -> Unit, onLive: (I
             CarHero(state, onConnect = ::connect, onAdapter = { showAdapter = true }, onNavigate = onNavigate)
             DpfCard(onOpen = { onNavigate(Routes.DIESEL) })
             BatteryCard(onOpen = { onNavigate(Routes.BATTERY) })
+            // A refuel the tank gauge noticed, waiting to be logged.
+            val refuel by app.refuelSuggestions.pending.collectAsStateWithLifecycle()
+            refuel?.takeIf { it.vehicleId == car?.id }?.let { sg ->
+                RefuelSuggestionCard(sg, settings.units, onLog = { onNavigate(Routes.FUEL) }, onDismiss = { app.refuelSuggestions.clear() })
+            }
             if (state !is ConnectionState.Connected) ParkedCard()
             CarScoreCard(onDiagnose = { onTab(Routes.DIAGNOSTICS) })
             FuelNearbyCard(onOpen = { onNavigate(Routes.FUEL_PRICES) })

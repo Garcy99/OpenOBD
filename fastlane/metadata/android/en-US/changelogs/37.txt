@@ -1,0 +1,2 @@
+• Automatic refuels: the tank gauge notices when you fill up and the app proposes the fill-up already filled in (litres, full or not, odometer and the price at the station you are at). Just confirm it
+• A notice and a Home card; nothing is proposed if you already logged it by hand

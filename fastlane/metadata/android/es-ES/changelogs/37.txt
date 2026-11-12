@@ -1,0 +1,2 @@
+• Repostajes automáticos: el reloj del depósito detecta cuándo repostas y la app te propone el repostaje ya rellenado (litros, si llenaste, cuentakilómetros y el precio de la gasolinera donde estás). Solo tienes que confirmarlo
+• Aviso y tarjeta en Inicio; no se propone si ya lo apuntaste a mano

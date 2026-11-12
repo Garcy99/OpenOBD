@@ -130,4 +130,33 @@ class TripEditUiTest {
             tearDown(before)
         }
     }
+
+    @Test fun aRefuelSeenByTheTankGaugeIsProposed() {
+        val before = setUp()
+        try {
+            runBlocking { c.settings.update { it.copy(fuelPrices = false, fuelPricePerL = 1.5f) } }
+            c.session.refuelForTest(com.openobd.session.ObdSession.RefuelDetected("vEdit", System.currentTimeMillis(), 38.4, true, 123_456.0))
+            waitFor { c.refuelSuggestions.pending.value?.vehicleId == "vEdit" }
+            val sg = c.refuelSuggestions.pending.value!!
+            assertEquals(38.4, sg.litres, 1e-9)
+            assertEquals(1.5, sg.pricePerL!!, 1e-9)
+            assertTrue(sg.full)
+            // Home offers it (logging it opens the fill-up dialog: checked on a device); it can be dismissed.
+            c.openRequest.value = Routes.HOME
+            waitFor { rule.onAllNodesWithTag("refuelSuggestion").fetchSemanticsNodes().isNotEmpty() }
+            assertTrue(rule.onAllNodesWithText("Refuel detected").fetchSemanticsNodes().isNotEmpty())
+            rule.onNodeWithTag("refuelDismiss").performScrollTo().performClick()
+            waitFor { c.refuelSuggestions.pending.value == null }
+            // A fill-up already logged by hand around then: nothing is proposed.
+            runBlocking { c.garage.upsertFuel(com.openobd.core.garage.FuelEntry("f1", "vEdit", System.currentTimeMillis(), 123_456.0, 40.0, 60.0)) }
+            c.session.refuelForTest(com.openobd.session.ObdSession.RefuelDetected("vEdit", System.currentTimeMillis(), 30.0, false, null))
+            Thread.sleep(500)
+            assertTrue(c.refuelSuggestions.pending.value == null)
+        } finally {
+            c.refuelSuggestions.clear()
+            runBlocking { c.garage.update { it.copy(fuel = it.fuel.filter { f -> f.vehicleId != "vEdit" }) } }
+            runBlocking { c.settings.update { it.copy(fuelPricePerL = 0f) } }
+            tearDown(before)
+        }
+    }
 }

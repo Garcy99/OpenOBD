@@ -42,9 +42,18 @@ class FuelTankTest {
         repeat(60) { tank.update(mapOf("012F" to 20.0, "CALC_FUEL" to 0.8, "010D" to 0.0), t); t += 1000 }
         val before = tank.litres!!
         assertEquals(11.2, before, 0.3)
-        // Filling up: the level jumps to full; after the level settles, the estimate follows at once.
-        repeat(90) { tank.update(mapOf("012F" to 100.0, "010D" to 0.0), t); t += 1000 }
+        // Filling up: the level jumps to full; after the level settles, the estimate follows at once, and says how much went in.
+        val refuels = (0 until 90).mapNotNull { tank.update(mapOf("012F" to 100.0, "010D" to 0.0), t).also { t += 1000 }?.refuel }
         assertEquals(56.0, tank.litres!!, 1.0)
+        assertEquals(1, refuels.size)
+        assertEquals(56.0 - before, refuels.single().litres, 2.0)
+        assertTrue(refuels.single().full)
+        // Half a tank more: not full.
+        val half = FuelTankEstimator(capacityL = 56.0)
+        repeat(60) { half.update(mapOf("012F" to 20.0, "010D" to 0.0), t); t += 1000 }
+        val r = (0 until 90).mapNotNull { half.update(mapOf("012F" to 70.0, "010D" to 0.0), t).also { t += 1000 }?.refuel }.single()
+        assertEquals(56.0 * 0.5, r.litres, 2.0)
+        assertTrue(!r.full)
         // A short jump while driving (a hill) is not a refuel.
         val driving = FuelTankEstimator(capacityL = 56.0)
         repeat(60) { driving.update(mapOf("012F" to 20.0, "010D" to 80.0), t); t += 1000 }
