@@ -64,7 +64,11 @@ class BridgeUiTest {
         c.session.findPhone = { "127.0.0.1" to port }
         runBlocking { c.settings.update { it.copy(connectionType = ConnectionType.PHONE) } }
         c.session.connect()
-        waitFor(60_000) { c.session.state.value is ConnectionState.Connected }
+        runCatching { waitFor(60_000) { c.session.state.value is ConnectionState.Connected } }.onFailure {
+            System.out.println("DBG state=" + c.session.state.value)
+            System.out.println(c.session.debug.entries().filter { e -> e.kind != '>' && e.kind != '<' }.takeLast(40).joinToString("\n") { e -> "DBG ${e.kind} ${e.text}" })
+            throw it
+        }
         val v = (c.session.state.value as ConnectionState.Connected).vehicle
         assertEquals("Phone bridge (127.0.0.1)", v.transport)
         assertTrue(v.supportedPids.isNotEmpty() && v.vin != null)
