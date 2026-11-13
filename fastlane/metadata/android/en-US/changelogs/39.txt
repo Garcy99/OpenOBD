@@ -1,0 +1,3 @@
+• Steadier link: a choppy Bluetooth connection is no longer mistaken for the engine being switched off (which ended the trip and tried to reconnect only once). The trip goes on and the link comes back by itself
+• An adapter that gets stuck for a moment is recovered without disconnecting
+• Maker values your car does not have are not asked for again for a week, so the adapter is not overloaded

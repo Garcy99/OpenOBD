@@ -103,7 +103,22 @@ class ObdClient(val elm: Elm327) {
     // ---------------------------------------------------------------- service 01
 
     /** Reads raw data bytes for the given PIDs. Unsupported / unanswered PIDs are omitted. */
+    /**
+     * How the last [readPids] went when something did not answer: [ElmError.TIMEOUT] when the adapter itself did not
+     * reply (a link or adapter problem), another error (NO DATA, CAN ERROR ...) when the adapter replied but the car
+     * did not (engine off). Null when everything answered.
+     */
+    @Volatile var lastMiss: ElmError? = null
+        private set
+
+    private fun noteMiss(r: ObdResult) {
+        val e = (r as? ObdResult.Failure)?.error ?: return
+        // A timeout outweighs a car error: the adapter not answering says nothing about the car.
+        if (lastMiss != ElmError.TIMEOUT) lastMiss = e
+    }
+
     suspend fun readPids(pids: List<Int>): Map<Int, IntArray> {
+        lastMiss = null
         val out = HashMap<Int, IntArray>()
         if (pids.isEmpty()) return out
         if (isCan && batchingEnabled && pids.size > 1) {
@@ -124,6 +139,7 @@ class ObdClient(val elm: Elm327) {
                     out.putAll(normal)
                 } else {
                     val r = elm.query(if (useStpx && stnFastVerified == true) "STPX D:$req, R:1" else req, 3000)
+                    noteMiss(r)
                     if (r is ObdResult.Data) parseMultiPid(r, chunk, out)
                     answered = r is ObdResult.Data || (r as ObdResult.Failure).error == ElmError.NO_DATA
                 }
@@ -148,6 +164,7 @@ class ObdClient(val elm: Elm327) {
             fastResponses = false
             r = elm.query(cmd, 3000)
         }
+        noteMiss(r)
         if (r !is ObdResult.Data) return null
         val msgs = r.positive(1).filter { it.data.size >= 2 && it.data[1] == pid }
         val msg = msgs.firstOrNull { it.ecu == primaryEcu } ?: msgs.firstOrNull() ?: return null

@@ -83,4 +83,35 @@ class LinkLossTest {
             runBlocking { c.settings.update { it.copy(autoConnect = false) } }
         }
     }
+
+    /**
+     * Bluetooth getting choppy before it drops (requests unanswered, then the link gone) is not the engine being switched
+     * off: the trip goes on and the link comes back by itself. (1.23.3 to 1.26.0 took the timeouts for a silent car,
+     * ended the trip and tried to reconnect only once.)
+     */
+    @Test fun aChoppyLinkIsNotTheEngineOff() {
+        val c = ApplicationProvider.getApplicationContext<OpenObdApp>().container
+        runBlocking { c.settings.update { it.copy(connectionType = ConnectionType.DEMO, autoConnect = true, tripGps = false, onboarded = true, language = "en") } }
+        waitFor { c.garage.loaded && c.settings.settings.value.connectionType == ConnectionType.DEMO }
+        val tripsBefore = c.garage.data.value.trips.size
+        c.session.connect()
+        try {
+            waitFor { c.session.state.value is ConnectionState.Connected }
+            waitFor(60_000) { c.session.trip.stats.value.let { it.distanceKm >= 0.2 || it.movingS >= 60 } }
+            waitFor { c.session.dtcScan.value !is Op.Loading }
+            c.session.stickDemoAdapterForTest(7_000)
+            Thread.sleep(6_000)
+            assertTrue("timeouts are not a silent car", c.session.live.carSilentSince == null)
+            c.session.dropLinkForTest()
+            waitFor { c.session.state.value !is ConnectionState.Connected }
+            waitFor(30_000) { c.session.state.value is ConnectionState.Connected }
+            // The same trip: nothing saved in between.
+            assertEquals(tripsBefore, c.garage.data.value.trips.size)
+            assertTrue(c.session.tripInProgress)
+        } finally {
+            c.session.disconnect()
+            waitFor { c.session.state.value is ConnectionState.Disconnected }
+            runBlocking { c.settings.update { it.copy(autoConnect = false) } }
+        }
+    }
 }

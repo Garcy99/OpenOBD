@@ -202,6 +202,8 @@ class ObdSession(
         live.addListener(alertChecker())
         live.addListener { values, _, _ -> if (logs.isRecording) logs.append(values) }
         live.onAdapterLost = { scope.launch { linkLost("The adapter stopped responding.") } }
+        live.onSoftRecovery = { debug.event("The adapter stopped answering for a moment and answered again: polling goes on without reconnecting") }
+        live.onMakerGaveUp = { key -> garage.data.value.active?.id?.let { car -> silentMaker.add(car, key); debug.event("$key never answers on this car: not asked again for a week") } }
         scope.launch {
             settingsRepo.settings.collectLatest { s ->
                 live.params = fuelParams(s, vehicle)
@@ -361,6 +363,8 @@ class ObdSession(
         if (rpmAtConnect == 0.0 && voltage != null && again == null) warnLowBattery(voltage)
         setUpTank(supported)
         live.timeoutsBeforeLost = if (s.connectionType == ConnectionType.PHONE || s.connectionType == ConnectionType.WIFI) 12 else 4
+        // The brand's values this car did not answer before are not asked again (each try costs the adapter time).
+        live.skipMakerKeys = garage.data.value.active?.id?.let { silentMaker.of(it) }.orEmpty()
         live.start(c, supported)
         live.subscribe("trip", listOf("010D", "010C", "CALC_FUEL"))
         live.subscribe("health", health.keys)
@@ -526,12 +530,18 @@ class ObdSession(
         voice.warn(com.openobd.core.battery.BatteryHealth.lowWarning(volts, hours, pct))
     }
 
+    /** The brand's built-in values each car did not answer, remembered for a week. */
+    private val silentMaker = SilentMakerValues(context)
+
     /** For tests: the demo car is switched off (its adapter keeps answering, as real ones do). */
     @Volatile internal var demoCarOff = false
     internal fun switchOffDemoCarForTest() { demoCarOff = true; (transport as? DemoTransport)?.carAnswers = false }
 
     /** For tests: the link drops as if the adapter or the Wi-Fi went away. */
     internal fun dropLinkForTest() { transport?.let { t -> t.onDisconnected?.invoke(null) } }
+
+    /** For tests: the adapter gets stuck for [ms] (it still answers AT commands). */
+    internal fun stickDemoAdapterForTest(ms: Long) { (transport as? DemoTransport)?.stuckUntil = System.currentTimeMillis() + ms }
 
     /** For tests: the app dies mid-drive (nothing is saved, the checkpoint stays behind). */
     internal suspend fun dieForTest() {

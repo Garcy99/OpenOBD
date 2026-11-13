@@ -163,6 +163,8 @@ class DemoTransport(
     var vin = "1HGCM82633A004352"
     /** False simulates a car that is off or not answering at all. */
     var carAnswers = true
+    /** For tests: until then car requests go unanswered (the adapter stuck for a moment, AT commands still answered). */
+    @Volatile var stuckUntil = 0L
 
     private val engineFreezeFrame = mapOf(
         0x04 to intArrayOf(0x8C), 0x05 to intArrayOf(0x7B), 0x06 to intArrayOf(0x8A), 0x07 to intArrayOf(0x84),
@@ -194,6 +196,8 @@ class DemoTransport(
             if (idx < 0) break
             val cmd = buffer.substring(0, idx)
             buffer.delete(0, idx + 1)
+            // Stuck for a moment (as cheap adapters get): car requests go unanswered, AT commands still answer.
+            if (System.currentTimeMillis() < stuckUntil && !cmd.trim().uppercase().startsWith("AT")) continue
             val reply = handle(cmd.trim())
             if (latencyMs > 0) delay(latencyMs)
             val echoPart = if (echo) "$cmd\r" else ""

@@ -181,6 +181,9 @@ class ModuleClient(private val elm: Elm327) : CodingBus {
         at("ATST%02X".format(elm.configuredTimeout ?: 0x32))
     }
 
+    /** Puts the adapter back on standard OBD addressing (after it got stuck while a module was being read). */
+    suspend fun resetToObd() = elm.exclusive { restore() }
+
     private suspend fun <T> withModule(m: EcuModule, block: suspend Elm327.Locked.() -> T): T = elm.exclusive {
         check(supported) { NOT_CAN }
         try {

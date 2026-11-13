@@ -1,0 +1,3 @@
+• Conexión más estable: cuando el Bluetooth va a tirones, la app ya no lo confunde con el motor apagado (cortaba el viaje y solo intentaba reconectar una vez). Ahora sigue el mismo viaje y reconecta sola
+• Si el adaptador se queda colgado un momento, se recupera sin desconectar
+• Los valores de la marca que tu coche no tiene dejan de pedirse durante una semana, para no saturar el adaptador

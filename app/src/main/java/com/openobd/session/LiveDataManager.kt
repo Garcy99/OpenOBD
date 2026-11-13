@@ -71,6 +71,8 @@ class LiveDataManager(private val scope: CoroutineScope) {
         val BUILTIN_PIDS: Set<com.openobd.core.brand.CustomPid> by lazy { com.openobd.core.brand.Families.all.flatMap { it.builtinPids }.toSet() }
         /** ... and only after this long without an answer. */
         const val GIVE_UP_MS = 20_000L
+        /** At most one soft recovery (see the loop) in this long; more silence than that is a lost link. */
+        const val SOFT_RECOVERY_MS = 30_000L
     }
 
     /**
@@ -108,6 +110,18 @@ class LiveDataManager(private val scope: CoroutineScope) {
     @Volatile var params: DerivedSensors.Params = DerivedSensors.Params()
     /** Invoked when the adapter stopped answering repeatedly. */
     var onAdapterLost: (() -> Unit)? = null
+
+    /**
+     * Built-in maker values this car did not answer on earlier connections: not asked for at all (each try costs a
+     * header switch and a wait, which upsets some adapters). Set by the session at each connection.
+     */
+    @Volatile var skipMakerKeys: Set<String> = emptySet()
+    /** A built-in maker value given up on during this connection (to remember for the next ones). */
+    @Volatile var onMakerGaveUp: ((String) -> Unit)? = null
+    /** The adapter stopped answering for a moment and came back without reconnecting (for the debug log). */
+    @Volatile var onSoftRecovery: (() -> Unit)? = null
+    /** How many times the adapter was brought back without reconnecting (this app run). */
+    val softRecoveries = java.util.concurrent.atomic.AtomicInteger()
 
     private var job: Job? = null
 
@@ -164,7 +178,25 @@ class LiveDataManager(private val scope: CoroutineScope) {
         val unanswered = HashMap<String, Int>()
         val firstMiss = HashMap<String, Long>()
         val answered = HashSet<String>()
+        val gaveUp = HashSet<String>()
         var lastCustomKeys = emptySet<String>()
+        var lastSoftRecovery = 0L
+        /**
+         * Several requests in a row without an answer. Before taking the link for lost, ask the adapter itself (its
+         * voltmeter): when it answers, it was only stuck (after switching to a module, or a slow reply), so it is put
+         * back on the standard OBD addressing and polling goes on, without dropping and reconnecting. Once in a while.
+         */
+        suspend fun recovered(): Boolean {
+            val now = System.currentTimeMillis()
+            if (now - lastSoftRecovery < SOFT_RECOVERY_MS) return false
+            lastSoftRecovery = now
+            val alive = runCatching { kotlinx.coroutines.withTimeoutOrNull(3000) { client.elm.readVoltage() } }.getOrNull() != null
+            if (!alive) return false
+            runCatching { modules.resetToObd() }
+            softRecoveries.incrementAndGet()
+            onSoftRecovery?.invoke()
+            return true
+        }
         while (isActive) {
             if (pauseCount.get() > 0) { delay(100); continue }
             val keys = subscriptions.value.values.flatten().toSet()
@@ -178,7 +210,7 @@ class LiveDataManager(private val scope: CoroutineScope) {
             // Values asked for anew get fresh chances.
             if (customKeys != lastCustomKeys) { (customKeys - lastCustomKeys).forEach { unanswered.remove(it); firstMiss.remove(it) }; lastCustomKeys = customKeys }
             val nowMs = System.currentTimeMillis()
-            val customs = customKeys.mapNotNull { CustomSensors.pid(it) }.filter { p ->
+            val customs = customKeys.mapNotNull { CustomSensors.pid(it) }.filter { p -> !(p in BUILTIN_PIDS && p.key in skipMakerKeys) }.filter { p ->
                 p !in BUILTIN_PIDS || p.key in answered || (unanswered[p.key] ?: 0) < MAX_UNANSWERED || nowMs - (firstMiss[p.key] ?: nowMs) < GIVE_UP_MS ||
                     cycle % RETRY_CYCLES == 0L
             }
@@ -207,21 +239,45 @@ class LiveDataManager(private val scope: CoroutineScope) {
             } catch (e: ElmException) {
                 // The adapter answering with a bus error: it is there, the car is not.
                 if (e.error != ElmError.TIMEOUT && e.error != ElmError.LINK_LOST && carSilentSince == null) carSilentSince = System.currentTimeMillis()
-                if (e.error == ElmError.TIMEOUT && ++failures >= timeoutsBeforeLost) { onAdapterLost?.invoke(); return }
+                if (e.error == ElmError.TIMEOUT && ++failures >= timeoutsBeforeLost) {
+                    if (recovered()) { failures = 0; delay(200); continue }
+                    onAdapterLost?.invoke(); return
+                }
                 delay(200); continue
+            } catch (e: kotlinx.coroutines.CancellationException) {
+                throw e
             } catch (e: Exception) {
-                if (++failures >= timeoutsBeforeLost) { onAdapterLost?.invoke(); return }
+                if (++failures >= timeoutsBeforeLost) {
+                    if (recovered()) { failures = 0; delay(200); continue }
+                    onAdapterLost?.invoke(); return
+                }
                 delay(200); continue
             }
             // A maker value counts as unanswered only when the car answered the rest of the cycle (not while the
             // link hiccups or the bus changes).
             if (askedCustom && (data.isNotEmpty() || customData.isNotEmpty())) for (p in asked) {
                 if (customData[p.key] != null) { answered += p.key; unanswered.remove(p.key); firstMiss.remove(p.key) }
-                else if (p.key !in answered) { unanswered[p.key] = (unanswered[p.key] ?: 0) + 1; firstMiss.getOrPut(p.key) { System.currentTimeMillis() } }
+                else if (p.key !in answered) {
+                    val n = (unanswered[p.key] ?: 0) + 1
+                    unanswered[p.key] = n
+                    val since = firstMiss.getOrPut(p.key) { System.currentTimeMillis() }
+                    // A built-in value this car does not have: remembered, so later connections do not ask at all.
+                    if (p in BUILTIN_PIDS && n >= MAX_UNANSWERED && System.currentTimeMillis() - since >= GIVE_UP_MS && gaveUp.add(p.key)) onMakerGaveUp?.invoke(p.key)
+                }
             }
-            // Asked for standard values and none came back, without the adapter failing: the car has gone quiet.
-            if (toRead.isNotEmpty() && data.isEmpty() && customData.isEmpty() && carSilentSince == null) carSilentSince = System.currentTimeMillis()
-            if (data.isEmpty() && customData.isEmpty() && ++failures >= timeoutsBeforeLost * 6) { onAdapterLost?.invoke(); return }
+            if (data.isEmpty() && customData.isEmpty()) {
+                if (toRead.isNotEmpty() && client.lastMiss == ElmError.TIMEOUT) {
+                    // The adapter itself did not answer (a link hiccup, or stuck after a module read): not the car.
+                    if (++failures >= timeoutsBeforeLost) {
+                        if (recovered()) { failures = 0; delay(200); continue }
+                        onAdapterLost?.invoke(); return
+                    }
+                    continue
+                }
+                // Asked for standard values, and the adapter said the car does not answer: the car has gone quiet.
+                if (toRead.isNotEmpty() && carSilentSince == null) carSilentSince = System.currentTimeMillis()
+                if (++failures >= timeoutsBeforeLost * 6) { onAdapterLost?.invoke(); return }
+            }
             if (data.isNotEmpty() || customData.isNotEmpty()) { failures = 0; carSilentSince = null }
 
             val now = System.currentTimeMillis()
@@ -270,4 +326,25 @@ class LiveDataManager(private val scope: CoroutineScope) {
             }
         }
     }
+}
+
+/**
+ * The brand's built-in values (GM oil life, tyre pressures, filter values ...) a car did not answer, per car, with
+ * when: not asked for again for a week, so a car without them is not slowed (or its adapter upset) by them.
+ */
+class SilentMakerValues(context: android.content.Context, private val keepMs: Long = 7 * 86_400_000L) {
+    private val prefs = context.getSharedPreferences("silent_maker_values", android.content.Context.MODE_PRIVATE)
+
+    fun of(carId: String, now: Long = System.currentTimeMillis()): Set<String> =
+        prefs.getStringSet(carId, emptySet()).orEmpty().mapNotNull { e ->
+            val key = e.substringBefore('|'); val at = e.substringAfter('|', "0").toLongOrNull() ?: 0L
+            key.takeIf { now - at < keepMs }
+        }.toSet()
+
+    fun add(carId: String, key: String, now: Long = System.currentTimeMillis()) {
+        val kept = prefs.getStringSet(carId, emptySet()).orEmpty().filter { it.substringBefore('|') != key && now - (it.substringAfter('|', "0").toLongOrNull() ?: 0L) < keepMs }
+        prefs.edit().putStringSet(carId, (kept + "$key|$now").toSet()).apply()
+    }
+
+    fun clear(carId: String) { prefs.edit().remove(carId).apply() }
 }
