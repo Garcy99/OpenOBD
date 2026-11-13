@@ -1,5 +1,6 @@
 package com.openobd.ui.screens
 
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.background
 import androidx.compose.ui.draw.clip
@@ -96,6 +97,7 @@ fun DashboardScreen(onConnect: () -> Unit, onHud: () -> Unit, topBar: TopBarSlot
             IconButton(onClick = { editing = !editing }) { Icon(if (editing) Icons.Default.Close else Icons.Default.Edit, tr("Edit")) }
         })
         TripStatusBar()
+        if (vehicle != null) LinkQualityBar()
         if (vehicle == null && !editing) {
             NotConnected(onConnect)
             return@Column
@@ -290,6 +292,54 @@ fun TripStatusBar() {
             }
         }
     }
+}
+
+/** How well the adapter link is doing (readings per second, misses, recoveries, drops); tap for the details. */
+@Composable
+fun LinkQualityBar() {
+    val app = LocalApp.current
+    var tick by remember { mutableStateOf(0) }
+    androidx.compose.runtime.LaunchedEffect(Unit) { while (true) { kotlinx.coroutines.delay(2000); tick++ } }
+    @Suppress("UNUSED_EXPRESSION") tick
+    val rate by app.session.live.rate.collectAsStateWithLifecycle()
+    @Suppress("UNUSED_EXPRESSION") rate
+    val q = app.session.linkQuality()
+    var details by remember { mutableStateOf(false) }
+    val color = when (q.level) {
+        com.openobd.core.obd.LinkQuality.Level.GOOD -> com.openobd.ui.theme.Good
+        com.openobd.core.obd.LinkQuality.Level.FAIR -> com.openobd.ui.theme.Orange
+        com.openobd.core.obd.LinkQuality.Level.POOR -> com.openobd.ui.theme.Bad
+    }
+    val label = when (q.level) {
+        com.openobd.core.obd.LinkQuality.Level.GOOD -> tr("Connection: good")
+        com.openobd.core.obd.LinkQuality.Level.FAIR -> tr("Connection: fair")
+        com.openobd.core.obd.LinkQuality.Level.POOR -> tr("Connection: poor")
+    }
+    Row(Modifier.fillMaxWidth().clickable { details = true }.padding(horizontal = 16.dp, vertical = 4.dp).testTag("linkQuality"),
+        verticalAlignment = Alignment.CenterVertically) {
+        Box(Modifier.size(8.dp).clip(androidx.compose.foundation.shape.CircleShape).background(color))
+        androidx.compose.foundation.layout.Spacer(Modifier.width(8.dp))
+        Text(label + " · " + tr("%1\$s readings/s", "%.1f".format(q.readingsPerSecond)), style = MaterialTheme.typography.labelMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant)
+    }
+    if (details) androidx.compose.material3.AlertDialog(
+        onDismissRequest = { details = false },
+        title = { Text(tr("Adapter connection")) },
+        text = {
+            androidx.compose.foundation.layout.Column(verticalArrangement = androidx.compose.foundation.layout.Arrangement.spacedBy(4.dp)) {
+                com.openobd.ui.components.KeyValueRow(tr("Readings per second"), "%.1f".format(q.readingsPerSecond))
+                com.openobd.ui.components.KeyValueRow(tr("Requests the adapter did not answer (5 min)"), q.timeouts.toString())
+                com.openobd.ui.components.KeyValueRow(tr("Times it got stuck and came back (5 min)"), q.recoveries.toString())
+                com.openobd.ui.components.KeyValueRow(tr("Connection lost and back, this trip"), q.dropsThisTrip.toString())
+                Text(when (q.level) {
+                    com.openobd.core.obd.LinkQuality.Level.GOOD -> tr("Good: the adapter answers steadily.")
+                    com.openobd.core.obd.LinkQuality.Level.FAIR -> tr("Fair: the adapter misses some requests. If it keeps happening, check that it is firmly plugged in and the phone is close.")
+                    com.openobd.core.obd.LinkQuality.Level.POOR -> tr("Poor: the link keeps failing. A better adapter (or Bluetooth with less interference) usually fixes it; export the debug report if it goes on.")
+                }, style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(top = 6.dp))
+            }
+        },
+        confirmButton = { androidx.compose.material3.TextButton(onClick = { details = false }) { Text(tr("Close")) } },
+    )
 }
 
 /** Ready-made dashboard layouts. */

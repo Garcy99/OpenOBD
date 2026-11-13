@@ -373,6 +373,32 @@ fun BackupSection() {
         TextButton(onClick = { open.launch(arrayOf("application/zip", "application/octet-stream")) }) { Text(tr("Restore")) }
     }
     message?.let { Text(it, style = MaterialTheme.typography.bodySmall) }
+    // Every week by itself, to a folder chosen once (on the phone, or a cloud folder such as Google Drive).
+    val auto by app.autoBackup.status.collectAsStateWithLifecycle()
+    val pickFolder = androidx.activity.compose.rememberLauncherForActivityResult(androidx.activity.result.contract.ActivityResultContracts.OpenDocumentTree()) { uri ->
+        if (uri != null) {
+            com.openobd.data.AutoBackup.keepAccess(context, uri)
+            app.autoBackup.enable(uri.toString())
+            scope.launch { app.autoBackup.runNow() }
+        }
+    }
+    Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(top = 8.dp)) {
+        Text(tr("Automatic backup every week"), Modifier.weight(1f), style = MaterialTheme.typography.bodyMedium)
+        androidx.compose.material3.Switch(auto.enabled, { on -> if (on) { if (auto.folder != null) app.autoBackup.enable(auto.folder!!) else pickFolder.launch(null) } else app.autoBackup.disable() },
+            modifier = Modifier.testTag("autoBackupSwitch"))
+    }
+    Text(tr("Choose a folder (on the phone, or Google Drive) and a backup is saved there every week; the last 4 are kept."),
+        style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+    if (auto.enabled) {
+        com.openobd.data.AutoBackup.label(auto.folder)?.let { Text(tr("Folder: %1\$s", it), style = MaterialTheme.typography.bodySmall) }
+        Text(if (auto.lastAt > 0) tr("Last backup: %1\$s", java.text.DateFormat.getDateTimeInstance(java.text.DateFormat.MEDIUM, java.text.DateFormat.SHORT).format(java.util.Date(auto.lastAt)))
+            else tr("No backup yet."), style = MaterialTheme.typography.bodySmall, modifier = Modifier.testTag("autoBackupLast"))
+        auto.lastError?.let { Text(tr("Automatic backup failed: %1\$s", it), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error) }
+        Row {
+            TextButton(onClick = { scope.launch { app.autoBackup.runNow() } }) { Text(tr("Back up now")) }
+            TextButton(onClick = { pickFolder.launch(null) }) { Text(tr("Change folder")) }
+        }
+    }
     pendingRestore?.let { uri ->
         AlertDialog(
             onDismissRequest = { pendingRestore = null },

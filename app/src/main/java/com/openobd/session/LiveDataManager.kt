@@ -71,6 +71,8 @@ class LiveDataManager(private val scope: CoroutineScope) {
         val BUILTIN_PIDS: Set<com.openobd.core.brand.CustomPid> by lazy { com.openobd.core.brand.Families.all.flatMap { it.builtinPids }.toSet() }
         /** ... and only after this long without an answer. */
         const val GIVE_UP_MS = 20_000L
+        /** How far back the link quality looks. */
+        const val QUALITY_WINDOW_MS = 5 * 60_000L
         /** At most one soft recovery (see the loop) in this long; more silence than that is a lost link. */
         const val SOFT_RECOVERY_MS = 30_000L
     }
@@ -122,6 +124,18 @@ class LiveDataManager(private val scope: CoroutineScope) {
     @Volatile var onSoftRecovery: (() -> Unit)? = null
     /** How many times the adapter was brought back without reconnecting (this app run). */
     val softRecoveries = java.util.concurrent.atomic.AtomicInteger()
+    /** When requests went unanswered by the adapter (timeouts) and when it was recovered, recently (for the link quality). */
+    private val timeoutTimes = java.util.concurrent.ConcurrentLinkedDeque<Long>()
+    private val recoveryTimes = java.util.concurrent.ConcurrentLinkedDeque<Long>()
+
+    private fun note(q: java.util.concurrent.ConcurrentLinkedDeque<Long>, now: Long = System.currentTimeMillis()) {
+        q.addLast(now)
+        while ((q.peekFirst() ?: now) < now - QUALITY_WINDOW_MS) q.pollFirst()
+    }
+
+    /** Timeouts and soft recoveries in the last [QUALITY_WINDOW_MS]. */
+    fun recentTrouble(now: Long = System.currentTimeMillis()): Pair<Int, Int> =
+        timeoutTimes.count { it >= now - QUALITY_WINDOW_MS } to recoveryTimes.count { it >= now - QUALITY_WINDOW_MS }
 
     private var job: Job? = null
 
@@ -194,6 +208,7 @@ class LiveDataManager(private val scope: CoroutineScope) {
             if (!alive) return false
             runCatching { modules.resetToObd() }
             softRecoveries.incrementAndGet()
+            note(recoveryTimes)
             onSoftRecovery?.invoke()
             return true
         }
@@ -239,6 +254,7 @@ class LiveDataManager(private val scope: CoroutineScope) {
             } catch (e: ElmException) {
                 // The adapter answering with a bus error: it is there, the car is not.
                 if (e.error != ElmError.TIMEOUT && e.error != ElmError.LINK_LOST && carSilentSince == null) carSilentSince = System.currentTimeMillis()
+                if (e.error == ElmError.TIMEOUT) note(timeoutTimes)
                 if (e.error == ElmError.TIMEOUT && ++failures >= timeoutsBeforeLost) {
                     if (recovered()) { failures = 0; delay(200); continue }
                     onAdapterLost?.invoke(); return
@@ -267,6 +283,7 @@ class LiveDataManager(private val scope: CoroutineScope) {
             }
             if (data.isEmpty() && customData.isEmpty()) {
                 if (toRead.isNotEmpty() && client.lastMiss == ElmError.TIMEOUT) {
+                    note(timeoutTimes)
                     // The adapter itself did not answer (a link hiccup, or stuck after a module read): not the car.
                     if (++failures >= timeoutsBeforeLost) {
                         if (recovered()) { failures = 0; delay(200); continue }

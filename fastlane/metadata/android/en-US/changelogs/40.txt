@@ -1,0 +1,3 @@
+• Fault alert while driving: if the check engine light comes on or a new code appears, the app reads the codes at once and tells you which, what it means and whether you can keep going
+• Connection quality in Live: readings per second, missed requests and drops this trip
+• Automatic backup every week to a folder you choose (phone or Google Drive); the last 4 are kept

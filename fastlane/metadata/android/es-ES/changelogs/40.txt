@@ -1,0 +1,3 @@
+• Aviso de avería en marcha: si se enciende el testigo de motor o aparece un código nuevo, la app lee los códigos al momento y te dice cuál es, qué significa y si puedes seguir
+• Calidad de la conexión en Directo: lecturas por segundo, peticiones perdidas y cortes del viaje
+• Copia de seguridad automática cada semana en la carpeta que elijas (móvil o Google Drive); se guardan las 4 últimas

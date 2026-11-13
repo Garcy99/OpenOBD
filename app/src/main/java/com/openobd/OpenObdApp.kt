@@ -67,6 +67,9 @@ class AppContainer(private val app: Application) {
         com.openobd.data.Backup.write(out, app.filesDir, backupJson.encodeToString(com.openobd.data.AppSettings.serializer(), s), com.openobd.BuildConfig.VERSION_NAME)
     }
 
+    /** The weekly backup to a folder the user chose. */
+    val autoBackup: com.openobd.data.AutoBackup by lazy { com.openobd.data.AutoBackup.create(app) { out -> backupTo(out) } }
+
     /** Restores a backup, keeping this phone's API keys. Returns the number of files restored. */
     suspend fun restoreFrom(input: java.io.InputStream): Int = kotlinx.coroutines.withContext(Dispatchers.IO) {
         val c = com.openobd.data.Backup.read(input, app.filesDir)
@@ -150,7 +153,10 @@ class OpenObdApp : Application() {
         container.scope.launch {
             while (!container.garage.loaded) kotlinx.coroutines.delay(100)
             runCatching { container.session.recoverTrip() }
+            // The weekly backup, when it is due (also after each trip, below).
+            runCatching { container.autoBackup.runIfDue() }
         }
+        container.scope.launch { container.session.savedTrips.collect { runCatching { container.autoBackup.runIfDue() } } }
         notifySavedTrips()
         proposeRefuels()
         notifyRegenerations()

@@ -107,6 +107,9 @@ class TripEditUiTest {
             c.openRequest.value = Routes.LIVE
             waitFor { rule.onAllNodesWithTag("tripStatus").fetchSemanticsNodes().isNotEmpty() }
             assertTrue(rule.onAllNodesWithText("Recording trip", substring = true).fetchSemanticsNodes().isNotEmpty())
+            // And how the adapter link is doing.
+            waitFor { rule.onAllNodesWithText("Connection:", substring = true).fetchSemanticsNodes().isNotEmpty() }
+            assertTrue(rule.onAllNodesWithTag("linkQuality").fetchSemanticsNodes().isNotEmpty())
         } finally {
             c.session.disconnect()
             waitFor { c.session.state.value is ConnectionState.Disconnected }

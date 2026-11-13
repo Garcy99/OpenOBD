@@ -122,6 +122,16 @@ class ObdSession(
     @Volatile private var lostAt: Long? = null
     /** A trip waiting for a lost link to come back (kept alive meanwhile, saved when it does not). */
     val tripPending: Boolean get() = tripEnd?.isActive == true
+    /** Links lost (and got back) during the trip being recorded. */
+    @Volatile var dropsThisTrip = 0
+        private set
+
+    /** How the adapter link is doing now. */
+    fun linkQuality(): com.openobd.core.obd.LinkQuality {
+        val (timeouts, recoveries) = live.recentTrouble()
+        return com.openobd.core.obd.LinkQuality(live.rate.value, timeouts, recoveries, dropsThisTrip)
+    }
+
     /** A trip being recorded (connected, or waiting for a lost link). */
     val tripInProgress: Boolean get() = tripActive
     private val _state = MutableStateFlow<ConnectionState>(ConnectionState.Disconnected)
@@ -165,6 +175,8 @@ class ObdSession(
     val diesel = DieselFeature(this)
     /** Finds where the engine computer keeps a value seen in another app (the particulate filter's, above all). */
     val finder = ValueFinderFeature(this)
+    /** The check engine light coming on while driving: told at once, with what it is. */
+    val milAlert = MilAlertFeature(this)
     val reports = SessionReports(this)
 
     private val _brand = MutableStateFlow<Brand?>(null)
@@ -223,6 +235,7 @@ class ObdSession(
         live.addListener { values, _, now -> health.onCycle(values, now) }
         live.addListener { values, _, now -> diesel.onCycle(values, now) }
         live.addListener { values, _, now -> voice.onCycle(values, now) }
+        live.addListener { values, fresh, _ -> milAlert.onCycle(values, fresh) }
         scope.launch {
             var last: String? = null
             _state.collect { s ->
@@ -357,6 +370,7 @@ class ObdSession(
         live.params = fuelParams(s, snapshot)
         // GM / Opel diesels keep the filter's soot load and temperatures in the engine computer's own identifiers.
         diesel.onConnected(supported, dpfKeys())
+        milAlert.onConnected(supported)
         // The alerts know by now whether this is a diesel (it changes what counts as revving a cold engine hard).
         voice.configure(settingsRepo.settings.value)
         // The battery as the car stood: a warning when it is low (it might not start next time, above all in the cold).
@@ -382,6 +396,7 @@ class ObdSession(
             // A trip the app could not save last time (closed mid-drive) is kept before this one starts.
             runCatching { recoverTrip() }
             trip.reset()
+            dropsThisTrip = 0
             tripStart = System.currentTimeMillis()
             tripActive = true
             startCheckpoints()
@@ -533,6 +548,9 @@ class ObdSession(
     /** The brand's built-in values each car did not answer, remembered for a week. */
     private val silentMaker = SilentMakerValues(context)
 
+    /** For tests: the demo car's engine computer stores a new trouble code (the check engine light count goes up). */
+    internal fun demoFaultForTest(code: String) { (transport as? DemoTransport)?.stored?.add(code) }
+
     /** For tests: the demo car is switched off (its adapter keeps answering, as real ones do). */
     @Volatile internal var demoCarOff = false
     internal fun switchOffDemoCarForTest() { demoCarOff = true; (transport as? DemoTransport)?.carAnswers = false }
@@ -577,6 +595,7 @@ class ObdSession(
             reconnecting = true
             carSilent = false
             if (keepTrip) {
+                dropsThisTrip++
                 if (lostAt == null) lostAt = System.currentTimeMillis()
                 tripEnd?.cancel()
                 tripEnd = scope.launch {
@@ -657,7 +676,7 @@ class ObdSession(
         }
     }
 
-    private suspend fun scanDtcsInternal(record: Boolean): DtcScan {
+    internal suspend fun scanDtcsInternal(record: Boolean): DtcScan {
         val c = client ?: throw IllegalStateException("Not connected")
         dtcScan.value = Op.Loading("Reading trouble codes")
         live.pause()
