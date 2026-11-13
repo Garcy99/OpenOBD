@@ -29,8 +29,12 @@ class MainActivity : ComponentActivity() {
             val settings by container.settings.settings.collectAsStateWithLifecycle()
             val state by container.session.state.collectAsStateWithLifecycle()
             LaunchedEffect(settings.keepScreenOn, state is ConnectionState.Connected) {
-                if (settings.keepScreenOn && state is ConnectionState.Connected) window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
-                else window.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+                val on = settings.keepScreenOn && state is ConnectionState.Connected
+                // Window flags only from the main thread (an effect can resume elsewhere, e.g. under test clocks).
+                runOnUiThread {
+                    if (on) window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+                    else window.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+                }
             }
             LaunchedEffect(Unit) {
                 container.session.alerts.collect { vibrate() }
