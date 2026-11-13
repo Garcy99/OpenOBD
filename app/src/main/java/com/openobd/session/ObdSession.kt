@@ -468,8 +468,16 @@ class ObdSession(
         connectJob?.cancel()
         scope.launch {
             tripEnd?.cancel(); tripEnd = null
-            cleanup()
-            _state.value = ConnectionState.Disconnected
+            // Whatever goes wrong while closing, the app must not stay looking connected.
+            try {
+                cleanup()
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                debug.error("Error while disconnecting", e)
+            } finally {
+                _state.value = ConnectionState.Disconnected
+            }
         }
     }
 
