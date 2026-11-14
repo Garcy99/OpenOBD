@@ -81,6 +81,52 @@ class FuelPriceRepository(private val context: Context, private val userAgent: S
         return provinces(ids, maxAgeMs)
     }
 
+    /**
+     * A province's prices on a past day: downloaded once and kept (a past day does not change); copies older than a
+     * few months are removed. Only the province number and the date are sent.
+     */
+    private suspend fun provinceOn(id: String, day: Long): PriceList? = withContext(Dispatchers.IO) {
+        val stamp = java.text.SimpleDateFormat("yyyyMMdd", java.util.Locale.US).apply { timeZone = java.util.TimeZone.getTimeZone("Europe/Madrid") }.format(java.util.Date(day))
+        val file = File(dir, "hist-$id-$stamp.json")
+        if (file.exists()) runCatching { FuelPricesEs.parse(file.readText()) }.getOrNull()?.takeIf { it.stations.isNotEmpty() }?.let { return@withContext it }
+        val text = fetch(com.openobd.core.fuel.FuelPriceTrend.historyUrl(id, day)) ?: return@withContext null
+        val list = runCatching { FuelPricesEs.parse(text) }.getOrNull()?.takeIf { it.stations.isNotEmpty() } ?: return@withContext null
+        runCatching { dir.mkdirs(); file.writeText(text) }
+        list
+    }
+
+    /**
+     * The usual and cheapest price of [fuel] within [radiusKm] of a point over the last [days] days (today's from the
+     * live prices). [progress] gets (days done, days).
+     */
+    suspend fun trend(lat: Double, lon: Double, radiusKm: Double, fuel: PumpFuel, days: Int,
+                      progress: (Int, Int) -> Unit = { _, _ -> }): List<com.openobd.core.fuel.FuelPriceTrend.Day> {
+        // Only the provinces that really have stations within the radius (today's prices say which): a town near a
+        // border would otherwise download its neighbours' every day too.
+        val live = around(lat, lon, radiusKm) ?: return emptyList()
+        val near = FuelPricesEs.near(live.stations, lat, lon, fuel, radiusKm)
+        val ids = near.map { it.station.province }.filter { it.isNotBlank() }.distinct()
+            .ifEmpty { FuelPricesEs.provincesNear(lat, lon, radiusKm) }
+        if (ids.isEmpty()) return emptyList()
+        pruneHistory()
+        val now = System.currentTimeMillis()
+        val out = ArrayList<com.openobd.core.fuel.FuelPriceTrend.Day>()
+        for (n in days - 1 downTo 1) {
+            val day = com.openobd.core.fuel.FuelPriceTrend.dayStart(now, n)
+            val stations = ids.mapNotNull { provinceOn(it, day) }.flatMap { it.stations }.distinctBy { it.id }
+            com.openobd.core.fuel.FuelPriceTrend.day(day, stations, lat, lon, fuel, radiusKm)?.let { out += it }
+            progress(days - n, days)
+        }
+        com.openobd.core.fuel.FuelPriceTrend.day(com.openobd.core.fuel.FuelPriceTrend.dayStart(now), live.stations, lat, lon, fuel, radiusKm)?.let { out += it }
+        progress(days, days)
+        return out
+    }
+
+    private fun pruneHistory() {
+        val old = System.currentTimeMillis() - 120L * DAY
+        dir.listFiles { f -> f.name.startsWith("hist-") && f.lastModified() < old }?.forEach { it.delete() }
+    }
+
     /** The usual price of [fuel] around a point (median of the nearest stations), or null. */
     suspend fun localPrice(lat: Double, lon: Double, fuel: PumpFuel, maxAgeMs: Long = DAY): Double? =
         around(lat, lon, 20.0, maxAgeMs)?.let { FuelPricesEs.localPrice(it.stations, lat, lon, fuel) }

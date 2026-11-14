@@ -33,6 +33,8 @@ enum class PumpFuel(val label: String, val field: String) {
 data class Station(
     val id: String, val brand: String, val address: String, val town: String,
     val lat: Double, val lon: Double, val hours: String, val prices: Map<PumpFuel, Double>,
+    /** The ministry's province number ("40" Segovia), when given. */
+    val province: String = "",
 )
 
 /** A station with its distance in km from where it was looked up (or from the route). */
@@ -144,7 +146,7 @@ object FuelPricesEs {
             val lon = num("Longitud (WGS84)") ?: return@mapNotNull null
             val prices = PumpFuel.entries.mapNotNull { k -> num(k.field)?.takeIf { it > 0.3 && it < 5 }?.let { k to it } }.toMap()
             if (prices.isEmpty()) return@mapNotNull null
-            Station(f("IDEESS"), titleCase(f("Rótulo")), titleCase(f("Dirección")), titleCase(f("Localidad")), lat, lon, f("Horario"), prices)
+            Station(f("IDEESS"), titleCase(f("Rótulo")), titleCase(f("Dirección")), titleCase(f("Localidad")), lat, lon, f("Horario"), prices, f("IDProvincia"))
         }
         return PriceList(date, list)
     }

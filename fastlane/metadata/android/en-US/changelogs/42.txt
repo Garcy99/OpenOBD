@@ -1,0 +1,2 @@
+• Fuel price trend on the nearby stations list: a chart of the last 30 or 90 days with the usual and the cheapest price around you, how much it went up or down and the cheapest and dearest days
+• Earlier days are downloaded once (only your province) and kept

@@ -1,0 +1,2 @@
+• Evolución del precio del combustible en la lista de gasolineras cercanas: gráfica de los últimos 30 o 90 días con el precio habitual y el más barato de tu zona, cuánto ha subido o bajado y los días más baratos y más caros
+• Los días anteriores se descargan una vez (solo de tu provincia) y se guardan

@@ -1,5 +1,7 @@
 package com.openobd.ui.screens
 
+import androidx.compose.foundation.layout.height
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.clickable
@@ -70,7 +72,7 @@ sealed interface FuelLookup {
     data object NoLocation : FuelLookup
     data object OutsideSpain : FuelLookup
     data object Offline : FuelLookup
-    data class Found(val updatedAt: Long, val stations: List<StationNear>, val fuel: PumpFuel) : FuelLookup {
+    data class Found(val updatedAt: Long, val stations: List<StationNear>, val fuel: PumpFuel, val lat: Double = 0.0, val lon: Double = 0.0) : FuelLookup {
         val cheapest: StationNear? get() = stations.minByOrNull { it.price(fuel) ?: Double.MAX_VALUE }
         val average: Double? get() = stations.mapNotNull { it.price(fuel) }.takeIf { it.isNotEmpty() }?.average()
     }
@@ -89,7 +91,7 @@ fun rememberFuelLookup(fuel: PumpFuel, radiusKm: Double, refresh: Int = 0): Fuel
         val here = CurrentLocation.get(context) ?: run { result = FuelLookup.NoLocation; return@LaunchedEffect }
         if (!FuelPricesEs.covers(here.latitude, here.longitude)) { result = FuelLookup.OutsideSpain; return@LaunchedEffect }
         val list = app.fuelPrices.around(here.latitude, here.longitude, radiusKm) ?: run { result = FuelLookup.Offline; return@LaunchedEffect }
-        result = FuelLookup.Found(list.updatedAt, FuelPricesEs.near(list.stations, here.latitude, here.longitude, fuel, radiusKm), fuel)
+        result = FuelLookup.Found(list.updatedAt, FuelPricesEs.near(list.stations, here.latitude, here.longitude, fuel, radiusKm), fuel, here.latitude, here.longitude)
     }
     return result
 }
@@ -150,6 +152,7 @@ fun FuelPricesScreen(onBack: () -> Unit) {
                 FuelLookup.Offline -> NoticeCard(Icons.Default.LocalGasStation, tr("Prices could not be downloaded"), tr("Check your internet connection and try again."), Bad) { refresh++ }
                 is FuelLookup.Found -> {
                     FuelSummary(l, onDirections = { s -> FuelPriceRepository.directions(context, s.station) })
+                    PriceTrendCard(l.lat, l.lon, l.fuel, radius)
                     val list = if (byPrice) l.stations.sortedBy { it.price(l.fuel) } else l.stations
                     if (list.isEmpty()) Text(tr("No station sells this fuel within %1\$s km.", radius.toInt()))
                     else {
@@ -160,6 +163,66 @@ fun FuelPricesScreen(onBack: () -> Unit) {
                     Text(tr("Prices of %1\$s.", DateFormat.getDateTimeInstance(DateFormat.MEDIUM, DateFormat.SHORT).format(Date(l.updatedAt))) + " " + tr(FuelPricesEs.ATTRIBUTION),
                         style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(bottom = 16.dp))
                 }
+            }
+        }
+    }
+}
+
+/**
+ * How the price around has gone over the last weeks: the usual price and the cheapest, day by day (earlier days come
+ * from the ministry's daily records, downloaded once and kept).
+ */
+@Composable
+private fun PriceTrendCard(lat: Double, lon: Double, fuel: PumpFuel, radiusKm: Double) {
+    val app = LocalApp.current
+    var days by remember { mutableIntStateOf(30) }
+    var trend by remember(lat, lon, fuel, radiusKm, days) { mutableStateOf<List<com.openobd.core.fuel.FuelPriceTrend.Day>?>(null) }
+    var progress by remember { mutableStateOf(0 to 0) }
+    LaunchedEffect(lat, lon, fuel, radiusKm, days) {
+        trend = runCatching { app.fuelPrices.trend(lat, lon, radiusKm, fuel, days) { done, total -> progress = done to total } }.getOrDefault(emptyList())
+    }
+    SectionCard(title = tr("Price trend"), modifier = Modifier.testTag("priceTrend")) {
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            listOf(30, 90).forEach { d -> FilterChip(days == d, { days = d }, label = { Text(tr("%1\$s days", d)) }, modifier = Modifier.testTag("trend_$d")) }
+        }
+        val t = trend
+        when {
+            t == null -> {
+                Text(tr("Downloading earlier prices… %1\$s of %2\$s days", progress.first, progress.second.coerceAtLeast(days)),
+                    style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(top = 6.dp))
+                LinearProgressIndicator({ if (progress.second > 0) progress.first.toFloat() / progress.second else 0f }, Modifier.fillMaxWidth().padding(top = 4.dp))
+            }
+            t.size < 2 -> Text(tr("Earlier prices could not be downloaded."), style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(top = 6.dp))
+            else -> {
+                val s = com.openobd.core.fuel.FuelPriceTrend.summary(t)!!
+                // Both lines on one scale, so the gap between the usual price and the cheapest is real.
+                val lo = t.minOf { it.cheapest }.toFloat(); val hi = t.maxOf { it.usual }.toFloat()
+                val dayMs = 24 * 3600_000L
+                val end = t.last().day + dayMs
+                val usualColor = MaterialTheme.colorScheme.primary
+                com.openobd.ui.components.LineChart(listOf(
+                    com.openobd.ui.components.ChartSeries(t.map { it.day to it.usual.toFloat() }, usualColor, lo, hi),
+                    com.openobd.ui.components.ChartSeries(t.map { it.day to it.cheapest.toFloat() }, Good, lo, hi),
+                ), end - t.first().day, end, Modifier.fillMaxWidth().height(150.dp).padding(top = 8.dp))
+                val date = java.text.SimpleDateFormat("d MMM", java.util.Locale.getDefault())
+                Row(Modifier.fillMaxWidth()) {
+                    Text(date.format(Date(t.first().day)), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.weight(1f))
+                    Text(date.format(Date(t.last().day)), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+                Row(horizontalArrangement = Arrangement.spacedBy(14.dp), modifier = Modifier.padding(top = 4.dp)) {
+                    Text("● " + tr("Usual price") + " " + euros(s.today.usual), color = usualColor, style = MaterialTheme.typography.labelMedium)
+                    Text("● " + tr("Cheapest") + " " + euros(s.today.cheapest), color = Good, style = MaterialTheme.typography.labelMedium)
+                }
+                s.change?.let { ch ->
+                    val cents = ch * 100
+                    Text(if (kotlin.math.abs(cents) < 0.05) tr("Same as %1\$s days ago", days)
+                        else tr("%1\$s cents in %2\$s days", "%+.1f".format(cents), days),
+                        fontWeight = FontWeight.SemiBold, color = if (cents < -0.05) Good else if (cents > 0.05) Bad else MaterialTheme.colorScheme.onSurface,
+                        modifier = Modifier.padding(top = 6.dp).testTag("trendChange"))
+                }
+                Text(tr("Lowest %1\$s on %2\$s · highest %3\$s on %4\$s", euros(s.lowest.usual), date.format(Date(s.lowest.day)),
+                    euros(s.highest.usual), date.format(Date(s.highest.day))), style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
         }
     }

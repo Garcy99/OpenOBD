@@ -3,6 +3,7 @@ package com.openobd.ui
 import android.location.Location
 import android.location.LocationManager
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
+import androidx.compose.ui.test.onAllNodesWithTag
 import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.performClick
@@ -37,6 +38,8 @@ class FuelPricesUiTest {
     @Test
     fun cheapestStationOnHomeAndTheList() {
         val app = rule.activity.application
+        // Prices cached on disk by another test would stand in for this test's downloads.
+        java.io.File(app.cacheDir, "fuel").listFiles()?.forEach { it.delete() }
         shadowOf(app).grantPermissions(android.Manifest.permission.ACCESS_FINE_LOCATION, android.Manifest.permission.ACCESS_COARSE_LOCATION)
         val lm = app.getSystemService(LocationManager::class.java)
         shadowOf(lm).setProviderEnabled(LocationManager.GPS_PROVIDER, true)
@@ -46,7 +49,10 @@ class FuelPricesUiTest {
         val json = javaClass.getResource("/fuel-segovia.json")!!.readText()
         val asked = mutableListOf<String>()
         c.fuelPrices.fetch = { url -> asked += url; json }
-        runBlocking { c.settings.update { it.copy(connectionType = ConnectionType.DEMO, language = "en", onboarded = true, tourSeen = true, pumpFuel = "DIESEL", fuelPrices = true) } }
+        // Settings outlive each test here: prices off and on again, so the screens look again with this test's data.
+        runBlocking { c.settings.update { it.copy(connectionType = ConnectionType.DEMO, language = "en", onboarded = true, tourSeen = true, pumpFuel = "DIESEL", fuelPrices = false) } }
+        rule.waitForIdle()
+        runBlocking { c.settings.update { it.copy(fuelPrices = true) } }
         waitFor { c.garage.loaded && I18n.language == "en" }
         // Home: the cheapest diesel around, with the saving against the usual price.
         waitFor { rule.onAllNodesWithText("Cheapest diesel near you: 1.739 €/L", substring = true).fetchSemanticsNodes().isNotEmpty() }
@@ -59,5 +65,52 @@ class FuelPricesUiTest {
         // Petrol: another price for the cheapest.
         rule.onNodeWithTag("pump_PETROL_95").performClick()
         waitFor { rule.onAllNodesWithText("1.559 €/L", substring = true).fetchSemanticsNodes().isNotEmpty() }
+    }
+
+    /** The prices of the last month around: falling here (each earlier day 0.2 cents dearer). */
+    @Test
+    fun priceTrendOfTheLastMonth() {
+        val app = rule.activity.application
+        // Prices cached on disk by another test would stand in for this test's downloads.
+        java.io.File(app.cacheDir, "fuel").listFiles()?.forEach { it.delete() }
+        shadowOf(app).grantPermissions(android.Manifest.permission.ACCESS_FINE_LOCATION, android.Manifest.permission.ACCESS_COARSE_LOCATION)
+        val lm = app.getSystemService(LocationManager::class.java)
+        shadowOf(lm).setProviderEnabled(LocationManager.GPS_PROVIDER, true)
+        shadowOf(lm).setLastKnownLocation(LocationManager.GPS_PROVIDER, Location(LocationManager.GPS_PROVIDER).apply {
+            latitude = 40.9480; longitude = -4.1178; time = System.currentTimeMillis()
+        })
+        val json = javaClass.getResource("/fuel-segovia.json")!!.readText()
+        val today = com.openobd.core.fuel.FuelPriceTrend.dayStart(System.currentTimeMillis())
+        val fmt = java.text.SimpleDateFormat("dd-MM-yyyy", java.util.Locale.US).apply { timeZone = java.util.TimeZone.getTimeZone("Europe/Madrid") }
+        val history = mutableListOf<String>()
+        c.fuelPrices.fetch = { url ->
+            if ("Hist" !in url) json else {
+                history += url
+                val day = fmt.parse(url.substringAfter("FiltroProvincia/").substringBefore('/'))!!.time
+                val daysAgo = Math.round((today - day) / 86_400_000.0).toInt()
+                Regex("\"Precio Gasoleo A\":\\s*\"(\\d),(\\d{3})\"").replace(json) { m ->
+                    val v = (m.groupValues[1] + "." + m.groupValues[2]).toDouble() + daysAgo * 0.002
+                    "\"Precio Gasoleo A\":\"" + "%.3f".format(java.util.Locale.US, v).replace('.', ',') + "\""
+                }
+            }
+        }
+        // Settings outlive each test here: prices off and on again, so the screens look again with this test's data.
+        runBlocking { c.settings.update { it.copy(connectionType = ConnectionType.DEMO, language = "en", onboarded = true, tourSeen = true, pumpFuel = "DIESEL", fuelPrices = false) } }
+        rule.waitForIdle()
+        runBlocking { c.settings.update { it.copy(fuelPrices = true) } }
+        waitFor { c.garage.loaded && I18n.language == "en" }
+        c.openRequest.value = Routes.FUEL_PRICES
+        waitFor { rule.onAllNodesWithTag("priceTrend").fetchSemanticsNodes().isNotEmpty() }
+        rule.onNodeWithTag("priceTrend").performScrollTo()
+        waitFor(60_000) { rule.onAllNodesWithTag("trendChange").fetchSemanticsNodes().isNotEmpty() }
+        // 29 days back at 0.2 cents a day: 5.8 cents cheaper now.
+        val shown = rule.onAllNodesWithTag("trendChange").fetchSemanticsNodes().first().config.getOrElseNullable(androidx.compose.ui.semantics.SemanticsProperties.Text) { null }?.joinToString()
+        assertTrue("$shown", shown?.contains("-5.8 cents in 30 days") == true)
+        // Only the province and the date go out.
+        assertTrue("${history.size} ${history.take(3)}", history.size == 29 && history.all { Regex(".*/EstacionesTerrestresHist/FiltroProvincia/\\d{2}-\\d{2}-\\d{4}/40$").matches(it) })
+        // Past days are kept: asking again downloads nothing.
+        history.clear()
+        runBlocking { c.fuelPrices.trend(40.9480, -4.1178, 10.0, com.openobd.core.fuel.PumpFuel.DIESEL, 30) }
+        assertTrue("$history", history.isEmpty())
     }
 }
