@@ -1,0 +1,4 @@
+• El viaje termina cuando paras el motor, no al quitar el contacto: si el motor sigue parado 3 minutos se guarda solo, con la hora en que lo paraste
+• Con el motor parado, en Directo y en la notificación aparece "Terminar viaje" para guardarlo al momento
+• Las paradas cortas (Start/Stop, semáforos) no cortan el viaje; si arrancas de nuevo sin desconectar, empieza otro
+• El viaje empieza al arrancar el motor, no al conectar con el contacto puesto

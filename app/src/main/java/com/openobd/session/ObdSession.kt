@@ -132,6 +132,61 @@ class ObdSession(
         return com.openobd.core.obd.LinkQuality(live.rate.value, timeouts, recoveries, dropsThisTrip)
     }
 
+    /** When the trip began: when the engine first ran (connecting with the ignition on does not start the clock). */
+    private fun tripBegin(): Long = trip.firstRunningAt?.coerceAtLeast(tripStart) ?: tripStart
+
+    /** Engine stopped this long (ignition still on): the trip ends there by itself. Start/stop stops are much shorter. */
+    @Volatile internal var engineOffEndMs = ENGINE_OFF_END_MS
+    /** The trip was ended with the engine stopped and the car still connected: the next start begins a new one. */
+    @Volatile private var waitingForEngine = false
+    @Volatile private var ending = false
+
+    private fun onEngineState(now: Long) {
+        val stopped = trip.engineStoppedAt.value
+        if (tripActive && !ending && stopped != null && now - stopped >= engineOffEndMs) {
+            ending = true
+            scope.launch {
+                try {
+                    debug.event("Engine stopped for a while with the ignition on: the trip ends when the engine stopped")
+                    finishTrip()
+                    waitingForEngine = state.value is ConnectionState.Connected
+                } finally { ending = false }
+            }
+        } else if (!tripActive && !ending && waitingForEngine && stopped == null && trip.firstRunningAt != null &&
+            state.value is ConnectionState.Connected && !userDisconnect) {
+            startTripWhileConnected()
+        }
+    }
+
+    /** Ends the trip now (asked for with the engine stopped): saved up to when the engine stopped. */
+    fun endTripNow() {
+        if (!tripActive || ending) return
+        ending = true
+        scope.launch {
+            try {
+                debug.event("Trip ended by the driver")
+                finishTrip()
+                waitingForEngine = state.value is ConnectionState.Connected
+            } finally { ending = false }
+        }
+    }
+
+    /** The engine started again after a trip ended with the car still connected: a new trip. */
+    private fun startTripWhileConnected() {
+        val s = settingsRepo.settings.value
+        waitingForEngine = false
+        trip.reset()
+        dropsThisTrip = 0
+        tripStart = System.currentTimeMillis()
+        tripActive = true
+        startCheckpoints()
+        engineOff.reset(tripStart)
+        tripFuelPrice.value = null
+        if (s.connectionType != ConnectionType.DEMO) scope.launch { tripFuelPrice.value = runCatching { fuelPriceAt(null, null) }.getOrNull() }
+        if (s.tripGps && s.connectionType != ConnectionType.DEMO) location.start()
+        debug.event("Engine started again: a new trip")
+    }
+
     /** A trip being recorded (connected, or waiting for a lost link). */
     val tripInProgress: Boolean get() = tripActive
     private val _state = MutableStateFlow<ConnectionState>(ConnectionState.Disconnected)
@@ -209,6 +264,7 @@ class ObdSession(
     init {
         newestSession = this
         live.addListener(trip)
+        live.addListener { _, _, now -> onEngineState(now) }
         live.addListener(engineOff)
         live.addListener(perf)
         live.addListener(alertChecker())
@@ -393,6 +449,7 @@ class ObdSession(
             debug.event("Link back: the trip goes on")
         } else {
             finder.reset()
+            waitingForEngine = false
             // A trip the app could not save last time (closed mid-drive) is kept before this one starts.
             runCatching { recoverTrip() }
             trip.reset()
@@ -463,6 +520,7 @@ class ObdSession(
 
     fun disconnect() {
         userDisconnect = true
+        waitingForEngine = false
         autoTrip = false
         reconnecting = false
         connectJob?.cancel()
@@ -555,6 +613,9 @@ class ObdSession(
 
     /** The brand's built-in values each car did not answer, remembered for a week. */
     private val silentMaker = SilentMakerValues(context)
+
+    /** For tests: the demo car's engine stops (or starts again), the ignition staying on. */
+    internal fun demoEngineForTest(running: Boolean) { (transport as? DemoTransport)?.engineRunning = running }
 
     /** For tests: the demo car's engine computer stores a new trouble code (the check engine light count goes up). */
     internal fun demoFaultForTest(code: String) { (transport as? DemoTransport)?.stored?.add(code) }
@@ -772,7 +833,7 @@ class ObdSession(
         val fuel = if (st.hasFuelData) st.fuelL else null
         val local = tripFuelPrice.value
         return com.openobd.core.garage.TripRecord(
-            id = id, vehicleId = vehicle.id, start = tripStart, end = maxOf(endAt, tripStart),
+            id = id, vehicleId = vehicle.id, start = tripBegin(), end = maxOf(endAt, tripBegin()),
             distanceKm = st.distanceKm, fuelL = fuel, maxSpeed = st.maxSpeed, avgSpeed = st.avgSpeed, movingS = st.movingS,
             idleS = st.idleS, maxRpm = st.maxRpm, cost = fuel?.let { f -> if (price > 0) f * price else null }, trackPoints = trackPoints,
             harshAccel = st.eco.harshAccel, harshBrake = st.eco.harshBrake, highRpmS = st.eco.highRpmS, longIdleS = st.eco.longIdleS,
@@ -787,7 +848,8 @@ class ObdSession(
         if (!tripActive) return
         tripActive = false
         checkpointJob?.cancel(); checkpointJob = null
-        val endAt = lostAt ?: System.currentTimeMillis()
+        // The trip ends when the engine stopped, if it did before (the ignition left on does not count).
+        val endAt = minOf(lostAt ?: System.currentTimeMillis(), trip.engineStoppedAt.value ?: Long.MAX_VALUE)
         lostAt = null
         location.stop()
         val st = trip.stats.value
@@ -969,6 +1031,10 @@ class ObdSession(
 /** Messages about the phone bridge (English keys, translated by the app). */
 /** How long a trip waits for a lost link to come back before it is saved (and a new one starts). */
 const val TRIP_GRACE_MS = 5 * 60_000L
+/** Engine stopped this long with the ignition on ends the trip (by itself); the driver is offered to end it after [ENGINE_OFF_ASK_MS]. */
+const val ENGINE_OFF_END_MS = 3 * 60_000L
+const val ENGINE_OFF_ASK_MS = 20_000L
+
 /** How often the trip in progress is written to storage. */
 const val CHECKPOINT_MS = 60_000L
 const val CAR_SILENT = "The adapter answers but the car does not (engine off?)."

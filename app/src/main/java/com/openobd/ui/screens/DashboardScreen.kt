@@ -271,6 +271,21 @@ fun TripStatusBar() {
     val recording = app.session.tripInProgress
     val pending = app.session.tripPending && state !is com.openobd.session.ConnectionState.Connected
     if (!recording) return
+    // The engine stopped with the ignition still on: the trip can be ended now (else it ends by itself, at the stop).
+    val stoppedAt by app.session.trip.engineStoppedAt.collectAsStateWithLifecycle()
+    val now = System.currentTimeMillis()
+    val engineOff = !pending && stoppedAt?.let { now - it >= com.openobd.session.ENGINE_OFF_ASK_MS } == true
+    if (engineOff) {
+        val left = ((com.openobd.session.ENGINE_OFF_END_MS - (now - stoppedAt!!)) / 1000).coerceAtLeast(0)
+        androidx.compose.material3.Surface(color = com.openobd.ui.theme.Orange.copy(alpha = 0.16f), modifier = Modifier.fillMaxWidth().testTag("engineOffBar")) {
+            Row(Modifier.padding(horizontal = 16.dp, vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
+                Text(tr("Engine off: the trip ends by itself in %1\$s", "%d:%02d".format(left / 60, left % 60)),
+                    style = MaterialTheme.typography.labelLarge, modifier = Modifier.weight(1f))
+                androidx.compose.material3.TextButton(onClick = { app.session.endTripNow() }, modifier = Modifier.testTag("endTrip")) { Text(tr("End trip")) }
+            }
+        }
+        return
+    }
     val km = stats.distanceKm
     val dist = if (units == com.openobd.core.obd.UnitSystem.IMPERIAL) "%.1f mi".format(km * 0.621371) else "%.1f km".format(km)
     val time = com.openobd.ui.components.formatDuration(stats.durationS)

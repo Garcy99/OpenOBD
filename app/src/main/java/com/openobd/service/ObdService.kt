@@ -43,6 +43,10 @@ class ObdService : LifecycleService() {
             stopSelf()
             return START_NOT_STICKY
         }
+        if (intent?.action == ACTION_END_TRIP) {
+            session.endTripNow()
+            return START_NOT_STICKY
+        }
         if (intent?.action == ACTION_AUTO_STOP) {
             if (session.state.value !is ConnectionState.Disconnected) session.disconnect()
             return START_NOT_STICKY
@@ -100,7 +104,13 @@ class ObdService : LifecycleService() {
                     // The drive being recorded as a trip, and how far it has gone.
                     if (session.tripInProgress) com.openobd.ui.tr("Trip %1\$s", "%.1f km".format(session.trip.stats.value.distanceKm)) else null,
                 )
-                nm.notify(NOTIFICATION_ID, build(parts.joinToString(" · ").ifEmpty { s.vehicle.elm.protocol.label }))
+                // The engine stopped with the ignition on: the trip can be ended from here.
+                val stoppedAt = session.trip.engineStoppedAt.value
+                val now = System.currentTimeMillis()
+                if (session.tripInProgress && stoppedAt != null && now - stoppedAt >= com.openobd.session.ENGINE_OFF_ASK_MS) {
+                    val left = ((com.openobd.session.ENGINE_OFF_END_MS - (now - stoppedAt)) / 1000).coerceAtLeast(0)
+                    nm.notify(NOTIFICATION_ID, build(com.openobd.ui.tr("Engine off: the trip ends by itself in %1\$s", "%d:%02d".format(left / 60, left % 60)), endTrip = true))
+                } else nm.notify(NOTIFICATION_ID, build(parts.joinToString(" · ").ifEmpty { s.vehicle.elm.protocol.label }))
                 delay(3000)
             }
         }
@@ -168,7 +178,7 @@ class ObdService : LifecycleService() {
         super.onDestroy()
     }
 
-    private fun build(text: String): Notification {
+    private fun build(text: String, endTrip: Boolean = false): Notification {
         val open = PendingIntent.getActivity(this, 0, Intent(this, MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP), PendingIntent.FLAG_IMMUTABLE)
         val disconnect = PendingIntent.getService(this, 1, Intent(this, ObdService::class.java).setAction(ACTION_DISCONNECT), PendingIntent.FLAG_IMMUTABLE)
         return NotificationCompat.Builder(this, CHANNEL)
@@ -179,6 +189,10 @@ class ObdService : LifecycleService() {
             .setOnlyAlertOnce(true)
             .setContentIntent(open)
             .addAction(0, "Disconnect", disconnect)
+            .apply {
+                if (endTrip) addAction(0, com.openobd.ui.tr("End trip"),
+                    PendingIntent.getService(this@ObdService, 5, Intent(this@ObdService, ObdService::class.java).setAction(ACTION_END_TRIP), PendingIntent.FLAG_IMMUTABLE))
+            }
             .build()
     }
 
@@ -190,6 +204,7 @@ class ObdService : LifecycleService() {
         const val ACTION_HIDE_GAUGES = "com.openobd.HIDE_GAUGES"
         const val ACTION_AUTO_START = "com.openobd.AUTO_TRIP_START"
         const val ACTION_AUTO_STOP = "com.openobd.AUTO_TRIP_STOP"
+        const val ACTION_END_TRIP = "com.openobd.END_TRIP"
         /** Whether the floating window is on screen, for the button that toggles it. */
         val gaugesShown = kotlinx.coroutines.flow.MutableStateFlow(false)
     }

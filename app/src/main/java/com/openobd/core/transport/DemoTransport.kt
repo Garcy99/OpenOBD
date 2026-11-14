@@ -163,6 +163,8 @@ class DemoTransport(
     var vin = "1HGCM82633A004352"
     /** False simulates a car that is off or not answering at all. */
     var carAnswers = true
+    /** For tests: false = the engine stopped with the ignition on (the car answers, standing, at 0 rpm). */
+    @Volatile var engineRunning = true
     /** For tests: until then car requests go unanswered (the adapter stuck for a moment, AT commands still answered). */
     @Volatile var stuckUntil = 0L
 
@@ -639,11 +641,11 @@ class DemoTransport(
 
     private fun pidValue(pid: Int, ecu: String): IntArray? {
         val time = t()
-        val speed = speedAt(time)
-        val accel = speedAt(time + 0.5) - speedAt(time - 0.5)
+        val speed = if (engineRunning) speedAt(time) else 0.0
+        val accel = if (engineRunning) speedAt(time + 0.5) - speedAt(time - 0.5) else 0.0
         val gear = when { speed < 1 -> 0; speed < 18 -> 1; speed < 35 -> 2; speed < 55 -> 3; speed < 75 -> 4; speed < 95 -> 5; else -> 6 }
         val ratio = doubleArrayOf(0.0, 120.0, 72.0, 50.0, 38.0, 31.0, 26.0)[gear]
-        val rpm = if (gear == 0) 780 + noise(25.0) else min(6500.0, 900 + speed * ratio + noise(30.0))
+        val rpm = if (!engineRunning) 0.0 else if (gear == 0) 780 + noise(25.0) else min(6500.0, 900 + speed * ratio + noise(30.0))
         val throttle = (if (accel > 0) 18 + accel * 9 else 11.0).coerceIn(9.0, 95.0) + noise(1.0)
         val load = (throttle * 0.9 + 14 + noise(2.0)).coerceIn(10.0, 100.0)
         val coolant = min(91.0, 22 + time * 0.6) + noise(0.4)

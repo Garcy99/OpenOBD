@@ -1,0 +1,4 @@
+• A trip ends when you stop the engine, not when you switch the ignition off: with the engine off for 3 minutes it is saved by itself, ending when you stopped it
+• With the engine off, Live and the notification offer "End trip" to save it at once
+• Short stops (start/stop, lights) do not cut the trip; starting again while connected begins a new one
+• The trip starts when the engine starts, not when connecting with the ignition on

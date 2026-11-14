@@ -29,4 +29,5 @@ val autoTripTexts = listOf(
     "Trip saved", "Automatic trips",
     // The trip being recorded, in the notification.
     "Link lost: the trip is kept until it comes back (%1\$s)", "Trip %1\$s",
+    "Engine off: the trip ends by itself in %1\$s", "End trip",
 )
