@@ -46,13 +46,13 @@ class FuelTankTest {
         val refuels = (0 until 90).mapNotNull { tank.update(mapOf("012F" to 100.0, "010D" to 0.0), t).also { t += 1000 }?.refuel }
         assertEquals(56.0, tank.litres!!, 1.0)
         assertEquals(1, refuels.size)
-        assertEquals(56.0 - before, refuels.single().litres, 2.0)
+        assertEquals(56.0 - before, refuels.single().litres!!, 2.0)
         assertTrue(refuels.single().full)
         // Half a tank more: not full.
         val half = FuelTankEstimator(capacityL = 56.0)
         repeat(60) { half.update(mapOf("012F" to 20.0, "010D" to 0.0), t); t += 1000 }
         val r = (0 until 90).mapNotNull { half.update(mapOf("012F" to 70.0, "010D" to 0.0), t).also { t += 1000 }?.refuel }.single()
-        assertEquals(56.0 * 0.5, r.litres, 2.0)
+        assertEquals(56.0 * 0.5, r.litres!!, 2.0)
         assertTrue(!r.full)
         // A short jump while driving (a hill) is not a refuel.
         val driving = FuelTankEstimator(capacityL = 56.0)
@@ -85,5 +85,47 @@ class FuelTankTest {
         assertEquals(listOf("012F", "015E", "010D"), DerivedSensors.requirements("CALC_TANK", setOf(0x2F, 0x5E, 0x0D)))
         assertEquals(listOf("015E"), DerivedSensors.requirements("CALC_RANGE", setOf(0x5E)))
         assertNull(DerivedSensors.requirements("CALC_TANK", setOf(0x0C)))
+    }
+
+    @Test fun `a refuel with the engine off is noticed when the car is read again`() {
+        val tank = FuelTankEstimator(capacityL = 56.0)
+        var t = 0L
+        repeat(120) { tank.update(mapOf("012F" to 20.0, "CALC_FUEL" to 4.0, "010D" to 50.0), t); t += 1000 }
+        val before = tank.litres!!
+        // Engine off at the pump for ten minutes (nothing read), filled up, engine on and away within seconds.
+        t += 600_000
+        val seen = (0 until 8).mapNotNull { tank.update(mapOf("012F" to 97.0, "CALC_FUEL" to 0.8, "010D" to if (it < 6) 0.0 else 10.0), t).also { t += 1000 }?.refuel }
+        assertEquals(1, seen.size)
+        assertEquals(56 * 0.97 - before, seen.single().litres!!, 1.0)
+        assertTrue(seen.single().full)
+        assertEquals(56 * 0.97, tank.litres!!, 0.5)
+        // A pause without a refuel proposes nothing.
+        t += 600_000
+        assertTrue((0 until 30).none { tank.update(mapOf("012F" to 96.0, "010D" to 0.0), t).also { t += 1000 }?.refuel != null })
+    }
+
+    @Test fun `a refuel between two connections is noticed at the next one`() {
+        // The last connection left 11 L; this one finds the tank at three quarters.
+        val tank = FuelTankEstimator(capacityL = 56.0, startL = 11.0)
+        var t = 0L
+        val seen = (0 until 10).mapNotNull { tank.update(mapOf("012F" to 75.0, "010D" to 0.0), t).also { t += 1000 }?.refuel }
+        assertEquals(42.0 - 11.0, seen.single().litres!!, 1.0)
+        assertTrue(!seen.single().full)
+        // Driving off before the gauge is read standing: it is looked at the next time the car stops (here, never).
+        val moving = FuelTankEstimator(capacityL = 56.0, startL = 11.0)
+        assertTrue((0 until 60).none { moving.update(mapOf("012F" to 75.0, "010D" to 60.0), t).also { t += 1000 }?.refuel != null })
+        // The same level as before: nothing.
+        val same = FuelTankEstimator(capacityL = 56.0, startL = 30.0)
+        assertTrue((0 until 30).none { same.update(mapOf("012F" to 55.0, "010D" to 0.0), t).also { t += 1000 }?.refuel != null })
+    }
+
+    @Test fun `without the tank size a refuel is noticed in percent`() {
+        val tank = FuelTankEstimator(capacityL = null, startPct = 18.0)
+        var t = 0L
+        val r = (0 until 10).mapNotNull { tank.update(mapOf("012F" to 96.0, "010D" to 0.0), t).also { t += 1000 }?.refuel }.single()
+        assertNull(r.litres)
+        assertTrue(r.full)
+        assertEquals(18.0, r.fromPct!!, 1e-9)
+        assertEquals(96.0, tank.pct!!, 1e-9)
     }
 }

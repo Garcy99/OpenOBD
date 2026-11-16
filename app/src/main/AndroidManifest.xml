@@ -25,6 +25,11 @@
     <!-- Automatic trips: Android 12+ only lets an app start its recording service from the background when battery
          optimisation leaves it alone; this asks for that with the system's own dialog. -->
     <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
+    <!-- Automatic trips: the car's Bluetooth linked as a companion device wakes the app and lets it record from the background. -->
+    <uses-feature android:name="android.software.companion_device_setup" android:required="false" />
+    <uses-permission android:name="android.permission.REQUEST_COMPANION_RUN_IN_BACKGROUND" />
+    <uses-permission android:name="android.permission.REQUEST_COMPANION_START_FOREGROUND_SERVICES_FROM_BACKGROUND" />
+    <uses-permission android:name="android.permission.REQUEST_OBSERVE_COMPANION_DEVICE_PRESENCE" />
     <uses-permission android:name="android.permission.ACCESS_WIFI_STATE" />
     <!-- Background connection -->
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
@@ -92,6 +97,15 @@
                 <action android:name="android.bluetooth.device.action.ACL_DISCONNECTED" />
             </intent-filter>
         </receiver>
+
+        <service
+            android:name=".service.CarPresenceService"
+            android:exported="true"
+            android:permission="android.permission.BIND_COMPANION_DEVICE_SERVICE">
+            <intent-filter>
+                <action android:name="android.companion.CompanionDeviceService" />
+            </intent-filter>
+        </service>
 
         <receiver
             android:name=".widget.CarWidget"

@@ -105,7 +105,7 @@ fun fmtLiters(v: Double, units: UnitSystem): String = ObdUnit.LITERS.display(v, 
 fun fmtMoney(v: Double?): String = v?.let { "%.2f".format(it) } ?: "—"
 
 private fun fmtDate(t: Long) = DateFormat.getDateInstance(DateFormat.MEDIUM).format(Date(t))
-private fun fmtDateTime(t: Long) = DateFormat.getDateTimeInstance(DateFormat.MEDIUM, DateFormat.SHORT).format(Date(t))
+internal fun fmtDateTime(t: Long) = DateFormat.getDateTimeInstance(DateFormat.MEDIUM, DateFormat.SHORT).format(Date(t))
 
 /** Converts a typed distance in the user's units to km. */
 private fun toKm(v: Double, units: UnitSystem) = if (units == UnitSystem.IMPERIAL) v / 0.621371 else v
@@ -450,8 +450,9 @@ fun FuelLogScreen(onBack: () -> Unit) {
     var shownSuggestion by androidx.compose.runtime.saveable.rememberSaveable { mutableStateOf(0L) }
     val proposeIt: (com.openobd.data.RefuelSuggestions.Suggestion) -> Unit = { sg ->
         fromSuggestion = sg
-        editing = FuelEntry(app.garage.newId(), sg.vehicleId, sg.at, sg.odometerKm ?: v?.odometerKm ?: 0.0, Math.round(sg.litres * 10) / 10.0,
-            sg.pricePerL?.let { Math.round(sg.litres * it * 100) / 100.0 } ?: 0.0, sg.full)
+        val litres = sg.litres ?: 0.0
+        editing = FuelEntry(app.garage.newId(), sg.vehicleId, sg.at, sg.odometerKm ?: v?.odometerKm ?: 0.0, Math.round(litres * 10) / 10.0,
+            sg.pricePerL?.let { Math.round(litres * it * 100) / 100.0 } ?: 0.0, sg.full)
     }
     LaunchedEffect(suggestion?.at) {
         val sg = suggestion ?: return@LaunchedEffect
@@ -542,7 +543,7 @@ fun RefuelSuggestionCard(s: com.openobd.data.RefuelSuggestions.Suggestion, units
             Spacer(Modifier.width(10.dp))
             Column(Modifier.weight(1f)) {
                 Text(tr("Refuel detected"), style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold)
-                Text(fmtDateTime(s.at) + " · " + tr("about %1\$s", fmtLiters(s.litres, units)) + (if (s.full) " · " + tr("Full tank") else "") +
+                Text(fmtDateTime(s.at) + (s.litres?.let { " · " + tr("about %1\$s", fmtLiters(it, units)) } ?: "") + (if (s.full) " · " + tr("Full tank") else "") +
                     (s.pricePerL?.let { " · " + euros(it) + "/L" } ?: "") + (if (s.station.isNotEmpty()) " · " + s.station else ""),
                     style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }

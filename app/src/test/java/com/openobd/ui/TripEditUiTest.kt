@@ -142,7 +142,7 @@ class TripEditUiTest {
             c.session.refuelForTest(com.openobd.session.ObdSession.RefuelDetected("vEdit", System.currentTimeMillis(), 38.4, true, 123_456.0))
             waitFor { c.refuelSuggestions.pending.value?.vehicleId == "vEdit" }
             val sg = c.refuelSuggestions.pending.value!!
-            assertEquals(38.4, sg.litres, 1e-9)
+            assertEquals(38.4, sg.litres!!, 1e-9)
             assertEquals(1.5, sg.pricePerL!!, 1e-9)
             assertTrue(sg.full)
             // Home offers it (logging it opens the fill-up dialog: checked on a device); it can be dismissed.

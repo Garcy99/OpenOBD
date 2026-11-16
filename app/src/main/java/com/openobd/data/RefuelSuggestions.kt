@@ -12,7 +12,8 @@ class RefuelSuggestions(context: Context) {
     data class Suggestion(
         val vehicleId: String,
         val at: Long,
-        val litres: Double,
+        /** Litres added (null when the tank's size is not known: the driver types them in). */
+        val litres: Double?,
         val full: Boolean,
         val odometerKm: Double?,
         /** Price per litre where the car was (the station, else the usual one around), and the station's brand. */
@@ -27,14 +28,14 @@ class RefuelSuggestions(context: Context) {
     private fun read(): Suggestion? {
         if (!prefs.contains("car")) return null
         return Suggestion(
-            prefs.getString("car", "").orEmpty(), prefs.getLong("at", 0), Double.fromBits(prefs.getLong("l", 0)), prefs.getBoolean("full", false),
+            prefs.getString("car", "").orEmpty(), prefs.getLong("at", 0), prefs.getLong("l", 0).let { Double.fromBits(it) }.takeIf { !it.isNaN() && it > 0 }, prefs.getBoolean("full", false),
             prefs.getLong("odo", -1).takeIf { it >= 0 }?.let { Double.fromBits(it) },
             prefs.getLong("price", -1).takeIf { it >= 0 }?.let { Double.fromBits(it) }, prefs.getString("station", "").orEmpty(),
         )
     }
 
     fun set(s: Suggestion) {
-        prefs.edit().putString("car", s.vehicleId).putLong("at", s.at).putLong("l", s.litres.toRawBits()).putBoolean("full", s.full)
+        prefs.edit().putString("car", s.vehicleId).putLong("at", s.at).putLong("l", (s.litres ?: Double.NaN).toRawBits()).putBoolean("full", s.full)
             .putLong("odo", s.odometerKm?.toRawBits() ?: -1).putLong("price", s.pricePerL?.toRawBits() ?: -1).putString("station", s.station).apply()
         _pending.value = s
     }
@@ -45,9 +46,10 @@ class RefuelSuggestions(context: Context) {
         /** Too little to be a refuel worth logging (or the level sensor settling after a slope). */
         const val MIN_LITRES = 5.0
         const val NOTICE = "About %1\$s L added. Tap to log the fill-up."
+        const val NOTICE_NO_LITRES = "The tank was filled up. Tap to log the fill-up."
 
         /** Phrases about detected refuels, for translation. */
-        val texts = listOf("Refuel detected", NOTICE)
+        val texts = listOf("Refuel detected", NOTICE, NOTICE_NO_LITRES)
 
         /** Whether [at] already has a fill-up logged by hand (within a few hours), so nothing needs proposing. */
         fun alreadyLogged(fuel: List<com.openobd.core.garage.FuelEntry>, vehicleId: String, at: Long) =

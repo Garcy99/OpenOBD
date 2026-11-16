@@ -14,6 +14,8 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.debounce
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
 
 /** Simple manual dependency container. */
@@ -149,6 +151,11 @@ class OpenObdApp : Application() {
             container.sync.syncIfConnected(force = true)
         }
         keepWidgetUpdated()
+        // A car linked as a companion device: Android is asked (again, after each start) to wake the app when it joins.
+        container.scope.launch {
+            container.settings.settings.map { it.autoTripDevice.takeIf { _ -> it.autoTrips } }.distinctUntilChanged()
+                .collect { car -> runCatching { com.openobd.service.CarCompanion.observe(this@OpenObdApp, car) } }
+        }
         // A trip left behind when the app was closed mid-drive is saved as it was at its last checkpoint.
         container.scope.launch {
             while (!container.garage.loaded) kotlinx.coroutines.delay(100)
@@ -226,7 +233,8 @@ class OpenObdApp : Application() {
                     Intent(this@OpenObdApp, MainActivity::class.java).putExtra(MainActivity.EXTRA_OPEN, com.openobd.ui.Routes.FUEL)
                         .addFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP or Intent.FLAG_ACTIVITY_NEW_TASK),
                     android.app.PendingIntent.FLAG_IMMUTABLE or android.app.PendingIntent.FLAG_UPDATE_CURRENT)
-                val text = com.openobd.ui.tr(com.openobd.data.RefuelSuggestions.NOTICE, "%.0f".format(r.litres)) +
+                val text = (r.litres?.let { com.openobd.ui.tr(com.openobd.data.RefuelSuggestions.NOTICE, "%.0f".format(it)) }
+                    ?: com.openobd.ui.tr(com.openobd.data.RefuelSuggestions.NOTICE_NO_LITRES)) +
                     (s.pricePerL?.let { " · " + "%.3f €/L".format(it) + if (s.station.isNotEmpty()) " (${s.station})" else "" } ?: "")
                 runCatching {
                     nm.notify(REFUEL_NOTIFICATION, androidx.core.app.NotificationCompat.Builder(this@OpenObdApp, "trips").setSmallIcon(R.drawable.ic_stat_car)

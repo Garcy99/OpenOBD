@@ -202,7 +202,8 @@ class ObdSession(
     /** True while connected for an automatic trip (started by the car's Bluetooth): ends when the engine stays off. */
     @Volatile var autoTrip = false
     /** Refuels the tank gauge noticed (litres added, full or not), for the app to propose as fill-ups. */
-    data class RefuelDetected(val vehicleId: String, val at: Long, val litres: Double, val full: Boolean, val odometerKm: Double?)
+    /** A refuel the tank gauge noticed ([litres] null when the tank's size is not known). */
+    data class RefuelDetected(val vehicleId: String, val at: Long, val litres: Double?, val full: Boolean, val odometerKm: Double?)
     private val _refuels = kotlinx.coroutines.flow.MutableSharedFlow<RefuelDetected>(extraBufferCapacity = 2)
     val refuels: kotlinx.coroutines.flow.SharedFlow<RefuelDetected> = _refuels
     internal fun refuelForTest(r: RefuelDetected) { _refuels.tryEmit(r) }
@@ -568,12 +569,15 @@ class ObdSession(
             else com.openobd.core.obd.FuelTankEstimator.fromLog(cap, lastFull?.date,
                 fills.filter { lastFull != null && it.date > lastFull.date }.sumOf { it.liters },
                 trips.filter { lastFull != null && it.start > lastFull.date }.sumOf { it.fuelL ?: 0.0 })
-        live.tank = com.openobd.core.obd.FuelTankEstimator(cap, start, l100)
+        // The level last seen, to notice a refuel since then on cars whose tank size is not known.
+        val startPct = tankPrefs.getFloat("${car.id}:pct", -1f).takeIf { it >= 0 && cap == null && savedAt > (fills.lastOrNull()?.date ?: 0) }?.toDouble()
+        live.tank = com.openobd.core.obd.FuelTankEstimator(cap, start, l100, startPct)
         live.onRefuel = { r ->
-            if (r.litres >= com.openobd.data.RefuelSuggestions.MIN_LITRES) {
+            if ((r.litres ?: Double.MAX_VALUE) >= com.openobd.data.RefuelSuggestions.MIN_LITRES) {
                 val v = garage.data.value.active
                 if (v != null) {
-                    debug.event("Refuel seen by the tank gauge: %.1f L%s".format(r.litres, if (r.full) " (full)" else ""))
+                    debug.event("Refuel seen by the tank gauge: %s%s".format(r.litres?.let { "%.1f L".format(it) } ?: "%.0f %% → %.0f %%".format(r.fromPct ?: 0.0, r.toPct ?: 0.0),
+                        if (r.full) " (full)" else ""))
                     _refuels.tryEmit(RefuelDetected(v.id, System.currentTimeMillis(), r.litres, r.full, v.odometerKm))
                 }
             }
@@ -585,8 +589,12 @@ class ObdSession(
     /** Keeps the tank estimate for the next connection (when the car does not report its level). */
     private fun saveTank() {
         val car = garage.data.value.active ?: return
-        val l = live.tank?.litres ?: return
-        tankPrefs.edit().putFloat("${car.id}:l", l.toFloat()).putLong("${car.id}:at", System.currentTimeMillis()).apply()
+        val tank = live.tank ?: return
+        val l = tank.litres
+        val pct = tank.pct
+        if (l == null && pct == null) return
+        tankPrefs.edit().apply { if (l != null) putFloat("${car.id}:l", l.toFloat()); if (pct != null) putFloat("${car.id}:pct", pct.toFloat()) }
+            .putLong("${car.id}:at", System.currentTimeMillis()).apply()
     }
 
     /**
@@ -908,6 +916,8 @@ class ObdSession(
                 delay(CHECKPOINT_MS)
                 if (!tripActive) break
                 writeCheckpoint()
+                // The tank as well, so a refuel is noticed next time even if the app is closed mid-drive.
+                runCatching { saveTank() }
             }
         }
     }

@@ -1,0 +1,2 @@
+• Automatic trips: link the car in Android (Automatic trips → Link). Android then wakes OpenOBD itself when you get in, even with the app closed and on phones that hold closed apps back. The screen shows when the car was last detected.
+• Refuels are noticed when filled with the engine off: the level is compared when the car is read again. Without the tank size, the fill-up is proposed for you to type the litres.

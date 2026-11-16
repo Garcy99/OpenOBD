@@ -19,39 +19,64 @@ class AutoTripReceiver : BroadcastReceiver() {
         val device: BluetoothDevice? = if (android.os.Build.VERSION.SDK_INT >= 33) intent.getParcelableExtra(BluetoothDevice.EXTRA_DEVICE, BluetoothDevice::class.java)
             else @Suppress("DEPRECATION") intent.getParcelableExtra(BluetoothDevice.EXTRA_DEVICE)
         val address = device?.address ?: return
-        val action = when (intent.action) {
-            BluetoothDevice.ACTION_ACL_CONNECTED -> ObdService.ACTION_AUTO_START
-            BluetoothDevice.ACTION_ACL_DISCONNECTED -> ObdService.ACTION_AUTO_STOP
+        val joined = when (intent.action) {
+            BluetoothDevice.ACTION_ACL_CONNECTED -> true
+            BluetoothDevice.ACTION_ACL_DISCONNECTED -> false
             else -> return
         }
         // Null when called directly (tests).
         val pending: PendingResult? = goAsync()
-        val app = context.applicationContext as OpenObdApp
         CoroutineScope(Dispatchers.Default).launch {
-            try {
-                val s = app.container.settings.readOnce()
-                // While this phone lends its adapter to the car screen, the screen records the trip: the phone
-                // must not reach for the adapter too (two links to it make both drop).
-                if (s.autoTrips && s.autoTripDevice.equals(address, ignoreCase = true) && !app.container.bridge.running) {
-                    if (action == ObdService.ACTION_AUTO_START) {
-                        app.container.diagnostics.log.event("Automatic trip: the car's Bluetooth joined, starting the recording")
-                        if (!(startForTest?.invoke(context, action) ?: start(context, action))) {
-                            // Android did not allow it from the background: one tap on a notification does.
-                            app.container.diagnostics.log.error("Automatic trip: Android did not let the recording start from the background (battery optimisation?)")
-                            offerStart(context)
-                        }
-                    }
-                    // The drive is over: disconnecting saves the trip, and the service stops with the connection.
-                    else {
-                        clearOffer(context)
-                        if (app.container.session.state.value !is com.openobd.session.ConnectionState.Disconnected) app.container.session.disconnect()
-                    }
-                }
-            } finally { pending?.finish() }
+            try { handle(context, address, joined, "Bluetooth") } finally { pending?.finish() }
         }
     }
 
     companion object {
+        /**
+         * The car's Bluetooth joined ([joined]) or left the phone: told by Android's broadcast or, for a car linked
+         * as a companion device, by Android waking [CarPresenceService] (which also works where broadcasts to closed
+         * apps are held back).
+         */
+        suspend fun handle(context: Context, address: String, joined: Boolean, via: String) {
+            val app = context.applicationContext as OpenObdApp
+            val s = app.container.settings.readOnce()
+            // While this phone lends its adapter to the car screen, the screen records the trip: the phone
+            // must not reach for the adapter too (two links to it make both drop).
+            if (!s.autoTrips || !s.autoTripDevice.equals(address, ignoreCase = true) || app.container.bridge.running) return
+            val log = app.container.diagnostics.log
+            if (joined) {
+                // Already connected (opened by hand, or told by both the broadcast and the companion service): the drive
+                // is now an automatic trip, ended by the engine staying off.
+                if (app.container.session.state.value is com.openobd.session.ConnectionState.Connected) { app.container.session.autoTrip = true; return }
+                log.event("Automatic trip ($via): the car's Bluetooth joined, starting the recording")
+                if (startForTest?.invoke(context, ObdService.ACTION_AUTO_START) ?: start(context, ObdService.ACTION_AUTO_START)) {
+                    noteDetection(context, DETECTED_STARTED)
+                } else {
+                    // Android did not allow it from the background: one tap on a notification does.
+                    log.error("Automatic trip: Android did not let the recording start from the background (battery optimisation?)")
+                    noteDetection(context, DETECTED_BLOCKED)
+                    offerStart(context)
+                }
+            }
+            // The drive is over: disconnecting saves the trip, and the service stops with the connection.
+            else {
+                clearOffer(context)
+                if (app.container.session.state.value !is com.openobd.session.ConnectionState.Disconnected) app.container.session.disconnect()
+            }
+        }
+
+        const val DETECTED_STARTED = "started"
+        const val DETECTED_BLOCKED = "blocked"
+
+        /** When the car was last detected and what came of it (shown on the setup screen, to tell what goes wrong). */
+        fun noteDetection(context: Context, outcome: String) {
+            context.getSharedPreferences("auto_trip", Context.MODE_PRIVATE).edit().putLong("at", System.currentTimeMillis()).putString("outcome", outcome).apply()
+        }
+
+        fun lastDetection(context: Context): Pair<Long, String>? = context.getSharedPreferences("auto_trip", Context.MODE_PRIVATE).let { p ->
+            p.getLong("at", 0).takeIf { it > 0 }?.let { it to p.getString("outcome", "").orEmpty() }
+        }
+
         /** What the receiver does for the car's device, also used to try it from the setup screen. False when Android refused. */
         fun start(context: Context, action: String): Boolean {
             val i = Intent(context, ObdService::class.java).setAction(action)

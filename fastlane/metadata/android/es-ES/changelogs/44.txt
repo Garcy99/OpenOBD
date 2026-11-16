@@ -1,0 +1,2 @@
+• Viajes automáticos: vincula el coche en Android (Viajes automáticos → Vincular). Android despierta OpenOBD al subir, aunque la app esté cerrada y en móviles que frenan las apps cerradas. Se ve cuándo se detectó el coche por última vez.
+• Repostajes con el motor apagado: se comparan con el nivel al volver a leer el coche. Sin la capacidad del depósito, se propone el repostaje para que escribas los litros.

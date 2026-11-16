@@ -48,4 +48,28 @@ class AutoTripOfferTest {
             runBlocking { c.settings.update { it.copy(autoTrips = false, autoTripDevice = null, autoTripDeviceName = null, connectionType = ConnectionType.DEMO) } }
         }
     }
+
+    /** A car linked as a companion device: Android waking the app when the phone joins it starts the recording. */
+    @Test fun theLinkedCarWakesTheRecording() {
+        val app = ApplicationProvider.getApplicationContext<OpenObdApp>()
+        val c = app.container
+        runBlocking { c.settings.update { it.copy(connectionType = ConnectionType.BLUETOOTH, deviceAddress = "66:77:88:99:AA:BB", autoTrips = true,
+            autoTripDevice = "00:11:22:33:44:55", autoTripDeviceName = "Opel Astra", language = "en") } }
+        val started = java.util.concurrent.CopyOnWriteArrayList<String>()
+        try {
+            AutoTripReceiver.startForTest = { _, action -> started += action; true }
+            val service = org.robolectric.Robolectric.setupService(CarPresenceService::class.java)
+            // Another device: nothing.
+            @Suppress("DEPRECATION") service.onDeviceAppeared("AA:AA:AA:AA:AA:AA")
+            Thread.sleep(500)
+            assertEquals(0, started.size)
+            @Suppress("DEPRECATION") service.onDeviceAppeared("00:11:22:33:44:55")
+            waitFor { started.isNotEmpty() }
+            assertEquals(ObdService.ACTION_AUTO_START, started.single())
+            assertEquals(AutoTripReceiver.DETECTED_STARTED, AutoTripReceiver.lastDetection(app)!!.second)
+        } finally {
+            AutoTripReceiver.startForTest = null
+            runBlocking { c.settings.update { it.copy(autoTrips = false, autoTripDevice = null, autoTripDeviceName = null, connectionType = ConnectionType.DEMO) } }
+        }
+    }
 }

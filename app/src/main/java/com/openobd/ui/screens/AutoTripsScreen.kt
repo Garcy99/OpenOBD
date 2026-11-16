@@ -67,8 +67,11 @@ object AutoTripChecks {
     fun notifications(c: Context) = Permissions.granted(c, Permissions.notifications())
     fun battery(c: Context) = Build.VERSION.SDK_INT < 23 || c.getSystemService(PowerManager::class.java)?.isIgnoringBatteryOptimizations(c.packageName) == true
 
-    /** Without it, Android 12 and later do not let the recording start by itself (only from a notification tap). */
-    fun startsByItself(c: Context) = Build.VERSION.SDK_INT < 31 || battery(c)
+    /**
+     * Android 12 and later let the recording start by itself only for a car linked as a companion device or with
+     * battery saving leaving the app alone (otherwise only from a notification tap).
+     */
+    fun startsByItself(c: Context, car: String?) = Build.VERSION.SDK_INT < 31 || battery(c) || com.openobd.service.CarCompanion.linked(c, car)
 
     /** Phones whose own "autostart" setting can keep an app from waking up at all. */
     fun autostartBrand(): String? = Build.MANUFACTURER.lowercase().let { m ->
@@ -108,6 +111,18 @@ fun AutoTripsScreen(onBack: () -> Unit) {
         onDispose { owner.lifecycle.removeObserver(o) }
     }
     val ask = rememberLauncherForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) { refresh++ }
+    // Android's own dialog linking the car's Bluetooth to the app.
+    val linkDialog = rememberLauncherForActivityResult(ActivityResultContracts.StartIntentSenderForResult()) { r ->
+        if (r.resultCode == android.app.Activity.RESULT_OK) com.openobd.service.CarCompanion.observe(context, s.autoTripDevice)
+        refresh++
+    }
+    var linkError by remember { androidx.compose.runtime.mutableStateOf<String?>(null) }
+    fun link() {
+        val car = s.autoTripDevice ?: return
+        linkError = null
+        com.openobd.service.CarCompanion.link(context, car, { sender -> linkDialog.launch(androidx.activity.result.IntentSenderRequest.Builder(sender).build()) },
+            { e -> linkError = e })
+    }
     fun update(f: (com.openobd.data.AppSettings) -> com.openobd.data.AppSettings) { scope.launch { app.settings.update(f) } }
     Column(Modifier.fillMaxSize()) {
         ScreenTopBar(tr("Automatic trips"), onBack)
@@ -149,6 +164,12 @@ fun AutoTripsScreen(onBack: () -> Unit) {
                         if (Build.VERSION.SDK_INT >= 29) ask.launch(arrayOf(android.Manifest.permission.ACCESS_BACKGROUND_LOCATION))
                     }
                     if (Build.VERSION.SDK_INT >= 33) Check(tr("Notifications (to know a trip was saved)"), AutoTripChecks.notifications(context), tr("Allow")) { ask.launch(Permissions.notifications()) }
+                    // The surest way: Android itself wakes the app when the phone joins the car.
+                    if (com.openobd.service.CarCompanion.available(context) && s.autoTripDevice != null) {
+                        Check(tr("Car linked in Android (it wakes OpenOBD when you get in, even with the app closed)"),
+                            com.openobd.service.CarCompanion.linked(context, s.autoTripDevice), tr("Link"), Modifier.testTag("autoTripsLink")) { link() }
+                        linkError?.let { Text(tr("Android could not link it: %1\$s", it), style = MaterialTheme.typography.bodySmall, color = Warn) }
+                    }
                     Check(tr("Not stopped by battery saving (needed for the trip to start by itself)"), AutoTripChecks.battery(context), tr("Allow")) {
                         AutoTripChecks.askBattery(context)
                     }
@@ -164,13 +185,22 @@ fun AutoTripsScreen(onBack: () -> Unit) {
                 }
             }
             if (s.autoTrips && s.autoTripDevice != null) {
-                val byItself = androidx.compose.runtime.key(refresh) { AutoTripChecks.startsByItself(context) }
+                val byItself = androidx.compose.runtime.key(refresh) { AutoTripChecks.startsByItself(context, s.autoTripDevice) }
                 if (byItself) NoticeCard(Icons.Default.Route, tr("Ready"),
                     tr("The next time the phone joins %1\$s, the trip starts by itself.", s.autoTripDeviceName ?: s.autoTripDevice), Good,
                     Modifier.testTag("autoTripsReady"))
                 else NoticeCard(Icons.Default.Route, tr("Almost: let it run in the background"),
                     tr("Android only lets the trip start by itself if battery saving leaves OpenOBD alone. Until then, when the phone joins %1\$s you get a notification: tap it to start the trip.",
-                        s.autoTripDeviceName ?: s.autoTripDevice), Warn, Modifier.testTag("autoTripsNotReady")) { AutoTripChecks.askBattery(context) }
+                        s.autoTripDeviceName ?: s.autoTripDevice), Warn, Modifier.testTag("autoTripsNotReady")) {
+                        if (com.openobd.service.CarCompanion.available(context)) link() else AutoTripChecks.askBattery(context)
+                    }
+                // What happened the last time the car was detected (to tell a phone that never wakes the app apart).
+                val last = androidx.compose.runtime.key(refresh) { com.openobd.service.AutoTripReceiver.lastDetection(context) }
+                Text(when {
+                    last == null -> tr("The car has not been detected yet with automatic trips on. If you got in and nothing happened, link the car above.")
+                    last.second == com.openobd.service.AutoTripReceiver.DETECTED_BLOCKED -> tr("Car last detected: %1\$s. Android did not let the trip start by itself (you got a notification to start it).", fmtDateTime(last.first))
+                    else -> tr("Car last detected: %1\$s. The trip started by itself.", fmtDateTime(last.first))
+                }, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.testTag("autoTripsLast"))
             }
             Text(tr("Some phones close apps in the background anyway. If a trip is missed, check that battery saving leaves OpenOBD alone (Settings → Apps → OpenOBD → Battery → Unrestricted)."),
                 style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(bottom = 16.dp))
@@ -179,8 +209,8 @@ fun AutoTripsScreen(onBack: () -> Unit) {
 }
 
 @Composable
-private fun Check(label: String, ok: Boolean, action: String?, onFix: () -> Unit) {
-    Row(Modifier.fillMaxWidth().padding(vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+private fun Check(label: String, ok: Boolean, action: String?, modifier: Modifier = Modifier, onFix: () -> Unit) {
+    Row(modifier.fillMaxWidth().padding(vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
         Icon(if (ok) Icons.Default.CheckCircle else Icons.Default.ErrorOutline, null, Modifier.size(22.dp), tint = if (ok) Good else Warn)
         Spacer(Modifier.width(10.dp))
         Text(label, Modifier.weight(1f), style = MaterialTheme.typography.bodyMedium)
@@ -196,7 +226,7 @@ fun AutoTripsCard(onOpen: () -> Unit) {
     val s = appSettings()
     if (s.connectionType == ConnectionType.DEMO || s.connectionType == ConnectionType.PHONE) return
     val context = LocalContext.current
-    if (s.autoTrips && s.autoTripDevice != null && !AutoTripChecks.startsByItself(context)) {
+    if (s.autoTrips && s.autoTripDevice != null && !AutoTripChecks.startsByItself(context, s.autoTripDevice)) {
         NoticeCard(Icons.Default.Route, tr("Almost: let it run in the background"), tr("Tap to finish setting up automatic trips."),
             Warn, Modifier.testTag("autoTripsCard"), onClick = onOpen)
     } else if (s.autoTrips && s.autoTripDevice != null) {
@@ -211,4 +241,4 @@ fun AutoTripsCard(onOpen: () -> Unit) {
 }
 
 /** Phrases of the automatic trip screens, for translation coverage. */
-val autoTripScreenTexts = listOf("Allow", "Open", "Not now")
+val autoTripScreenTexts = listOf("Allow", "Open", "Not now", "Link")
