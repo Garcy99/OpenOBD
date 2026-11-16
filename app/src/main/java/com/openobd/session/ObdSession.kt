@@ -391,11 +391,17 @@ class ObdSession(
         // Coming back while a trip waits: the adapter answering is not enough (most stay powered with the engine off).
         // If the car itself is silent, the drive is over: the trip is saved now instead of waiting on and on.
         if (tripEnd?.isActive == true) {
+            var carSaidNo = false
             val alive = (1..3).any { n ->
                 if (n > 1) delay(700)
-                runCatching { c.readPids(listOf(0x0C)).isNotEmpty() }.getOrDefault(false)
+                val ok = runCatching { c.readPids(listOf(0x0C)).isNotEmpty() }.getOrDefault(false)
+                if (!ok && c.lastMiss in LiveDataManager.CAR_ERRORS) carSaidNo = true
+                ok
             }
-            if (!alive) { carSilent = true; throw IllegalStateException(CAR_SILENT) }
+            // Only the adapter saying the car does not answer means the engine is off; no reply at all is the link
+            // still being poor, and the next try may do better (the trip keeps waiting).
+            if (!alive && carSaidNo) { carSilent = true; throw IllegalStateException(CAR_SILENT) }
+            if (!alive) throw java.io.IOException("The adapter did not answer yet")
         }
         // Back after a lost link to the same car: what it supports is already known, so the gauges return at once.
         val again = known?.takeIf { it.type == s.connectionType && tripEnd?.isActive == true }
@@ -628,6 +634,8 @@ class ObdSession(
     internal fun dropLinkForTest() { transport?.let { t -> t.onDisconnected?.invoke(null) } }
 
     /** For tests: the adapter gets stuck for [ms] (it still answers AT commands). */
+    internal fun garbleDemoLinkForTest(ms: Long) { (transport as? DemoTransport)?.garbledUntil = System.currentTimeMillis() + ms }
+
     internal fun stickDemoAdapterForTest(ms: Long) { (transport as? DemoTransport)?.stuckUntil = System.currentTimeMillis() + ms }
 
     /** For tests: the app dies mid-drive (nothing is saved, the checkpoint stays behind). */
@@ -654,9 +662,13 @@ class ObdSession(
         // stopped): then the adapter being pulled out or switched off ends the drive, and the trip is saved at once.
         val engineOff = live.carSilentSince != null ||
             (live.latestValue("010C")?.let { it < 300 } == true && (live.latestValue("010D") ?: 0.0) < 2)
-        if (engineOff) debug.event("Link lost with the engine off: the trip ends here")
-        val keepTrip = tripActive && settingsRepo.settings.value.autoConnect && !engineOff
-        val autoConnect = settingsRepo.settings.value.autoConnect
+        if (engineOff) debug.event("Link lost with the engine off: the trip ends unless the car answers again at once")
+        // A trip being recorded always waits for the link (and tries to bring it back), whatever the auto-connect
+        // setting: a drive must not be cut in pieces by Bluetooth hiccups. With the engine seemingly off it waits only
+        // briefly (a wrong guess on a poor link is put right when the car answers again).
+        val keepTrip = tripActive
+        val grace = if (engineOff) ENGINE_OFF_GRACE_MS else TRIP_GRACE_MS
+        val autoConnect = settingsRepo.settings.value.autoConnect || keepTrip
         cleanup(keepTrip = keepTrip)
         // Marked as reconnecting (and the trip as waiting) before the state changes, so nothing watching the state
         // (the background service) takes the link for gone for good in between.
@@ -668,7 +680,7 @@ class ObdSession(
                 if (lostAt == null) lostAt = System.currentTimeMillis()
                 tripEnd?.cancel()
                 tripEnd = scope.launch {
-                    delay(TRIP_GRACE_MS)
+                    delay(grace)
                     reconnecting = false
                     if (state.value !is ConnectionState.Connected) finishTrip()
                 }
@@ -677,7 +689,7 @@ class ObdSession(
         _state.value = ConnectionState.Failed(message)
         if (!autoConnect) return
         // Tries again and again while the trip waits (or once, without a trip).
-        val until = System.currentTimeMillis() + if (keepTrip) TRIP_GRACE_MS else 0
+        val until = System.currentTimeMillis() + if (keepTrip) grace else 0
         do {
             delay(if (settingsRepo.settings.value.connectionType.let { it == ConnectionType.PHONE || it == ConnectionType.WIFI }) 1500 else 3000)
             if (userDisconnect || newestSession !== this || state.value is ConnectionState.Connected) break
@@ -1031,6 +1043,9 @@ class ObdSession(
 /** Messages about the phone bridge (English keys, translated by the app). */
 /** How long a trip waits for a lost link to come back before it is saved (and a new one starts). */
 const val TRIP_GRACE_MS = 5 * 60_000L
+
+/** How long a trip waits for the link when it was lost with the engine seemingly off (to correct a wrong guess). */
+const val ENGINE_OFF_GRACE_MS = 12_000L
 /** Engine stopped this long with the ignition on ends the trip (by itself); the driver is offered to end it after [ENGINE_OFF_ASK_MS]. */
 const val ENGINE_OFF_END_MS = 3 * 60_000L
 const val ENGINE_OFF_ASK_MS = 20_000L

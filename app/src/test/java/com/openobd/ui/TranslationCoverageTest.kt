@@ -107,6 +107,7 @@ class TranslationCoverageTest {
         keys += com.openobd.core.diagnosis.MilWatch.texts
         keys += com.openobd.core.obd.LinkQuality.texts
         keys += com.openobd.data.AutoBackup.texts
+        keys += com.openobd.service.AutoTripReceiver.texts
         keys += com.openobd.core.trip.EcoScorer.texts
         keys += com.openobd.core.report.CarScore.texts
         keys += listOf("Good morning", "Good afternoon", "Good evening", "Home", "Live", "Diagnose", "Garage", "More")

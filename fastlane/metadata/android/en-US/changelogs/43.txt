@@ -1,0 +1,2 @@
+• Automatic trips: Android 12+ blocked the start with the app closed. Setup now asks to leave OpenOBD out of battery saving (and Autostart on Xiaomi, Huawei…); until then a "Car detected" notification starts the trip with one tap.
+• Poor Bluetooth link: garbled replies are no longer taken for the engine off, and a trip always waits for the link and reconnects by itself (even with auto-connect off), so a drive stays one trip.

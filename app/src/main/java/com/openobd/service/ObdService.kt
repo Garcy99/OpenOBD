@@ -52,6 +52,7 @@ class ObdService : LifecycleService() {
             return START_NOT_STICKY
         }
         val auto = intent?.action == ACTION_AUTO_START
+        if (auto) AutoTripReceiver.clearOffer(this)
         if (intent?.action == ACTION_SHOW_GAUGES) { showGauges(); return START_NOT_STICKY }
         if (intent?.action == ACTION_HIDE_GAUGES) { hideGauges(); return START_NOT_STICKY }
         try {

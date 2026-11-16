@@ -1,0 +1,2 @@
+• Viajes automáticos: Android 12+ bloqueaba el inicio con la app cerrada. La configuración pide quitar OpenOBD del ahorro de batería (y el Inicio automático en Xiaomi, Huawei…); mientras, un aviso "Coche detectado" inicia el viaje con un toque.
+• Bluetooth malo: las respuestas corruptas ya no se toman por motor apagado, y el viaje siempre espera y reconecta solo (aunque la autoconexión esté desactivada): un trayecto queda en un viaje.

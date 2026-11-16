@@ -167,6 +167,8 @@ class DemoTransport(
     @Volatile var engineRunning = true
     /** For tests: until then car requests go unanswered (the adapter stuck for a moment, AT commands still answered). */
     @Volatile var stuckUntil = 0L
+    /** For tests: until then car requests get garbled replies (STOPPED), as over a poor Bluetooth link. */
+    @Volatile var garbledUntil = 0L
 
     private val engineFreezeFrame = mapOf(
         0x04 to intArrayOf(0x8C), 0x05 to intArrayOf(0x7B), 0x06 to intArrayOf(0x8A), 0x07 to intArrayOf(0x84),
@@ -200,7 +202,8 @@ class DemoTransport(
             buffer.delete(0, idx + 1)
             // Stuck for a moment (as cheap adapters get): car requests go unanswered, AT commands still answer.
             if (System.currentTimeMillis() < stuckUntil && !cmd.trim().uppercase().startsWith("AT")) continue
-            val reply = handle(cmd.trim())
+            val garbled = System.currentTimeMillis() < garbledUntil && !cmd.trim().uppercase().startsWith("AT")
+            val reply = if (garbled) listOf("STOPPED") else handle(cmd.trim())
             if (latencyMs > 0) delay(latencyMs)
             val echoPart = if (echo) "$cmd\r" else ""
             incoming.trySend((echoPart + reply.joinToString("\r") + "\r\r>").toByteArray(Charsets.US_ASCII))

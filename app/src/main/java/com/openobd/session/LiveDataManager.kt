@@ -61,7 +61,7 @@ fun interface CycleListener {
  * adapter allows. Fast-changing PIDs are read every cycle, slow ones (temperatures, levels) every 8th.
  */
 class LiveDataManager(private val scope: CoroutineScope) {
-    private companion object {
+    companion object {
         /** Unanswered requests before a maker value is only retried now and then (every [RETRY_CYCLES] cycles). */
         const val MAX_UNANSWERED = 6
         const val RETRY_CYCLES = 60L
@@ -75,6 +75,9 @@ class LiveDataManager(private val scope: CoroutineScope) {
         const val QUALITY_WINDOW_MS = 5 * 60_000L
         /** At most one soft recovery (see the loop) in this long; more silence than that is a lost link. */
         const val SOFT_RECOVERY_MS = 30_000L
+
+        /** Replies by which the adapter says the car itself does not answer (engine off), as opposed to link trouble. */
+        val CAR_ERRORS = setOf(ElmError.UNABLE_TO_CONNECT, ElmError.NO_DATA, ElmError.CAN_ERROR, ElmError.BUS_INIT_ERROR, ElmError.BUS_ERROR)
     }
 
     /**
@@ -252,8 +255,9 @@ class LiveDataManager(private val scope: CoroutineScope) {
             val data = if (toRead.isEmpty()) emptyMap() else try {
                 client.readPids(toRead)
             } catch (e: ElmException) {
-                // The adapter answering with a bus error: it is there, the car is not.
-                if (e.error != ElmError.TIMEOUT && e.error != ElmError.LINK_LOST && carSilentSince == null) carSilentSince = System.currentTimeMillis()
+                // The adapter answering with a bus error: it is there, the car is not. Garbled replies on a poor link
+                // (STOPPED, BUFFER FULL, "?" ...) say nothing about the car.
+                if (e.error in CAR_ERRORS && carSilentSince == null) carSilentSince = System.currentTimeMillis()
                 if (e.error == ElmError.TIMEOUT) note(timeoutTimes)
                 if (e.error == ElmError.TIMEOUT && ++failures >= timeoutsBeforeLost) {
                     if (recovered()) { failures = 0; delay(200); continue }
@@ -282,7 +286,7 @@ class LiveDataManager(private val scope: CoroutineScope) {
                 }
             }
             if (data.isEmpty() && customData.isEmpty()) {
-                if (toRead.isNotEmpty() && client.lastMiss == ElmError.TIMEOUT) {
+                if (toRead.isNotEmpty() && client.lastMiss !in CAR_ERRORS) {
                     note(timeoutTimes)
                     // The adapter itself did not answer (a link hiccup, or stuck after a module read): not the car.
                     if (++failures >= timeoutsBeforeLost) {

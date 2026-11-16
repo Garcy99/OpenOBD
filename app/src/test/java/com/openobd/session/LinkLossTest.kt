@@ -114,4 +114,33 @@ class LinkLossTest {
             runBlocking { c.settings.update { it.copy(autoConnect = false) } }
         }
     }
+
+    /**
+     * A poor Bluetooth link garbles replies (STOPPED ...) before it drops: that is not the engine off either, and the
+     * trip waits and comes back by itself even with "auto-connect" off (a 10-minute drive used to end up in 12 pieces).
+     */
+    @Test fun garbledRepliesAndNoAutoConnectStillKeepOneTrip() {
+        val c = ApplicationProvider.getApplicationContext<OpenObdApp>().container
+        runBlocking { c.settings.update { it.copy(connectionType = ConnectionType.DEMO, autoConnect = false, tripGps = false, onboarded = true, language = "en") } }
+        waitFor { c.garage.loaded && c.settings.settings.value.connectionType == ConnectionType.DEMO && !c.settings.settings.value.autoConnect }
+        val tripsBefore = c.garage.data.value.trips.size
+        c.session.connect()
+        try {
+            waitFor { c.session.state.value is ConnectionState.Connected }
+            waitFor(60_000) { c.session.trip.stats.value.let { it.distanceKm >= 0.2 || it.movingS >= 60 } }
+            waitFor { c.session.dtcScan.value !is Op.Loading }
+            c.session.garbleDemoLinkForTest(3_000)
+            Thread.sleep(2_000)
+            assertTrue("garbled replies are not a silent car", c.session.live.carSilentSince == null)
+            c.session.dropLinkForTest()
+            waitFor { c.session.state.value !is ConnectionState.Connected }
+            assertTrue(c.session.tripPending)
+            waitFor(30_000) { c.session.state.value is ConnectionState.Connected }
+            assertEquals(tripsBefore, c.garage.data.value.trips.size)
+            assertTrue(c.session.tripInProgress)
+        } finally {
+            c.session.disconnect()
+            waitFor { c.session.state.value is ConnectionState.Disconnected }
+        }
+    }
 }

@@ -22,6 +22,9 @@
     <uses-permission android:name="android.permission.CHANGE_NETWORK_STATE" />
     <!-- Keeping the processor and Wi-Fi awake while the car is read with the screen off -->
     <uses-permission android:name="android.permission.WAKE_LOCK" />
+    <!-- Automatic trips: Android 12+ only lets an app start its recording service from the background when battery
+         optimisation leaves it alone; this asks for that with the system's own dialog. -->
+    <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
     <uses-permission android:name="android.permission.ACCESS_WIFI_STATE" />
     <!-- Background connection -->
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />

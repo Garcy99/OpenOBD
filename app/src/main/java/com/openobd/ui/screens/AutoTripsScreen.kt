@@ -66,6 +66,27 @@ object AutoTripChecks {
     fun backgroundLocation(c: Context) = Build.VERSION.SDK_INT < 29 || Permissions.granted(c, arrayOf(android.Manifest.permission.ACCESS_BACKGROUND_LOCATION))
     fun notifications(c: Context) = Permissions.granted(c, Permissions.notifications())
     fun battery(c: Context) = Build.VERSION.SDK_INT < 23 || c.getSystemService(PowerManager::class.java)?.isIgnoringBatteryOptimizations(c.packageName) == true
+
+    /** Without it, Android 12 and later do not let the recording start by itself (only from a notification tap). */
+    fun startsByItself(c: Context) = Build.VERSION.SDK_INT < 31 || battery(c)
+
+    /** Phones whose own "autostart" setting can keep an app from waking up at all. */
+    fun autostartBrand(): String? = Build.MANUFACTURER.lowercase().let { m ->
+        listOf("xiaomi", "redmi", "poco", "huawei", "honor", "oppo", "realme", "oneplus", "vivo", "meizu", "asus").firstOrNull { m.contains(it) }
+    }?.replaceFirstChar { it.uppercase() }
+
+    /** The system's own dialog to leave the app out of battery optimisation (else the list of apps). */
+    @android.annotation.SuppressLint("BatteryLife")
+    fun askBattery(c: Context) {
+        val direct = Intent(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS, android.net.Uri.parse("package:" + c.packageName))
+        runCatching { c.startActivity(direct) }.recoverCatching { c.startActivity(Intent(Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS)) }
+            .recoverCatching { c.startActivity(Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, android.net.Uri.parse("package:" + c.packageName))) }
+    }
+
+    /** The app's page in the phone's settings (where brands put "Autostart" or similar). */
+    fun openAppSettings(c: Context) {
+        runCatching { c.startActivity(Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, android.net.Uri.parse("package:" + c.packageName))) }
+    }
 }
 
 /**
@@ -128,13 +149,29 @@ fun AutoTripsScreen(onBack: () -> Unit) {
                         if (Build.VERSION.SDK_INT >= 29) ask.launch(arrayOf(android.Manifest.permission.ACCESS_BACKGROUND_LOCATION))
                     }
                     if (Build.VERSION.SDK_INT >= 33) Check(tr("Notifications (to know a trip was saved)"), AutoTripChecks.notifications(context), tr("Allow")) { ask.launch(Permissions.notifications()) }
-                    Check(tr("Not stopped by battery saving"), AutoTripChecks.battery(context), tr("Open")) {
-                        runCatching { context.startActivity(Intent(Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS)) }
+                    Check(tr("Not stopped by battery saving (needed for the trip to start by itself)"), AutoTripChecks.battery(context), tr("Allow")) {
+                        AutoTripChecks.askBattery(context)
+                    }
+                    // Some brands add their own switch that keeps closed apps from waking up at all.
+                    AutoTripChecks.autostartBrand()?.let { brand ->
+                        Row(Modifier.fillMaxWidth().padding(vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+                            Icon(Icons.Default.ErrorOutline, null, Modifier.size(22.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                            Spacer(Modifier.width(10.dp))
+                            Text(tr("On %1\$s phones, also turn on \"Autostart\" for OpenOBD (in its app settings).", brand), Modifier.weight(1f), style = MaterialTheme.typography.bodyMedium)
+                            TextButton(onClick = { AutoTripChecks.openAppSettings(context) }) { Text(tr("Open")) }
+                        }
                     }
                 }
             }
-            if (s.autoTrips && s.autoTripDevice != null) NoticeCard(Icons.Default.Route, tr("Ready"),
-                tr("The next time the phone joins %1\$s, the trip starts by itself.", s.autoTripDeviceName ?: s.autoTripDevice), Good)
+            if (s.autoTrips && s.autoTripDevice != null) {
+                val byItself = androidx.compose.runtime.key(refresh) { AutoTripChecks.startsByItself(context) }
+                if (byItself) NoticeCard(Icons.Default.Route, tr("Ready"),
+                    tr("The next time the phone joins %1\$s, the trip starts by itself.", s.autoTripDeviceName ?: s.autoTripDevice), Good,
+                    Modifier.testTag("autoTripsReady"))
+                else NoticeCard(Icons.Default.Route, tr("Almost: let it run in the background"),
+                    tr("Android only lets the trip start by itself if battery saving leaves OpenOBD alone. Until then, when the phone joins %1\$s you get a notification: tap it to start the trip.",
+                        s.autoTripDeviceName ?: s.autoTripDevice), Warn, Modifier.testTag("autoTripsNotReady")) { AutoTripChecks.askBattery(context) }
+            }
             Text(tr("Some phones close apps in the background anyway. If a trip is missed, check that battery saving leaves OpenOBD alone (Settings → Apps → OpenOBD → Battery → Unrestricted)."),
                 style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(bottom = 16.dp))
         }
@@ -158,7 +195,11 @@ fun AutoTripsCard(onOpen: () -> Unit) {
     val scope = rememberCoroutineScope()
     val s = appSettings()
     if (s.connectionType == ConnectionType.DEMO || s.connectionType == ConnectionType.PHONE) return
-    if (s.autoTrips && s.autoTripDevice != null) {
+    val context = LocalContext.current
+    if (s.autoTrips && s.autoTripDevice != null && !AutoTripChecks.startsByItself(context)) {
+        NoticeCard(Icons.Default.Route, tr("Almost: let it run in the background"), tr("Tap to finish setting up automatic trips."),
+            Warn, Modifier.testTag("autoTripsCard"), onClick = onOpen)
+    } else if (s.autoTrips && s.autoTripDevice != null) {
         NoticeCard(Icons.Default.Route, tr("Automatic trips on"), tr("Every drive is recorded when the phone joins %1\$s.", s.autoTripDeviceName ?: s.autoTripDevice),
             Good, Modifier.testTag("autoTripsCard"), onClick = onOpen)
     } else if (!s.autoTripsOffered) {
