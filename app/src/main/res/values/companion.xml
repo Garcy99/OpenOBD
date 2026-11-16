@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- The companion device service exists from Android 12. -->
+    <bool name="companion_service">false</bool>
+</resources>

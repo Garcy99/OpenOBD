@@ -36,6 +36,11 @@ object CarCompanion {
 
     /** Asks Android to link [address] (its own dialog, shown through [launch]); [onError] when it cannot. */
     fun link(c: Context, address: String, launch: (IntentSender) -> Unit, onError: (String) -> Unit) {
+        if (Build.VERSION.SDK_INT >= 31) linkNow(c, address, launch, onError) else onError("Not available on this phone")
+    }
+
+    @RequiresApi(31)
+    private fun linkNow(c: Context, address: String, launch: (IntentSender) -> Unit, onError: (String) -> Unit) {
         val m = cdm(c) ?: return onError("Not available on this phone")
         val request = AssociationRequest.Builder()
             .addDeviceFilter(BluetoothDeviceFilter.Builder().setAddress(address).build())
