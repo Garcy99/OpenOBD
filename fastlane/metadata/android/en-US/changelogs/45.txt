@@ -1,0 +1,2 @@
+• When the Bluetooth adapter cannot be reached, the app now says whether it never answered (off, or held by another phone or app) and the debug report lists each connection attempt with its error.
+• The debug report includes the automatic trips setup (linked car, battery saving, last time the car was detected).

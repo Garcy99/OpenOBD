@@ -2513,6 +2513,7 @@
  "The VIN suggests model year %1$s and the saved year is %2$s. Not every European maker codes the year in the VIN: check the registration certificate.": "VIN 显示车型年份为 %1$s，而保存的年份为 %2$s。并非所有欧洲制造商都会在 VIN 中编码年份：请查看行驶证。",
  "The adapter answers but the car does not (engine off?).": "适配器有响应，但车辆没有（发动机已熄火？）。",
  "The adapter could not talk to the car. Is the ignition on?": "适配器无法与车辆通信。点火开关是否已打开？",
+ "The adapter did not answer. Check that it is plugged in and not connected to another phone or app (only one at a time); unplugging it for a few seconds resets it.": "适配器没有响应。请检查它已插好，且未连接到其他手机或应用（一次只能连接一个）；拔下几秒钟即可重置。",
  "The adapter does not report the battery voltage.": "适配器未报告蓄电池电压。",
  "The adapter does not understand this command.": "适配器无法识别此命令。",
  "The adapter is on MS-CAN. Go to Brand features and switch back to HS-CAN first.": "适配器处于 MS-CAN。请前往“品牌功能”，先切换回 HS-CAN。",

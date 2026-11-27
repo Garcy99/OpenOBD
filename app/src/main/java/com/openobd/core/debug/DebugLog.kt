@@ -28,7 +28,17 @@ class DebugLog(private val capacity: Int = 4000, private val clock: () -> Long =
 
     fun event(text: String) = add('i', text)
 
-    fun error(text: String, e: Throwable? = null) = add('!', if (e == null) text else "$text: ${e.javaClass.simpleName}: ${e.message}")
+    fun error(text: String, e: Throwable? = null) = add('!', if (e == null) text else "$text: ${describe(e)}")
+
+    companion object {
+        /**
+         * An error and what caused it, by their messages (class names are shortened in release builds, so they are
+         * given only when there is no message).
+         */
+        fun describe(e: Throwable): String = generateSequence(e) { it.cause.takeIf { c -> c !== it } }.take(4)
+            .map { it.message?.takeIf { m -> m.isNotBlank() } ?: it.javaClass.name }
+            .toList().distinct().joinToString(" ← ")
+    }
 
     @Synchronized
     fun entries(): List<Entry> = entries.toList()

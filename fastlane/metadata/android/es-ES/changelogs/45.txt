@@ -1,0 +1,2 @@
+• Si no se puede conectar con el adaptador Bluetooth, la app indica si no ha respondido (apagado, o en uso por otro móvil u otra app) y el informe de depuración muestra cada intento de conexión con su error.
+• El informe de depuración incluye la configuración de viajes automáticos (coche vinculado, ahorro de batería, última detección del coche).

@@ -2513,6 +2513,7 @@
  "The VIN suggests model year %1$s and the saved year is %2$s. Not every European maker codes the year in the VIN: check the registration certificate.": "Het VIN wijst op modeljaar %1$s en het opgeslagen jaar is %2$s. Niet elke Europese fabrikant codeert het jaar in het VIN: controleer het kentekenbewijs.",
  "The adapter answers but the car does not (engine off?).": "De adapter antwoordt, maar de auto niet (motor uit?).",
  "The adapter could not talk to the car. Is the ignition on?": "De adapter kon niet met de auto communiceren. Staat het contact aan?",
+ "The adapter did not answer. Check that it is plugged in and not connected to another phone or app (only one at a time); unplugging it for a few seconds resets it.": "De adapter antwoordde niet. Controleer of hij is ingestoken en niet verbonden is met een andere telefoon of app (maar één tegelijk); hem een paar seconden uittrekken zet hem terug.",
  "The adapter does not report the battery voltage.": "De adapter meldt geen accuspanning.",
  "The adapter does not understand this command.": "De adapter begrijpt deze opdracht niet.",
  "The adapter is on MS-CAN. Go to Brand features and switch back to HS-CAN first.": "De adapter staat op MS-CAN. Ga naar Merkfuncties en schakel eerst terug naar HS-CAN.",

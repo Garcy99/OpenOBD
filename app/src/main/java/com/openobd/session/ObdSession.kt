@@ -104,6 +104,9 @@ class ObdSession(
     /** Bounded record of adapter traffic and session events for debug reports. */
     val debug: com.openobd.core.debug.DebugLog = com.openobd.core.debug.DebugLog(),
 ) {
+    /** The app's context, for reports. */
+    internal val appContext: Context get() = context
+
     private val location = LocationTracker(context)
     @Volatile private var tripActive = false
     @Volatile private var tripStart = 0L
@@ -356,7 +359,7 @@ class ObdSession(
         ConnectionType.USB -> com.openobd.transport.UsbSerialTransport(context, s.usbDevice, s.usbBaud) { baud ->
             if (baud != s.usbBaud) scope.launch { settingsRepo.update { it.copy(usbBaud = baud) } }
         }
-        ConnectionType.BLUETOOTH -> BluetoothClassicTransport(context, s.deviceAddress ?: throw IllegalStateException("Choose a Bluetooth adapter first"), s.deviceName)
+        ConnectionType.BLUETOOTH -> BluetoothClassicTransport(context, s.deviceAddress ?: throw IllegalStateException("Choose a Bluetooth adapter first"), s.deviceName) { debug.event(it) }
         ConnectionType.BLE -> BleTransport(context, s.deviceAddress ?: throw IllegalStateException("Choose a Bluetooth LE adapter first"), s.deviceName)
         ConnectionType.PHONE -> {
             val (host, port) = findPhone() ?: throw IllegalStateException(PHONE_NOT_FOUND)

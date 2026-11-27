@@ -2513,6 +2513,7 @@
  "The VIN suggests model year %1$s and the saved year is %2$s. Not every European maker codes the year in the VIN: check the registration certificate.": "VIN model yılı olarak %1$s gösteriyor, kayıtlı yıl ise %2$s. Her Avrupalı üretici yılı VIN'e kodlamaz: ruhsatı kontrol edin.",
  "The adapter answers but the car does not (engine off?).": "Adaptör yanıt veriyor ama araç vermiyor (motor kapalı mı?).",
  "The adapter could not talk to the car. Is the ignition on?": "Adaptör araçla iletişim kuramadı. Kontak açık mı?",
+ "The adapter did not answer. Check that it is plugged in and not connected to another phone or app (only one at a time); unplugging it for a few seconds resets it.": "Adaptör yanıt vermedi. Takılı olduğunu ve başka bir telefona ya da uygulamaya bağlı olmadığını kontrol edin (aynı anda yalnızca bir tane); birkaç saniye çıkarmak onu sıfırlar.",
  "The adapter does not report the battery voltage.": "Adaptör akü voltajını bildirmiyor.",
  "The adapter does not understand this command.": "Adaptör bu komutu anlamıyor.",
  "The adapter is on MS-CAN. Go to Brand features and switch back to HS-CAN first.": "Adaptör MS-CAN üzerinde. Marka özellikleri'ne gidin ve önce HS-CAN'e geri geçin.",

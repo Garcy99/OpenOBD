@@ -2513,6 +2513,7 @@
  "The VIN suggests model year %1$s and the saved year is %2$s. Not every European maker codes the year in the VIN: check the registration certificate.": "VIN wskazuje na rok modelowy %1$s, a zapisany rok to %2$s. Nie każdy europejski producent koduje rok w VIN: sprawdź dowód rejestracyjny.",
  "The adapter answers but the car does not (engine off?).": "Adapter odpowiada, ale samochód nie (silnik wyłączony?).",
  "The adapter could not talk to the car. Is the ignition on?": "Adapter nie mógł porozumieć się z autem. Czy zapłon jest włączony?",
+ "The adapter did not answer. Check that it is plugged in and not connected to another phone or app (only one at a time); unplugging it for a few seconds resets it.": "Adapter nie odpowiedział. Sprawdź, czy jest podłączony i nie jest połączony z innym telefonem lub aplikacją (tylko jedno naraz); odłączenie go na kilka sekund go resetuje.",
  "The adapter does not report the battery voltage.": "Adapter nie podaje napięcia akumulatora.",
  "The adapter does not understand this command.": "Adapter nie rozumie tego polecenia.",
  "The adapter is on MS-CAN. Go to Brand features and switch back to HS-CAN first.": "Adapter jest na MS-CAN. Przejdź do Funkcji marki i najpierw przełącz z powrotem na HS-CAN.",

@@ -41,7 +41,17 @@ class SessionReports internal constructor(private val s: ObdSession) {
             "Multi-PID active / fast active" to c?.let { "${it.batchingEnabled} / ${it.fastResponses}" },
             "STN fast mode verified" to c?.stnFastVerified?.toString(),
         )
-        return listOf(conn, settings)
+        val ctx = s.appContext
+        val autoTrips = "Automatic trips" to listOf(
+            "On" to st.autoTrips.toString(),
+            "Car's Bluetooth chosen" to (st.autoTripDevice != null).toString(),
+            "Linked in Android" to com.openobd.service.CarCompanion.available(ctx).let { if (!it) "not available" else com.openobd.service.CarCompanion.linked(ctx, st.autoTripDevice).toString() },
+            "Battery unrestricted" to (ctx.getSystemService(android.os.PowerManager::class.java)?.isIgnoringBatteryOptimizations(ctx.packageName)).toString(),
+            "Last detection" to com.openobd.service.AutoTripReceiver.lastDetection(ctx)?.let { (at, outcome) ->
+                SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.US).format(Date(at)) + " " + outcome } ,
+            "Trip in progress / waiting" to "${s.tripInProgress} / ${s.tripPending}",
+        )
+        return listOf(conn, settings, autoTrips)
     }
 
     /** Plain-text diagnostic report for sharing. */

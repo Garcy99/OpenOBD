@@ -65,7 +65,7 @@ class TranslationCoverageTest {
         com.openobd.ui.components.GaugeTheme.entries.forEach { keys += it.label }
         com.openobd.ui.components.GaugeStyle.entries.forEach { keys += it.label }
         keys += listOf(com.openobd.transport.UsbSerialTransport.NO_CABLE, com.openobd.transport.UsbSerialTransport.NO_PERMISSION,
-            com.openobd.transport.UsbSerialTransport.NO_ANSWER)
+            com.openobd.transport.UsbSerialTransport.NO_ANSWER, com.openobd.transport.BluetoothClassicTransport.NO_ANSWER)
         keys += MS_CAN_BUSY
         com.openobd.core.specs.SpecFuel.entries.forEach { keys += it.label }
         com.openobd.core.specs.DgtLabel.entries.forEach { keys += it.label }
